@@ -1,0 +1,92 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 240,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "guide-line",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#8bc0a2",
+      "points": [
+        [
+          -200,
+          0
+        ],
+        [
+          200,
+          0
+        ]
+      ],
+      "strokeWidth": 2
+    },
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -23,
+          -23
+        ],
+        [
+          23,
+          -23
+        ],
+        [
+          23,
+          23
+        ],
+        [
+          -23,
+          23
+        ]
+      ],
+      "strokeWidth": 5,
+      "closed": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "choreo.array",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "count": 5,
+        "gapPx": 80,
+        "angleDeg": 0
+      }
+    },
+    {
+      "id": "carrier-1",
+      "target": "subject",
+      "recipe": "loop.spin",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "turnsPerSecond": 0.3
+      }
+    }
+  ]
+}

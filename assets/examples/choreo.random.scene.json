@@ -1,0 +1,108 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 84,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -20,
+          -20
+        ],
+        [
+          20,
+          -20
+        ],
+        [
+          20,
+          20
+        ],
+        [
+          -20,
+          20
+        ]
+      ],
+      "strokeWidth": 5,
+      "closed": true,
+      "fill": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "choreo.random",
+      "startFrame": 0,
+      "durationFrames": 84,
+      "fillAfter": "hold",
+      "params": {
+        "spreadFrames": 24
+      }
+    },
+    {
+      "id": "carrier-1",
+      "target": "subject",
+      "recipe": "choreo.grid",
+      "startFrame": 0,
+      "durationFrames": 84,
+      "fillAfter": "hold",
+      "params": {
+        "columns": 8,
+        "rows": 4,
+        "gapPx": 62
+      }
+    },
+    {
+      "id": "carrier-2",
+      "target": "subject",
+      "recipe": "timing.overshoot",
+      "startFrame": 0,
+      "durationFrames": 84,
+      "fillAfter": "hold",
+      "params": {
+        "tension": 1.8
+      }
+    },
+    {
+      "id": "carrier-3",
+      "target": "subject",
+      "recipe": "prop.scale",
+      "startFrame": 2,
+      "durationFrames": 22,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1
+      }
+    },
+    {
+      "id": "carrier-4",
+      "target": "subject",
+      "recipe": "prop.opacity",
+      "startFrame": 2,
+      "durationFrames": 22,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1
+      }
+    }
+  ]
+}

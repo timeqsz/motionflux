@@ -1,0 +1,3035 @@
+[
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.move",
+    "symbol": "Mv",
+    "english": "Move",
+    "title": "位移",
+    "role": "property",
+    "writes": [
+      "position"
+    ],
+    "description": "沿一个方向从起始偏移移到结束偏移；方向 0° 向右、90° 向下。",
+    "tags": [
+      "位移",
+      "移动",
+      "入场",
+      "move",
+      "translate"
+    ],
+    "params": {
+      "fromPx": {
+        "type": "number",
+        "title": "起始偏移",
+        "minimum": -2000,
+        "maximum": 2000,
+        "default": -120,
+        "unit": "px"
+      },
+      "toPx": {
+        "type": "number",
+        "title": "结束偏移",
+        "minimum": -2000,
+        "maximum": 2000,
+        "default": 120,
+        "unit": "px"
+      },
+      "angleDeg": {
+        "type": "number",
+        "title": "移动方向",
+        "minimum": -180,
+        "maximum": 180,
+        "default": 0,
+        "unit": "deg"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      1,
+      1
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.rotate",
+    "symbol": "Rt",
+    "english": "Rotate",
+    "title": "旋转",
+    "role": "property",
+    "writes": [
+      "rotation"
+    ],
+    "description": "绕对象原点从起始角转到结束角，正角度为顺时针。",
+    "tags": [
+      "旋转",
+      "转动",
+      "rotate"
+    ],
+    "params": {
+      "fromDeg": {
+        "type": "number",
+        "title": "起始角度",
+        "minimum": -720,
+        "maximum": 720,
+        "default": 0,
+        "unit": "deg"
+      },
+      "toDeg": {
+        "type": "number",
+        "title": "结束角度",
+        "minimum": -720,
+        "maximum": 720,
+        "default": 180,
+        "unit": "deg"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      2,
+      1
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.scale",
+    "symbol": "Sc",
+    "english": "Scale",
+    "title": "缩放",
+    "role": "property",
+    "writes": [
+      "scale"
+    ],
+    "description": "绕对象原点等比缩放。",
+    "tags": [
+      "缩放",
+      "放大",
+      "缩小",
+      "scale",
+      "zoom"
+    ],
+    "params": {
+      "from": {
+        "type": "number",
+        "title": "起始倍率",
+        "minimum": 0,
+        "maximum": 8,
+        "default": 0.4,
+        "unit": "ratio"
+      },
+      "to": {
+        "type": "number",
+        "title": "结束倍率",
+        "minimum": 0,
+        "maximum": 8,
+        "default": 1.2,
+        "unit": "ratio"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      3,
+      1
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.opacity",
+    "symbol": "Op",
+    "english": "Opacity",
+    "title": "透明",
+    "role": "property",
+    "writes": [
+      "opacity"
+    ],
+    "description": "整体透明度从起始值过渡到结束值，用来显现和隐去。",
+    "tags": [
+      "透明度",
+      "淡入",
+      "淡出",
+      "opacity",
+      "fade"
+    ],
+    "params": {
+      "from": {
+        "type": "number",
+        "title": "起始透明度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0,
+        "unit": "ratio"
+      },
+      "to": {
+        "type": "number",
+        "title": "结束透明度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 1,
+        "unit": "ratio"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      4,
+      1
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.color",
+    "symbol": "Co",
+    "english": "Color",
+    "title": "颜色",
+    "role": "property",
+    "writes": [
+      "color"
+    ],
+    "description": "颜色从起始色过渡到结束色，在线性光下混合，中途不发灰。",
+    "tags": [
+      "颜色",
+      "变色",
+      "色彩",
+      "color"
+    ],
+    "params": {
+      "from": {
+        "type": "color",
+        "title": "起始颜色",
+        "default": "#1d201d"
+      },
+      "to": {
+        "type": "color",
+        "title": "结束颜色",
+        "default": "#d4513f"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      5,
+      1
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "finite",
+    "id": "prop.blur",
+    "symbol": "Bu",
+    "english": "Blur",
+    "title": "模糊",
+    "role": "property",
+    "writes": [
+      "blur"
+    ],
+    "description": "高斯模糊半径从起始值变到结束值，从虚到实或从实到虚。",
+    "tags": [
+      "模糊",
+      "虚化",
+      "对焦",
+      "blur",
+      "focus"
+    ],
+    "params": {
+      "fromPx": {
+        "type": "number",
+        "title": "起始半径",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 16,
+        "unit": "px"
+      },
+      "toPx": {
+        "type": "number",
+        "title": "结束半径",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 0,
+        "unit": "px"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      2,
+      2
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.morph",
+    "symbol": "Mp",
+    "english": "Morph",
+    "title": "变形",
+    "role": "property",
+    "writes": [
+      "geometry"
+    ],
+    "description": "轮廓按弧长对齐后逐点过渡到目标形状，不会扭成一团。",
+    "tags": [
+      "变形",
+      "形变",
+      "过渡",
+      "morph",
+      "shape"
+    ],
+    "params": {
+      "target": {
+        "type": "string",
+        "title": "目标形状",
+        "enum": [
+          "circle",
+          "triangle",
+          "square",
+          "star"
+        ],
+        "labels": [
+          "圆形",
+          "三角形",
+          "方形",
+          "星形"
+        ],
+        "default": "star"
+      },
+      "amount": {
+        "type": "number",
+        "title": "变形程度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 1,
+        "unit": "ratio"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      3,
+      2
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.draw",
+    "symbol": "Dr",
+    "english": "Draw",
+    "title": "描线",
+    "role": "property",
+    "writes": [
+      "trim"
+    ],
+    "description": "按真实弧长把路径从起点画到终点；拖尾大于 0 时只留一段在路径上跑。",
+    "tags": [
+      "描线",
+      "描边",
+      "路径",
+      "手写",
+      "draw",
+      "trim",
+      "stroke"
+    ],
+    "params": {
+      "from": {
+        "type": "number",
+        "title": "起始比例",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0,
+        "unit": "ratio"
+      },
+      "to": {
+        "type": "number",
+        "title": "结束比例",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 1,
+        "unit": "ratio"
+      },
+      "trailRatio": {
+        "type": "number",
+        "title": "拖尾长度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0,
+        "unit": "ratio"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      4,
+      2
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "prop.crop",
+    "symbol": "Cp",
+    "english": "Crop",
+    "title": "裁切",
+    "role": "property",
+    "writes": [
+      "mask"
+    ],
+    "description": "可见范围从一侧或中心向外展开，对象本身不动。",
+    "tags": [
+      "裁切",
+      "遮罩",
+      "展开",
+      "crop",
+      "mask"
+    ],
+    "params": {
+      "from": {
+        "type": "number",
+        "title": "起始可见",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0,
+        "unit": "ratio"
+      },
+      "to": {
+        "type": "number",
+        "title": "结束可见",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 1,
+        "unit": "ratio"
+      },
+      "origin": {
+        "type": "string",
+        "title": "展开起点",
+        "enum": [
+          "center",
+          "left",
+          "right",
+          "top",
+          "bottom"
+        ],
+        "labels": [
+          "中心",
+          "左侧",
+          "右侧",
+          "顶部",
+          "底部"
+        ],
+        "default": "center"
+      }
+    },
+    "family": "prop",
+    "cell": [
+      5,
+      2
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "timing.ease",
+    "symbol": "Es",
+    "english": "Ease",
+    "title": "缓动",
+    "role": "timing",
+    "writes": [
+      "curve"
+    ],
+    "description": "加速、减速或两头慢中间快。作用在同一对象、在它范围内开始的属性动画上。",
+    "tags": [
+      "缓动",
+      "加速",
+      "减速",
+      "ease",
+      "easing"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "类型",
+        "enum": [
+          "in",
+          "out",
+          "inOut"
+        ],
+        "labels": [
+          "渐快",
+          "渐慢",
+          "先快后慢"
+        ],
+        "default": "out"
+      },
+      "power": {
+        "type": "number",
+        "title": "力度",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 3,
+        "unit": "number"
+      }
+    },
+    "family": "timing",
+    "cell": [
+      3,
+      3
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "timing.spring",
+    "symbol": "Sp",
+    "english": "Spring",
+    "title": "弹簧",
+    "role": "timing",
+    "writes": [
+      "curve"
+    ],
+    "description": "像挂在弹簧上，冲过终点后来回晃几下再停稳；片段结束时正好停在终值。",
+    "tags": [
+      "弹簧",
+      "弹性",
+      "晃动",
+      "spring"
+    ],
+    "params": {
+      "oscillations": {
+        "type": "number",
+        "title": "晃动次数",
+        "minimum": 0.5,
+        "maximum": 8,
+        "default": 2.5,
+        "unit": "cycle"
+      },
+      "damping": {
+        "type": "number",
+        "title": "阻尼",
+        "minimum": 0,
+        "maximum": 12,
+        "default": 4,
+        "unit": "number"
+      }
+    },
+    "family": "timing",
+    "cell": [
+      4,
+      3
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "timing.bounce",
+    "symbol": "Bn",
+    "english": "Bounce",
+    "title": "回弹",
+    "role": "timing",
+    "writes": [
+      "curve"
+    ],
+    "description": "像球落地：到达终点后反弹几次，每次更低。",
+    "tags": [
+      "回弹",
+      "弹跳",
+      "落地",
+      "bounce"
+    ],
+    "params": {
+      "bounces": {
+        "type": "number",
+        "title": "弹跳次数",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 3,
+        "unit": "count",
+        "integer": true
+      },
+      "decay": {
+        "type": "number",
+        "title": "衰减",
+        "minimum": 0.1,
+        "maximum": 0.8,
+        "default": 0.4,
+        "unit": "ratio"
+      }
+    },
+    "family": "timing",
+    "cell": [
+      5,
+      3
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "timing.overshoot",
+    "symbol": "Ov",
+    "english": "Overshoot",
+    "title": "过冲",
+    "role": "timing",
+    "writes": [
+      "curve"
+    ],
+    "description": "冲过终点一点再收回来，只回一次。",
+    "tags": [
+      "过冲",
+      "回收",
+      "弹出",
+      "overshoot",
+      "back"
+    ],
+    "params": {
+      "tension": {
+        "type": "number",
+        "title": "过冲力度",
+        "minimum": 0,
+        "maximum": 6,
+        "default": 1.8,
+        "unit": "number"
+      }
+    },
+    "family": "timing",
+    "cell": [
+      3,
+      4
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "timing.anticipate",
+    "symbol": "Ac",
+    "english": "Anticipate",
+    "title": "预备",
+    "role": "timing",
+    "writes": [
+      "curve"
+    ],
+    "description": "先往反方向退一点蓄力，再加速出发、减速到达。",
+    "tags": [
+      "预备",
+      "蓄力",
+      "反向",
+      "anticipate"
+    ],
+    "params": {
+      "amount": {
+        "type": "number",
+        "title": "后退幅度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.3,
+        "unit": "ratio"
+      }
+    },
+    "family": "timing",
+    "cell": [
+      4,
+      4
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "timing.steps",
+    "symbol": "St",
+    "english": "Steps",
+    "title": "步进",
+    "role": "timing",
+    "writes": [
+      "curve"
+    ],
+    "description": "不连续地变化，一格一格跳到终点，像秒针或逐帧动画。",
+    "tags": [
+      "步进",
+      "逐帧",
+      "跳格",
+      "steps"
+    ],
+    "params": {
+      "steps": {
+        "type": "number",
+        "title": "格数",
+        "minimum": 2,
+        "maximum": 30,
+        "default": 6,
+        "unit": "count",
+        "integer": true
+      }
+    },
+    "family": "timing",
+    "cell": [
+      5,
+      4
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "loop.breathe",
+    "symbol": "Pu",
+    "english": "Breathe",
+    "title": "呼吸",
+    "role": "loop",
+    "writes": [
+      "scale"
+    ],
+    "description": "缓慢地放大缩小，像在呼吸。",
+    "tags": [
+      "呼吸",
+      "脉动",
+      "涨缩",
+      "breathe",
+      "pulse"
+    ],
+    "params": {
+      "amount": {
+        "type": "number",
+        "title": "涨缩幅度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.12,
+        "unit": "ratio"
+      },
+      "periodS": {
+        "type": "number",
+        "title": "周期",
+        "minimum": 0.2,
+        "maximum": 10,
+        "default": 2,
+        "unit": "s"
+      }
+    },
+    "family": "loop",
+    "cell": [
+      3,
+      5
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "loop.swing",
+    "symbol": "Sw",
+    "english": "Swing",
+    "title": "摆动",
+    "role": "loop",
+    "writes": [
+      "rotation",
+      "position"
+    ],
+    "description": "规律地来回：绕原点摆动，或沿水平、竖直方向往复。",
+    "tags": [
+      "摆动",
+      "钟摆",
+      "往复",
+      "swing",
+      "sine"
+    ],
+    "params": {
+      "axis": {
+        "type": "string",
+        "title": "摆动方式",
+        "enum": [
+          "rotate",
+          "x",
+          "y"
+        ],
+        "labels": [
+          "绕原点摆",
+          "左右",
+          "上下"
+        ],
+        "default": "rotate"
+      },
+      "amount": {
+        "type": "number",
+        "title": "幅度（度或 px）",
+        "minimum": 0,
+        "maximum": 360,
+        "default": 24,
+        "unit": "deg|px"
+      },
+      "periodS": {
+        "type": "number",
+        "title": "周期",
+        "minimum": 0.2,
+        "maximum": 10,
+        "default": 1.6,
+        "unit": "s"
+      }
+    },
+    "family": "loop",
+    "cell": [
+      4,
+      5
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "loop.float",
+    "symbol": "Fl",
+    "english": "Float",
+    "title": "漂浮",
+    "role": "loop",
+    "writes": [
+      "position",
+      "rotation"
+    ],
+    "description": "用平滑噪声不规则地游移和微微转动，不会有规律的重复感。",
+    "tags": [
+      "漂浮",
+      "游移",
+      "噪声",
+      "float",
+      "wiggle",
+      "noise"
+    ],
+    "params": {
+      "amplitudePx": {
+        "type": "number",
+        "title": "游移幅度",
+        "minimum": 0,
+        "maximum": 300,
+        "default": 40,
+        "unit": "px"
+      },
+      "rotateDeg": {
+        "type": "number",
+        "title": "转动幅度",
+        "minimum": 0,
+        "maximum": 180,
+        "default": 10,
+        "unit": "deg"
+      },
+      "frequencyHz": {
+        "type": "number",
+        "title": "变化频率",
+        "minimum": 0,
+        "maximum": 6,
+        "default": 0.5,
+        "unit": "Hz"
+      }
+    },
+    "family": "loop",
+    "cell": [
+      5,
+      5
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "loop.spin",
+    "symbol": "Sn",
+    "english": "Spin",
+    "title": "自转",
+    "role": "loop",
+    "writes": [
+      "rotation"
+    ],
+    "description": "匀速持续旋转，负值逆时针。",
+    "tags": [
+      "自转",
+      "旋转",
+      "加载",
+      "spin",
+      "loading"
+    ],
+    "params": {
+      "turnsPerSecond": {
+        "type": "number",
+        "title": "转速",
+        "minimum": -4,
+        "maximum": 4,
+        "default": 0.25,
+        "unit": "turn/s"
+      }
+    },
+    "family": "loop",
+    "cell": [
+      3,
+      6
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "loop.flicker",
+    "symbol": "Fk",
+    "english": "Flicker",
+    "title": "闪烁",
+    "role": "loop",
+    "writes": [
+      "opacity"
+    ],
+    "description": "亮度在亮和暗之间随机跳变，像接触不良的灯。",
+    "tags": [
+      "闪烁",
+      "频闪",
+      "跳变",
+      "flicker",
+      "blink"
+    ],
+    "params": {
+      "rateHz": {
+        "type": "number",
+        "title": "跳变频率",
+        "minimum": 0.5,
+        "maximum": 30,
+        "default": 10,
+        "unit": "Hz"
+      },
+      "low": {
+        "type": "number",
+        "title": "暗时透明度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.15,
+        "unit": "ratio"
+      },
+      "chance": {
+        "type": "number",
+        "title": "变暗概率",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.35,
+        "unit": "ratio"
+      }
+    },
+    "family": "loop",
+    "cell": [
+      4,
+      6
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "loop.wave",
+    "symbol": "Wv",
+    "english": "Wave",
+    "title": "波动",
+    "role": "loop",
+    "writes": [
+      "position"
+    ],
+    "description": "一排副本依次上下起伏，波峰从一端传到另一端；单个对象则只是上下浮动。",
+    "tags": [
+      "波动",
+      "起伏",
+      "波浪",
+      "wave"
+    ],
+    "params": {
+      "amplitudePx": {
+        "type": "number",
+        "title": "起伏幅度",
+        "minimum": 0,
+        "maximum": 200,
+        "default": 24,
+        "unit": "px"
+      },
+      "periodS": {
+        "type": "number",
+        "title": "周期",
+        "minimum": 0.2,
+        "maximum": 10,
+        "default": 1.4,
+        "unit": "s"
+      },
+      "phaseDeg": {
+        "type": "number",
+        "title": "相邻相位差",
+        "minimum": 0,
+        "maximum": 360,
+        "default": 45,
+        "unit": "deg"
+      }
+    },
+    "family": "loop",
+    "cell": [
+      5,
+      6
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.stagger",
+    "symbol": "Sg",
+    "english": "Stagger",
+    "title": "错开",
+    "role": "order",
+    "writes": [
+      "delay"
+    ],
+    "description": "让副本一个接一个开始，每个比前一个晚固定帧数。",
+    "tags": [
+      "错开",
+      "依次",
+      "延迟",
+      "stagger",
+      "delay"
+    ],
+    "params": {
+      "stepFrames": {
+        "type": "number",
+        "title": "每个间隔",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 5,
+        "unit": "frame"
+      },
+      "order": {
+        "type": "string",
+        "title": "顺序",
+        "enum": [
+          "forward",
+          "reverse",
+          "center",
+          "edges"
+        ],
+        "labels": [
+          "从头到尾",
+          "从尾到头",
+          "从中间向两端",
+          "从两端向中间"
+        ],
+        "default": "forward"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      2,
+      13
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.cascade",
+    "symbol": "Cs",
+    "english": "Cascade",
+    "title": "扩散",
+    "role": "order",
+    "writes": [
+      "delay"
+    ],
+    "description": "离起点越远的副本开始得越晚，动作像水波一样从一点传开。",
+    "tags": [
+      "扩散",
+      "传播",
+      "波及",
+      "cascade",
+      "ripple"
+    ],
+    "params": {
+      "framesPer100Px": {
+        "type": "number",
+        "title": "每 100px 延迟",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 6,
+        "unit": "frame"
+      },
+      "originX": {
+        "type": "number",
+        "title": "起点 X",
+        "minimum": -2000,
+        "maximum": 2000,
+        "default": 0,
+        "unit": "px"
+      },
+      "originY": {
+        "type": "number",
+        "title": "起点 Y",
+        "minimum": -2000,
+        "maximum": 2000,
+        "default": 0,
+        "unit": "px"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      3,
+      13
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.follow",
+    "symbol": "Fo",
+    "english": "Follow",
+    "title": "跟随",
+    "role": "layout",
+    "writes": [
+      "copies"
+    ],
+    "description": "复制出几个跟随者，每个比前一个晚几帧走同样的路线，越往后越小越淡。",
+    "tags": [
+      "跟随",
+      "尾随",
+      "追赶",
+      "follow",
+      "delay"
+    ],
+    "params": {
+      "count": {
+        "type": "number",
+        "title": "跟随数量",
+        "minimum": 1,
+        "maximum": 16,
+        "default": 5,
+        "unit": "count",
+        "integer": true
+      },
+      "lagFrames": {
+        "type": "number",
+        "title": "每个落后",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 5,
+        "unit": "frame"
+      },
+      "falloff": {
+        "type": "number",
+        "title": "逐个衰减",
+        "minimum": 0,
+        "maximum": 0.5,
+        "default": 0.12,
+        "unit": "ratio"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      4,
+      13
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.mirror",
+    "symbol": "Mi",
+    "english": "Mirror",
+    "title": "镜像",
+    "role": "layout",
+    "writes": [
+      "copies"
+    ],
+    "description": "在对称位置放一个镜像副本，它的动作也左右或上下相反。",
+    "tags": [
+      "镜像",
+      "对称",
+      "翻转",
+      "mirror",
+      "symmetry"
+    ],
+    "params": {
+      "axis": {
+        "type": "string",
+        "title": "对称轴",
+        "enum": [
+          "x",
+          "y",
+          "both"
+        ],
+        "labels": [
+          "左右对称",
+          "上下对称",
+          "四向对称"
+        ],
+        "default": "x"
+      },
+      "distancePx": {
+        "type": "number",
+        "title": "两侧间距",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 200,
+        "unit": "px"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      5,
+      14
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.array",
+    "symbol": "Ar",
+    "english": "Array",
+    "title": "阵列",
+    "role": "layout",
+    "writes": [
+      "copies"
+    ],
+    "description": "沿一条直线等距复制成一排，以原位置为中心。",
+    "tags": [
+      "阵列",
+      "复制",
+      "一排",
+      "array",
+      "repeat"
+    ],
+    "params": {
+      "count": {
+        "type": "number",
+        "title": "数量",
+        "minimum": 1,
+        "maximum": 32,
+        "default": 5,
+        "unit": "count",
+        "integer": true
+      },
+      "gapPx": {
+        "type": "number",
+        "title": "间距",
+        "minimum": 0,
+        "maximum": 1000,
+        "default": 80,
+        "unit": "px"
+      },
+      "angleDeg": {
+        "type": "number",
+        "title": "排列方向",
+        "minimum": -180,
+        "maximum": 180,
+        "default": 0,
+        "unit": "deg"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      2,
+      14
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.ring",
+    "symbol": "Rg",
+    "english": "Ring",
+    "title": "环形",
+    "role": "layout",
+    "writes": [
+      "copies"
+    ],
+    "description": "围绕原位置复制成一圈；可以让每个副本朝外。",
+    "tags": [
+      "环形",
+      "圆周",
+      "一圈",
+      "ring",
+      "radial"
+    ],
+    "params": {
+      "count": {
+        "type": "number",
+        "title": "数量",
+        "minimum": 1,
+        "maximum": 48,
+        "default": 8,
+        "unit": "count",
+        "integer": true
+      },
+      "radiusPx": {
+        "type": "number",
+        "title": "半径",
+        "minimum": 0,
+        "maximum": 1000,
+        "default": 120,
+        "unit": "px"
+      },
+      "orient": {
+        "type": "string",
+        "title": "朝向",
+        "enum": [
+          "keep",
+          "outward"
+        ],
+        "labels": [
+          "保持原朝向",
+          "朝外"
+        ],
+        "default": "outward"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      3,
+      14
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.grid",
+    "symbol": "Gd",
+    "english": "Grid",
+    "title": "网格",
+    "role": "layout",
+    "writes": [
+      "copies"
+    ],
+    "description": "复制成行列整齐的矩阵，以原位置为中心。",
+    "tags": [
+      "网格",
+      "矩阵",
+      "平铺",
+      "grid",
+      "tile"
+    ],
+    "params": {
+      "columns": {
+        "type": "number",
+        "title": "列数",
+        "minimum": 1,
+        "maximum": 24,
+        "default": 6,
+        "unit": "count",
+        "integer": true
+      },
+      "rows": {
+        "type": "number",
+        "title": "行数",
+        "minimum": 1,
+        "maximum": 24,
+        "default": 4,
+        "unit": "count",
+        "integer": true
+      },
+      "gapPx": {
+        "type": "number",
+        "title": "间距",
+        "minimum": 0,
+        "maximum": 1000,
+        "default": 64,
+        "unit": "px"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      4,
+      14
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "choreo.random",
+    "symbol": "Rd",
+    "english": "Shuffle",
+    "title": "乱序",
+    "role": "order",
+    "writes": [
+      "delay"
+    ],
+    "description": "给每个副本一个固定种子下的随机延迟，先后没有规律。",
+    "tags": [
+      "乱序",
+      "随机",
+      "先后",
+      "random",
+      "shuffle"
+    ],
+    "params": {
+      "spreadFrames": {
+        "type": "number",
+        "title": "最大延迟",
+        "minimum": 0,
+        "maximum": 120,
+        "default": 24,
+        "unit": "frame"
+      }
+    },
+    "family": "choreo",
+    "cell": [
+      5,
+      13
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "transition.wipe",
+    "symbol": "Wp",
+    "english": "Wipe",
+    "title": "擦除",
+    "role": "property",
+    "writes": [
+      "mask"
+    ],
+    "description": "一条直边扫过对象，扫过的部分出现或消失。",
+    "tags": [
+      "擦除",
+      "划入",
+      "遮罩",
+      "wipe"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "angleDeg": {
+        "type": "number",
+        "title": "扫动方向",
+        "minimum": -180,
+        "maximum": 180,
+        "default": 0,
+        "unit": "deg"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      3,
+      11
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "transition.iris",
+    "symbol": "Ir",
+    "english": "Iris",
+    "title": "圆形展开",
+    "role": "property",
+    "writes": [
+      "mask"
+    ],
+    "description": "从一点开始圆形张开或收拢。",
+    "tags": [
+      "圆形",
+      "展开",
+      "光圈",
+      "iris",
+      "circle"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "centerX": {
+        "type": "number",
+        "title": "圆心 X（比例）",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "unit": "ratio"
+      },
+      "centerY": {
+        "type": "number",
+        "title": "圆心 Y（比例）",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "unit": "ratio"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      4,
+      11
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "transition.slices",
+    "symbol": "Sl",
+    "english": "Slices",
+    "title": "分条",
+    "role": "property",
+    "writes": [
+      "mask"
+    ],
+    "description": "切成几条，相邻条从相反方向错位滑入或滑出。",
+    "tags": [
+      "分条",
+      "条片",
+      "错位",
+      "slices",
+      "strips"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "count": {
+        "type": "number",
+        "title": "条数",
+        "minimum": 2,
+        "maximum": 24,
+        "default": 5,
+        "unit": "count",
+        "integer": true
+      },
+      "distancePx": {
+        "type": "number",
+        "title": "滑动距离",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 160,
+        "unit": "px"
+      },
+      "staggerRatio": {
+        "type": "number",
+        "title": "错开比例",
+        "minimum": 0,
+        "maximum": 0.9,
+        "default": 0.35,
+        "unit": "ratio"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      5,
+      11
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "transition.blinds",
+    "symbol": "Bl",
+    "english": "Blinds",
+    "title": "百叶",
+    "role": "property",
+    "writes": [
+      "mask"
+    ],
+    "description": "像百叶窗，一片片同时打开或合上。",
+    "tags": [
+      "百叶窗",
+      "叶片",
+      "条纹",
+      "blinds"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "count": {
+        "type": "number",
+        "title": "叶片数",
+        "minimum": 2,
+        "maximum": 40,
+        "default": 8,
+        "unit": "count",
+        "integer": true
+      },
+      "angleDeg": {
+        "type": "number",
+        "title": "叶片方向",
+        "minimum": -90,
+        "maximum": 90,
+        "default": 0,
+        "unit": "deg"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      2,
+      12
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "transition.flip",
+    "symbol": "Fp",
+    "english": "Flip",
+    "title": "翻转",
+    "role": "property",
+    "writes": [
+      "stretch"
+    ],
+    "description": "像卡片一样绕竖轴或横轴翻过来，侧面朝前时最窄。",
+    "tags": [
+      "翻转",
+      "翻面",
+      "卡片",
+      "flip",
+      "card"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "axis": {
+        "type": "string",
+        "title": "翻转轴",
+        "enum": [
+          "y",
+          "x"
+        ],
+        "labels": [
+          "绕竖轴",
+          "绕横轴"
+        ],
+        "default": "y"
+      },
+      "turns": {
+        "type": "number",
+        "title": "翻转圈数",
+        "minimum": 0.25,
+        "maximum": 4,
+        "default": 0.25,
+        "unit": "turn"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      3,
+      12
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "transition.push",
+    "symbol": "Ps",
+    "english": "Push",
+    "title": "推入",
+    "role": "property",
+    "writes": [
+      "mask"
+    ],
+    "description": "内容在自己的范围里滑进或滑出，范围外不可见；两个对象一进一出就是推走。",
+    "tags": [
+      "推入",
+      "推出",
+      "滑入",
+      "push",
+      "slide"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "angleDeg": {
+        "type": "number",
+        "title": "推动方向",
+        "minimum": -180,
+        "maximum": 180,
+        "default": 0,
+        "unit": "deg"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      4,
+      12
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "finite",
+    "id": "transition.dissolve",
+    "symbol": "Ds",
+    "english": "Dissolve",
+    "title": "溶解",
+    "role": "property",
+    "writes": [
+      "dissolve"
+    ],
+    "description": "一颗颗随机颗粒逐渐出现或消失。",
+    "tags": [
+      "溶解",
+      "颗粒",
+      "消散",
+      "dissolve"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "方向",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "labels": [
+          "出现",
+          "消失"
+        ],
+        "default": "in"
+      },
+      "grainPx": {
+        "type": "number",
+        "title": "颗粒大小",
+        "minimum": 1,
+        "maximum": 40,
+        "default": 6,
+        "unit": "px"
+      }
+    },
+    "family": "transition",
+    "cell": [
+      5,
+      12
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "text.chars",
+    "symbol": "Ch",
+    "english": "Per Character",
+    "title": "逐字",
+    "role": "property",
+    "writes": [
+      "chars"
+    ],
+    "description": "每个字依次升起并显现；片段时长包含错开的时间。",
+    "tags": [
+      "逐字",
+      "文字",
+      "标题",
+      "入场",
+      "characters"
+    ],
+    "params": {
+      "stepFrames": {
+        "type": "number",
+        "title": "每字间隔",
+        "minimum": 0,
+        "maximum": 30,
+        "default": 3,
+        "unit": "frame"
+      },
+      "distancePx": {
+        "type": "number",
+        "title": "升起距离",
+        "minimum": -300,
+        "maximum": 300,
+        "default": 36,
+        "unit": "px"
+      }
+    },
+    "family": "text",
+    "cell": [
+      3,
+      7
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "text.lines",
+    "symbol": "Ln",
+    "english": "Per Line",
+    "title": "逐行",
+    "role": "property",
+    "writes": [
+      "lines"
+    ],
+    "description": "按换行一行一行移动并淡入；片段时长包含错开的时间。",
+    "tags": [
+      "逐行",
+      "文字",
+      "字幕",
+      "lines"
+    ],
+    "params": {
+      "stepFrames": {
+        "type": "number",
+        "title": "每行间隔",
+        "minimum": 0,
+        "maximum": 120,
+        "default": 8,
+        "unit": "frame",
+        "integer": true
+      },
+      "distancePx": {
+        "type": "number",
+        "title": "移动距离",
+        "minimum": -300,
+        "maximum": 300,
+        "default": 40,
+        "unit": "px"
+      }
+    },
+    "family": "text",
+    "cell": [
+      4,
+      7
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "text.decode",
+    "symbol": "Dc",
+    "english": "Decode",
+    "title": "解码",
+    "role": "property",
+    "writes": [
+      "text"
+    ],
+    "description": "字符先随机乱跳，再从左到右依次定格成正文。",
+    "tags": [
+      "解码",
+      "乱码",
+      "黑客",
+      "decode",
+      "scramble"
+    ],
+    "params": {
+      "rateHz": {
+        "type": "number",
+        "title": "乱跳频率",
+        "minimum": 1,
+        "maximum": 60,
+        "default": 20,
+        "unit": "Hz"
+      },
+      "charset": {
+        "type": "string",
+        "title": "乱码字符",
+        "enum": [
+          "own",
+          "symbols",
+          "binary"
+        ],
+        "labels": [
+          "用正文的字",
+          "符号",
+          "0 和 1"
+        ],
+        "default": "symbols"
+      }
+    },
+    "family": "text",
+    "cell": [
+      5,
+      7
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "text.type",
+    "symbol": "Ty",
+    "english": "Typewriter",
+    "title": "打字",
+    "role": "property",
+    "writes": [
+      "text"
+    ],
+    "description": "字一个个打出来，光标跟在后面闪。",
+    "tags": [
+      "打字",
+      "打字机",
+      "光标",
+      "typewriter",
+      "typing"
+    ],
+    "params": {
+      "cursor": {
+        "type": "string",
+        "title": "光标",
+        "enum": [
+          "bar",
+          "block",
+          "none"
+        ],
+        "labels": [
+          "竖线",
+          "方块",
+          "不显示"
+        ],
+        "default": "bar"
+      },
+      "blinkHz": {
+        "type": "number",
+        "title": "光标闪烁",
+        "minimum": 0,
+        "maximum": 6,
+        "default": 2,
+        "unit": "Hz"
+      }
+    },
+    "family": "text",
+    "cell": [
+      3,
+      8
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "text.count",
+    "symbol": "Ct",
+    "english": "Count",
+    "title": "计数",
+    "role": "property",
+    "writes": [
+      "text"
+    ],
+    "description": "数字从起始值滚到目标值；文字中的 # 会被替换成数字。",
+    "tags": [
+      "计数",
+      "数字",
+      "数据",
+      "count",
+      "number"
+    ],
+    "params": {
+      "from": {
+        "type": "number",
+        "title": "起始值",
+        "minimum": -1000000000,
+        "maximum": 1000000000,
+        "default": 0,
+        "unit": "number"
+      },
+      "to": {
+        "type": "number",
+        "title": "目标值",
+        "minimum": -1000000000,
+        "maximum": 1000000000,
+        "default": 2026,
+        "unit": "number"
+      },
+      "decimals": {
+        "type": "number",
+        "title": "小数位",
+        "minimum": 0,
+        "maximum": 4,
+        "default": 0,
+        "unit": "count",
+        "integer": true
+      },
+      "grouping": {
+        "type": "string",
+        "title": "千分位",
+        "enum": [
+          "none",
+          "comma"
+        ],
+        "labels": [
+          "不分组",
+          "逗号分组"
+        ],
+        "default": "none"
+      }
+    },
+    "family": "text",
+    "cell": [
+      4,
+      8
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "text.tracking",
+    "symbol": "Tk",
+    "english": "Tracking",
+    "title": "字距",
+    "role": "property",
+    "writes": [
+      "chars"
+    ],
+    "description": "字与字的间距从散开收拢到正常，或反过来。",
+    "tags": [
+      "字距",
+      "散开",
+      "收拢",
+      "tracking",
+      "letter spacing"
+    ],
+    "params": {
+      "fromPx": {
+        "type": "number",
+        "title": "起始额外字距",
+        "minimum": -100,
+        "maximum": 400,
+        "default": 60,
+        "unit": "px"
+      },
+      "toPx": {
+        "type": "number",
+        "title": "结束额外字距",
+        "minimum": -100,
+        "maximum": 400,
+        "default": 0,
+        "unit": "px"
+      },
+      "anchor": {
+        "type": "string",
+        "title": "对齐点",
+        "enum": [
+          "center",
+          "left"
+        ],
+        "labels": [
+          "中心不动",
+          "左侧不动"
+        ],
+        "default": "center"
+      }
+    },
+    "family": "text",
+    "cell": [
+      5,
+      8
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "feel.trail",
+    "symbol": "Tl",
+    "english": "Trail",
+    "title": "拖影",
+    "role": "layout",
+    "writes": [
+      "copies"
+    ],
+    "description": "在身后留下几个刚刚经过位置的残影，越旧越淡。",
+    "tags": [
+      "拖影",
+      "残影",
+      "余像",
+      "trail",
+      "echo"
+    ],
+    "params": {
+      "count": {
+        "type": "number",
+        "title": "残影数量",
+        "minimum": 1,
+        "maximum": 16,
+        "default": 6,
+        "unit": "count",
+        "integer": true
+      },
+      "gapFrames": {
+        "type": "number",
+        "title": "残影间隔",
+        "minimum": 0.25,
+        "maximum": 10,
+        "default": 1.5,
+        "unit": "frame"
+      },
+      "strength": {
+        "type": "number",
+        "title": "残影强度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "unit": "ratio"
+      }
+    },
+    "family": "feel",
+    "cell": [
+      3,
+      9
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "static",
+    "id": "feel.motion-blur",
+    "symbol": "Mb",
+    "english": "Motion Blur",
+    "title": "运动模糊",
+    "role": "feel",
+    "writes": [
+      "blur"
+    ],
+    "description": "按真实速度沿运动方向拉虚，快的时候虚、停下就清楚。",
+    "tags": [
+      "运动模糊",
+      "速度",
+      "拖尾",
+      "motion blur"
+    ],
+    "params": {
+      "shutterDeg": {
+        "type": "number",
+        "title": "快门角度",
+        "minimum": 0,
+        "maximum": 720,
+        "default": 180,
+        "unit": "deg"
+      }
+    },
+    "family": "feel",
+    "cell": [
+      4,
+      9
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "static",
+    "id": "feel.glow",
+    "symbol": "Gl",
+    "english": "Glow",
+    "title": "辉光",
+    "role": "feel",
+    "writes": [
+      "glow"
+    ],
+    "description": "把对象自身模糊后叠回去，周围泛出同色的光。",
+    "tags": [
+      "辉光",
+      "发光",
+      "霓虹",
+      "glow",
+      "neon"
+    ],
+    "params": {
+      "radiusPx": {
+        "type": "number",
+        "title": "光晕半径",
+        "minimum": 0,
+        "maximum": 80,
+        "default": 14,
+        "unit": "px"
+      },
+      "strength": {
+        "type": "number",
+        "title": "强度",
+        "minimum": 0,
+        "maximum": 4,
+        "default": 1.2,
+        "unit": "ratio"
+      }
+    },
+    "family": "feel",
+    "cell": [
+      5,
+      9
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "ongoing",
+    "id": "feel.grain",
+    "symbol": "Gn",
+    "english": "Grain",
+    "title": "颗粒",
+    "role": "feel",
+    "writes": [
+      "grain"
+    ],
+    "description": "胶片似的随机颗粒，按设定频率刷新。",
+    "tags": [
+      "颗粒",
+      "噪点",
+      "胶片",
+      "grain",
+      "film"
+    ],
+    "params": {
+      "amount": {
+        "type": "number",
+        "title": "强度",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.55,
+        "unit": "ratio"
+      },
+      "sizePx": {
+        "type": "number",
+        "title": "颗粒大小",
+        "minimum": 1,
+        "maximum": 12,
+        "default": 2,
+        "unit": "px"
+      },
+      "rateHz": {
+        "type": "number",
+        "title": "刷新频率",
+        "minimum": 1,
+        "maximum": 60,
+        "default": 12,
+        "unit": "Hz"
+      }
+    },
+    "family": "feel",
+    "cell": [
+      3,
+      10
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "ongoing",
+    "id": "feel.glitch",
+    "symbol": "Gt",
+    "english": "Glitch",
+    "title": "故障",
+    "role": "feel",
+    "writes": [
+      "glitch"
+    ],
+    "description": "随机几条横带突然错位撕裂，再跳回原位。",
+    "tags": [
+      "故障",
+      "撕裂",
+      "错位",
+      "glitch"
+    ],
+    "params": {
+      "offsetPx": {
+        "type": "number",
+        "title": "最大错位",
+        "minimum": 0,
+        "maximum": 200,
+        "default": 28,
+        "unit": "px"
+      },
+      "bandPx": {
+        "type": "number",
+        "title": "横带高度",
+        "minimum": 2,
+        "maximum": 120,
+        "default": 14,
+        "unit": "px"
+      },
+      "chance": {
+        "type": "number",
+        "title": "出现频率",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.35,
+        "unit": "ratio"
+      },
+      "rateHz": {
+        "type": "number",
+        "title": "刷新频率",
+        "minimum": 1,
+        "maximum": 30,
+        "default": 8,
+        "unit": "Hz"
+      }
+    },
+    "family": "feel",
+    "cell": [
+      4,
+      10
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "raster",
+    "time": "static",
+    "id": "feel.chroma",
+    "symbol": "Ca",
+    "english": "Chromatic",
+    "title": "色散",
+    "role": "feel",
+    "writes": [
+      "chroma"
+    ],
+    "description": "在两侧错开一红一青两层，边缘出现彩色分离。",
+    "tags": [
+      "色散",
+      "RGB 分离",
+      "色差",
+      "chromatic aberration",
+      "rgb split"
+    ],
+    "params": {
+      "offsetPx": {
+        "type": "number",
+        "title": "分离距离",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 6,
+        "unit": "px"
+      },
+      "angleDeg": {
+        "type": "number",
+        "title": "分离方向",
+        "minimum": -180,
+        "maximum": 180,
+        "default": 0,
+        "unit": "deg"
+      }
+    },
+    "family": "feel",
+    "cell": [
+      5,
+      10
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "gen.particles",
+    "symbol": "Pa",
+    "english": "Particles",
+    "title": "粒子",
+    "role": "property",
+    "writes": [
+      "geometry"
+    ],
+    "description": "从原点持续喷出粒子，受重力下落并逐渐变小消失；每个粒子的轨迹都可直接按时间求值。",
+    "tags": [
+      "粒子",
+      "喷发",
+      "火花",
+      "particles",
+      "emitter"
+    ],
+    "params": {
+      "count": {
+        "type": "number",
+        "title": "同时在飞",
+        "minimum": 1,
+        "maximum": 300,
+        "default": 48,
+        "unit": "count",
+        "integer": true
+      },
+      "speedPx": {
+        "type": "number",
+        "title": "速度",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 260,
+        "unit": "px/s"
+      },
+      "spreadDeg": {
+        "type": "number",
+        "title": "扩散角",
+        "minimum": 0,
+        "maximum": 360,
+        "default": 80,
+        "unit": "deg"
+      },
+      "gravityPx": {
+        "type": "number",
+        "title": "重力",
+        "minimum": -2000,
+        "maximum": 4000,
+        "default": 420,
+        "unit": "px/s²"
+      },
+      "lifeFrames": {
+        "type": "number",
+        "title": "寿命",
+        "minimum": 2,
+        "maximum": 600,
+        "default": 40,
+        "unit": "frame",
+        "integer": true
+      },
+      "sizePx": {
+        "type": "number",
+        "title": "大小",
+        "minimum": 0.5,
+        "maximum": 60,
+        "default": 7,
+        "unit": "px"
+      }
+    },
+    "family": "generate",
+    "cell": [
+      1,
+      15
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "finite",
+    "id": "gen.shatter",
+    "symbol": "Sh",
+    "english": "Shatter",
+    "title": "碎裂",
+    "role": "property",
+    "writes": [
+      "geometry"
+    ],
+    "description": "把轮廓切成三角碎片，从中心向外依次炸开、旋转、下落并淡出。",
+    "tags": [
+      "碎裂",
+      "爆炸",
+      "碎片",
+      "shatter",
+      "break"
+    ],
+    "params": {
+      "pieces": {
+        "type": "number",
+        "title": "切分密度",
+        "minimum": 2,
+        "maximum": 16,
+        "default": 6,
+        "unit": "count",
+        "integer": true
+      },
+      "forcePx": {
+        "type": "number",
+        "title": "飞散距离",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 180,
+        "unit": "px"
+      },
+      "spinDeg": {
+        "type": "number",
+        "title": "碎片旋转",
+        "minimum": 0,
+        "maximum": 1440,
+        "default": 240,
+        "unit": "deg"
+      },
+      "gravityPx": {
+        "type": "number",
+        "title": "下落距离",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 120,
+        "unit": "px"
+      },
+      "delayRatio": {
+        "type": "number",
+        "title": "由内向外延迟",
+        "minimum": 0,
+        "maximum": 0.9,
+        "default": 0.3,
+        "unit": "ratio"
+      }
+    },
+    "family": "generate",
+    "cell": [
+      2,
+      15
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "ongoing",
+    "id": "gen.ripple",
+    "symbol": "Rp",
+    "english": "Ripple",
+    "title": "波纹",
+    "role": "property",
+    "writes": [
+      "geometry"
+    ],
+    "description": "对象的轮廓一圈圈向外放大并淡出，像水面荡开。",
+    "tags": [
+      "波纹",
+      "涟漪",
+      "扩散",
+      "ripple",
+      "pulse ring"
+    ],
+    "params": {
+      "rings": {
+        "type": "number",
+        "title": "同时圈数",
+        "minimum": 1,
+        "maximum": 12,
+        "default": 3,
+        "unit": "count",
+        "integer": true
+      },
+      "growth": {
+        "type": "number",
+        "title": "放大倍率",
+        "minimum": 1,
+        "maximum": 12,
+        "default": 3.2,
+        "unit": "ratio"
+      },
+      "periodS": {
+        "type": "number",
+        "title": "每圈时长",
+        "minimum": 0.2,
+        "maximum": 10,
+        "default": 1.8,
+        "unit": "s"
+      }
+    },
+    "family": "generate",
+    "cell": [
+      3,
+      15
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "gen.trace",
+    "symbol": "Tr",
+    "english": "Trace",
+    "title": "轨迹",
+    "role": "overlay",
+    "writes": [
+      "overlay"
+    ],
+    "description": "画出对象（和每个副本）原点刚刚走过的路线，越旧越淡。",
+    "tags": [
+      "轨迹",
+      "路线",
+      "运动路径",
+      "trace",
+      "path"
+    ],
+    "params": {
+      "lengthFrames": {
+        "type": "number",
+        "title": "轨迹长度",
+        "minimum": 1,
+        "maximum": 240,
+        "default": 30,
+        "unit": "frame"
+      },
+      "widthPx": {
+        "type": "number",
+        "title": "线宽",
+        "minimum": 0.5,
+        "maximum": 40,
+        "default": 3,
+        "unit": "px"
+      }
+    },
+    "family": "generate",
+    "cell": [
+      4,
+      15
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "targets": [
+      "text",
+      "path"
+    ],
+    "backend": {
+      "js": "implemented"
+    },
+    "engine": "vector",
+    "time": "static",
+    "id": "gen.link",
+    "symbol": "Lk",
+    "english": "Link",
+    "title": "连线",
+    "role": "overlay",
+    "writes": [
+      "overlay"
+    ],
+    "description": "用线把副本按顺序或按距离连起来，副本移动时线跟着走。",
+    "tags": [
+      "连线",
+      "网络",
+      "节点",
+      "link",
+      "network"
+    ],
+    "params": {
+      "mode": {
+        "type": "string",
+        "title": "连法",
+        "enum": [
+          "chain",
+          "near"
+        ],
+        "labels": [
+          "按顺序首尾相连",
+          "连接距离内的"
+        ],
+        "default": "near"
+      },
+      "maxDistancePx": {
+        "type": "number",
+        "title": "最远连接距离",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 120,
+        "unit": "px"
+      },
+      "widthPx": {
+        "type": "number",
+        "title": "线宽",
+        "minimum": 0.5,
+        "maximum": 20,
+        "default": 1.5,
+        "unit": "px"
+      }
+    },
+    "family": "generate",
+    "cell": [
+      5,
+      15
+    ]
+  }
+]

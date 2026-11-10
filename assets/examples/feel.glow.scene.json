@@ -1,0 +1,97 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 80,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#7a5bc7",
+      "points": [
+        [
+          6.123233995736766e-15,
+          -100
+        ],
+        [
+          24.68698059628387,
+          -33.97871376374779
+        ],
+        [
+          95.10565162951535,
+          -30.901699437494738
+        ],
+        [
+          39.944373684396446,
+          12.97871376374779
+        ],
+        [
+          58.778525229247315,
+          80.90169943749474
+        ],
+        [
+          2.5717582782094417e-15,
+          42
+        ],
+        [
+          -58.7785252292473,
+          80.90169943749474
+        ],
+        [
+          -39.944373684396446,
+          12.978713763747797
+        ],
+        [
+          -95.10565162951536,
+          -30.901699437494727
+        ],
+        [
+          -24.686980596283874,
+          -33.978713763747784
+        ]
+      ],
+      "strokeWidth": 6,
+      "closed": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "feel.glow",
+      "startFrame": 0,
+      "durationFrames": 80,
+      "fillAfter": "hold",
+      "params": {
+        "radiusPx": 12,
+        "strength": 1.4
+      }
+    },
+    {
+      "id": "carrier-1",
+      "target": "subject",
+      "recipe": "prop.draw",
+      "startFrame": 0,
+      "durationFrames": 54,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1,
+        "trailRatio": 0
+      }
+    }
+  ]
+}

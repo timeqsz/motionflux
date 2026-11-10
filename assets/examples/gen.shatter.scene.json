@@ -1,0 +1,109 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 84,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "guide-outline",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#d7d8d5",
+      "points": [
+        [
+          5.5109105961630896e-15,
+          -90
+        ],
+        [
+          77.94228634059948,
+          -45
+        ],
+        [
+          77.94228634059948,
+          44.999999999999986
+        ],
+        [
+          5.5109105961630896e-15,
+          90
+        ],
+        [
+          -77.94228634059947,
+          45.00000000000003
+        ],
+        [
+          -77.94228634059948,
+          -45.00000000000001
+        ]
+      ],
+      "strokeWidth": 2,
+      "closed": true
+    },
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          5.5109105961630896e-15,
+          -90
+        ],
+        [
+          77.94228634059948,
+          -45
+        ],
+        [
+          77.94228634059948,
+          44.999999999999986
+        ],
+        [
+          5.5109105961630896e-15,
+          90
+        ],
+        [
+          -77.94228634059947,
+          45.00000000000003
+        ],
+        [
+          -77.94228634059948,
+          -45.00000000000001
+        ]
+      ],
+      "strokeWidth": 5,
+      "closed": true,
+      "fill": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "gen.shatter",
+      "startFrame": 0,
+      "durationFrames": 60,
+      "fillAfter": "hold",
+      "params": {
+        "pieces": 6,
+        "forcePx": 180,
+        "spinDeg": 240,
+        "gravityPx": 120,
+        "delayRatio": 0.3
+      }
+    }
+  ]
+}

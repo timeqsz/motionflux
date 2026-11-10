@@ -1,0 +1,3933 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:motionflux:spec:0.1",
+  "type": "object",
+  "properties": {
+    "specVersion": {
+      "const": "0.1"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "canvas": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 4096
+        },
+        "background": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 7,
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "background"
+      ],
+      "additionalProperties": false
+    },
+    "fps": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false
+    },
+    "durationFrames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18000
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "font"
+          },
+          "src": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^assets/[a-zA-Z0-9_-]+\\.(otf|ttf|woff2)$"
+          },
+          "sha256": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "family": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+          },
+          "postscriptName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "type",
+          "src",
+          "sha256",
+          "family",
+          "postscriptName"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -32768,
+                  "maximum": 32768
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "color": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 7,
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "font": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+                "description": "system and mono use the device sans-serif or monospace font without a download; otherwise reference a declared font asset."
+              },
+              "fontSize": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 512
+              },
+              "lineHeight": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 1024
+              }
+            },
+            "required": [
+              "id",
+              "position",
+              "color",
+              "type",
+              "text",
+              "font",
+              "fontSize",
+              "lineHeight"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -32768,
+                  "maximum": 32768
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "color": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 7,
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              "type": {
+                "const": "path"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": -32768,
+                    "maximum": 32768
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minItems": 2,
+                "maxItems": 1000
+              },
+              "strokeWidth": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 100
+              },
+              "closed": {
+                "type": "boolean"
+              },
+              "fill": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "position",
+              "color",
+              "type",
+              "points",
+              "strokeWidth"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "clips": {
+      "type": "array",
+      "maxItems": 300,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.move"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "fromPx": {
+                    "type": "number",
+                    "minimum": -2000,
+                    "maximum": 2000,
+                    "description": "起始偏移 (px)"
+                  },
+                  "toPx": {
+                    "type": "number",
+                    "minimum": -2000,
+                    "maximum": 2000,
+                    "description": "结束偏移 (px)"
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "description": "移动方向 (deg)"
+                  }
+                },
+                "required": [
+                  "fromPx",
+                  "toPx",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.rotate"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "fromDeg": {
+                    "type": "number",
+                    "minimum": -720,
+                    "maximum": 720,
+                    "description": "起始角度 (deg)"
+                  },
+                  "toDeg": {
+                    "type": "number",
+                    "minimum": -720,
+                    "maximum": 720,
+                    "description": "结束角度 (deg)"
+                  }
+                },
+                "required": [
+                  "fromDeg",
+                  "toDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.scale"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 8,
+                    "description": "起始倍率 (ratio)"
+                  },
+                  "to": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 8,
+                    "description": "结束倍率 (ratio)"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.opacity"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "起始透明度 (ratio)"
+                  },
+                  "to": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "结束透明度 (ratio)"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.color"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 7,
+                    "pattern": "^#[0-9a-fA-F]{6}$",
+                    "description": "起始颜色"
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 7,
+                    "pattern": "^#[0-9a-fA-F]{6}$",
+                    "description": "结束颜色"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.blur"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "fromPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "起始半径 (px)"
+                  },
+                  "toPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "结束半径 (px)"
+                  }
+                },
+                "required": [
+                  "fromPx",
+                  "toPx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.morph"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "circle",
+                      "triangle",
+                      "square",
+                      "star"
+                    ]
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "变形程度 (ratio)"
+                  }
+                },
+                "required": [
+                  "target",
+                  "amount"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.draw"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "起始比例 (ratio)"
+                  },
+                  "to": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "结束比例 (ratio)"
+                  },
+                  "trailRatio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "拖尾长度 (ratio)"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "trailRatio"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "prop.crop"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "起始可见 (ratio)"
+                  },
+                  "to": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "结束可见 (ratio)"
+                  },
+                  "origin": {
+                    "type": "string",
+                    "enum": [
+                      "center",
+                      "left",
+                      "right",
+                      "top",
+                      "bottom"
+                    ]
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "origin"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "timing.ease"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out",
+                      "inOut"
+                    ]
+                  },
+                  "power": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 6,
+                    "description": "力度 (number)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "power"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "timing.spring"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "oscillations": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 8,
+                    "description": "晃动次数 (cycle)"
+                  },
+                  "damping": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 12,
+                    "description": "阻尼 (number)"
+                  }
+                },
+                "required": [
+                  "oscillations",
+                  "damping"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "timing.bounce"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "bounces": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6,
+                    "description": "弹跳次数 (count)"
+                  },
+                  "decay": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 0.8,
+                    "description": "衰减 (ratio)"
+                  }
+                },
+                "required": [
+                  "bounces",
+                  "decay"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "timing.overshoot"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "tension": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "过冲力度 (number)"
+                  }
+                },
+                "required": [
+                  "tension"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "timing.anticipate"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "后退幅度 (ratio)"
+                  }
+                },
+                "required": [
+                  "amount"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "timing.steps"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "steps": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 30,
+                    "description": "格数 (count)"
+                  }
+                },
+                "required": [
+                  "steps"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "loop.breathe"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "涨缩幅度 (ratio)"
+                  },
+                  "periodS": {
+                    "type": "number",
+                    "minimum": 0.2,
+                    "maximum": 10,
+                    "description": "周期 (s)"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "periodS"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "loop.swing"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "axis": {
+                    "type": "string",
+                    "enum": [
+                      "rotate",
+                      "x",
+                      "y"
+                    ]
+                  },
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 360,
+                    "description": "幅度（度或 px） (deg|px)"
+                  },
+                  "periodS": {
+                    "type": "number",
+                    "minimum": 0.2,
+                    "maximum": 10,
+                    "description": "周期 (s)"
+                  }
+                },
+                "required": [
+                  "axis",
+                  "amount",
+                  "periodS"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "loop.float"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "amplitudePx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 300,
+                    "description": "游移幅度 (px)"
+                  },
+                  "rotateDeg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 180,
+                    "description": "转动幅度 (deg)"
+                  },
+                  "frequencyHz": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "变化频率 (Hz)"
+                  }
+                },
+                "required": [
+                  "amplitudePx",
+                  "rotateDeg",
+                  "frequencyHz"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "loop.spin"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "turnsPerSecond": {
+                    "type": "number",
+                    "minimum": -4,
+                    "maximum": 4,
+                    "description": "转速 (turn/s)"
+                  }
+                },
+                "required": [
+                  "turnsPerSecond"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "loop.flicker"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "rateHz": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 30,
+                    "description": "跳变频率 (Hz)"
+                  },
+                  "low": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "暗时透明度 (ratio)"
+                  },
+                  "chance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "变暗概率 (ratio)"
+                  }
+                },
+                "required": [
+                  "rateHz",
+                  "low",
+                  "chance"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "loop.wave"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "amplitudePx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 200,
+                    "description": "起伏幅度 (px)"
+                  },
+                  "periodS": {
+                    "type": "number",
+                    "minimum": 0.2,
+                    "maximum": 10,
+                    "description": "周期 (s)"
+                  },
+                  "phaseDeg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 360,
+                    "description": "相邻相位差 (deg)"
+                  }
+                },
+                "required": [
+                  "amplitudePx",
+                  "periodS",
+                  "phaseDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.stagger"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "stepFrames": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "每个间隔 (frame)"
+                  },
+                  "order": {
+                    "type": "string",
+                    "enum": [
+                      "forward",
+                      "reverse",
+                      "center",
+                      "edges"
+                    ]
+                  }
+                },
+                "required": [
+                  "stepFrames",
+                  "order"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.cascade"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "framesPer100Px": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "每 100px 延迟 (frame)"
+                  },
+                  "originX": {
+                    "type": "number",
+                    "minimum": -2000,
+                    "maximum": 2000,
+                    "description": "起点 X (px)"
+                  },
+                  "originY": {
+                    "type": "number",
+                    "minimum": -2000,
+                    "maximum": 2000,
+                    "description": "起点 Y (px)"
+                  }
+                },
+                "required": [
+                  "framesPer100Px",
+                  "originX",
+                  "originY"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.follow"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16,
+                    "description": "跟随数量 (count)"
+                  },
+                  "lagFrames": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "每个落后 (frame)"
+                  },
+                  "falloff": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 0.5,
+                    "description": "逐个衰减 (ratio)"
+                  }
+                },
+                "required": [
+                  "count",
+                  "lagFrames",
+                  "falloff"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.mirror"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "axis": {
+                    "type": "string",
+                    "enum": [
+                      "x",
+                      "y",
+                      "both"
+                    ]
+                  },
+                  "distancePx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "description": "两侧间距 (px)"
+                  }
+                },
+                "required": [
+                  "axis",
+                  "distancePx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.array"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 32,
+                    "description": "数量 (count)"
+                  },
+                  "gapPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "description": "间距 (px)"
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "description": "排列方向 (deg)"
+                  }
+                },
+                "required": [
+                  "count",
+                  "gapPx",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.ring"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 48,
+                    "description": "数量 (count)"
+                  },
+                  "radiusPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "description": "半径 (px)"
+                  },
+                  "orient": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "outward"
+                    ]
+                  }
+                },
+                "required": [
+                  "count",
+                  "radiusPx",
+                  "orient"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.grid"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "columns": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 24,
+                    "description": "列数 (count)"
+                  },
+                  "rows": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 24,
+                    "description": "行数 (count)"
+                  },
+                  "gapPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "description": "间距 (px)"
+                  }
+                },
+                "required": [
+                  "columns",
+                  "rows",
+                  "gapPx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "choreo.random"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "spreadFrames": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 120,
+                    "description": "最大延迟 (frame)"
+                  }
+                },
+                "required": [
+                  "spreadFrames"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.wipe"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "description": "扫动方向 (deg)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.iris"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "centerX": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "圆心 X（比例） (ratio)"
+                  },
+                  "centerY": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "圆心 Y（比例） (ratio)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "centerX",
+                  "centerY"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.slices"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 24,
+                    "description": "条数 (count)"
+                  },
+                  "distancePx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "description": "滑动距离 (px)"
+                  },
+                  "staggerRatio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 0.9,
+                    "description": "错开比例 (ratio)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "count",
+                  "distancePx",
+                  "staggerRatio"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.blinds"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 40,
+                    "description": "叶片数 (count)"
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90,
+                    "description": "叶片方向 (deg)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "count",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.flip"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "axis": {
+                    "type": "string",
+                    "enum": [
+                      "y",
+                      "x"
+                    ]
+                  },
+                  "turns": {
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 4,
+                    "description": "翻转圈数 (turn)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "axis",
+                  "turns"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.push"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "description": "推动方向 (deg)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "transition.dissolve"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "in",
+                      "out"
+                    ]
+                  },
+                  "grainPx": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 40,
+                    "description": "颗粒大小 (px)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "grainPx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "text.chars"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "stepFrames": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 30,
+                    "description": "每字间隔 (frame)"
+                  },
+                  "distancePx": {
+                    "type": "number",
+                    "minimum": -300,
+                    "maximum": 300,
+                    "description": "升起距离 (px)"
+                  }
+                },
+                "required": [
+                  "stepFrames",
+                  "distancePx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "text.lines"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "stepFrames": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 120,
+                    "description": "每行间隔 (frame)"
+                  },
+                  "distancePx": {
+                    "type": "number",
+                    "minimum": -300,
+                    "maximum": 300,
+                    "description": "移动距离 (px)"
+                  }
+                },
+                "required": [
+                  "stepFrames",
+                  "distancePx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "text.decode"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "rateHz": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 60,
+                    "description": "乱跳频率 (Hz)"
+                  },
+                  "charset": {
+                    "type": "string",
+                    "enum": [
+                      "own",
+                      "symbols",
+                      "binary"
+                    ]
+                  }
+                },
+                "required": [
+                  "rateHz",
+                  "charset"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "text.type"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "cursor": {
+                    "type": "string",
+                    "enum": [
+                      "bar",
+                      "block",
+                      "none"
+                    ]
+                  },
+                  "blinkHz": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "光标闪烁 (Hz)"
+                  }
+                },
+                "required": [
+                  "cursor",
+                  "blinkHz"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "text.count"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "number",
+                    "minimum": -1000000000,
+                    "maximum": 1000000000,
+                    "description": "起始值 (number)"
+                  },
+                  "to": {
+                    "type": "number",
+                    "minimum": -1000000000,
+                    "maximum": 1000000000,
+                    "description": "目标值 (number)"
+                  },
+                  "decimals": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4,
+                    "description": "小数位 (count)"
+                  },
+                  "grouping": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "comma"
+                    ]
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "decimals",
+                  "grouping"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "text.tracking"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "fromPx": {
+                    "type": "number",
+                    "minimum": -100,
+                    "maximum": 400,
+                    "description": "起始额外字距 (px)"
+                  },
+                  "toPx": {
+                    "type": "number",
+                    "minimum": -100,
+                    "maximum": 400,
+                    "description": "结束额外字距 (px)"
+                  },
+                  "anchor": {
+                    "type": "string",
+                    "enum": [
+                      "center",
+                      "left"
+                    ]
+                  }
+                },
+                "required": [
+                  "fromPx",
+                  "toPx",
+                  "anchor"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "feel.trail"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16,
+                    "description": "残影数量 (count)"
+                  },
+                  "gapFrames": {
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 10,
+                    "description": "残影间隔 (frame)"
+                  },
+                  "strength": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "残影强度 (ratio)"
+                  }
+                },
+                "required": [
+                  "count",
+                  "gapFrames",
+                  "strength"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "feel.motion-blur"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "shutterDeg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 720,
+                    "description": "快门角度 (deg)"
+                  }
+                },
+                "required": [
+                  "shutterDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "feel.glow"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "radiusPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 80,
+                    "description": "光晕半径 (px)"
+                  },
+                  "strength": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 4,
+                    "description": "强度 (ratio)"
+                  }
+                },
+                "required": [
+                  "radiusPx",
+                  "strength"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "feel.grain"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "强度 (ratio)"
+                  },
+                  "sizePx": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 12,
+                    "description": "颗粒大小 (px)"
+                  },
+                  "rateHz": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 60,
+                    "description": "刷新频率 (Hz)"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "sizePx",
+                  "rateHz"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "feel.glitch"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "offsetPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 200,
+                    "description": "最大错位 (px)"
+                  },
+                  "bandPx": {
+                    "type": "number",
+                    "minimum": 2,
+                    "maximum": 120,
+                    "description": "横带高度 (px)"
+                  },
+                  "chance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "出现频率 (ratio)"
+                  },
+                  "rateHz": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 30,
+                    "description": "刷新频率 (Hz)"
+                  }
+                },
+                "required": [
+                  "offsetPx",
+                  "bandPx",
+                  "chance",
+                  "rateHz"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "feel.chroma"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "offsetPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "分离距离 (px)"
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180,
+                    "description": "分离方向 (deg)"
+                  }
+                },
+                "required": [
+                  "offsetPx",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "gen.particles"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 300,
+                    "description": "同时在飞 (count)"
+                  },
+                  "speedPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "description": "速度 (px/s)"
+                  },
+                  "spreadDeg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 360,
+                    "description": "扩散角 (deg)"
+                  },
+                  "gravityPx": {
+                    "type": "number",
+                    "minimum": -2000,
+                    "maximum": 4000,
+                    "description": "重力 (px/s²)"
+                  },
+                  "lifeFrames": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 600,
+                    "description": "寿命 (frame)"
+                  },
+                  "sizePx": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 60,
+                    "description": "大小 (px)"
+                  }
+                },
+                "required": [
+                  "count",
+                  "speedPx",
+                  "spreadDeg",
+                  "gravityPx",
+                  "lifeFrames",
+                  "sizePx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "gen.shatter"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "pieces": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 16,
+                    "description": "切分密度 (count)"
+                  },
+                  "forcePx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "description": "飞散距离 (px)"
+                  },
+                  "spinDeg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1440,
+                    "description": "碎片旋转 (deg)"
+                  },
+                  "gravityPx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "description": "下落距离 (px)"
+                  },
+                  "delayRatio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 0.9,
+                    "description": "由内向外延迟 (ratio)"
+                  }
+                },
+                "required": [
+                  "pieces",
+                  "forcePx",
+                  "spinDeg",
+                  "gravityPx",
+                  "delayRatio"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "gen.ripple"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "rings": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12,
+                    "description": "同时圈数 (count)"
+                  },
+                  "growth": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 12,
+                    "description": "放大倍率 (ratio)"
+                  },
+                  "periodS": {
+                    "type": "number",
+                    "minimum": 0.2,
+                    "maximum": 10,
+                    "description": "每圈时长 (s)"
+                  }
+                },
+                "required": [
+                  "rings",
+                  "growth",
+                  "periodS"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "gen.trace"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "lengthFrames": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 240,
+                    "description": "轨迹长度 (frame)"
+                  },
+                  "widthPx": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 40,
+                    "description": "线宽 (px)"
+                  }
+                },
+                "required": [
+                  "lengthFrames",
+                  "widthPx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+              },
+              "recipe": {
+                "const": "gen.link"
+              },
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 17999
+              },
+              "durationFrames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 18000
+              },
+              "fillAfter": {
+                "const": "hold"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "chain",
+                      "near"
+                    ]
+                  },
+                  "maxDistancePx": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "description": "最远连接距离 (px)"
+                  },
+                  "widthPx": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 20,
+                    "description": "线宽 (px)"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "maxDistancePx",
+                  "widthPx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "target",
+              "recipe",
+              "startFrame",
+              "durationFrames",
+              "fillAfter",
+              "params"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "specVersion",
+    "seed",
+    "canvas",
+    "fps",
+    "durationFrames",
+    "assets",
+    "nodes",
+    "clips"
+  ],
+  "additionalProperties": false
+}

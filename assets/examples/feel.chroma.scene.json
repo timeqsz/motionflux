@@ -1,0 +1,57 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 240,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "text",
+      "position": [
+        186,
+        254
+      ],
+      "color": "#1d201d",
+      "text": "RGB",
+      "font": "system",
+      "fontSize": 150,
+      "lineHeight": 150
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "feel.chroma",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "offsetPx": 8,
+        "angleDeg": 0
+      }
+    },
+    {
+      "id": "carrier-1",
+      "target": "subject",
+      "recipe": "loop.swing",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "axis": "x",
+        "amount": 24,
+        "periodS": 2
+      }
+    }
+  ]
+}

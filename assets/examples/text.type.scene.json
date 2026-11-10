@@ -1,0 +1,44 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 96,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "text",
+      "position": [
+        200,
+        180
+      ],
+      "color": "#1d201d",
+      "text": "Hello,\nmotion.",
+      "font": "mono",
+      "fontSize": 64,
+      "lineHeight": 82
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "text.type",
+      "startFrame": 0,
+      "durationFrames": 54,
+      "fillAfter": "hold",
+      "params": {
+        "cursor": "bar",
+        "blinkHz": 2
+      }
+    }
+  ]
+}

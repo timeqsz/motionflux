@@ -1,0 +1,26 @@
+{
+  "name": "motion-atoms",
+  "version": "0.4.0",
+  "description": "Composable motion atoms and video motion breakdown for coding agents",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeqsz/motion-atoms.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node maintainer/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "verify": "node maintainer/verify.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.5",
+    "typescript": "5.8.3",
+    "@types/node": "22.15.30"
+  }
+}

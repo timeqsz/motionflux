@@ -1,0 +1,300 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 1280,
+    "height": 720,
+    "background": "#1b2919"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 180,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "title",
+      "type": "text",
+      "text": "让复杂能力\n变得容易调用",
+      "font": "system",
+      "fontSize": 74,
+      "lineHeight": 108,
+      "position": [
+        100,
+        282
+      ],
+      "color": "#e7f1dd"
+    },
+    {
+      "id": "eyebrow",
+      "type": "text",
+      "text": "MOTION / MADE SIMPLE",
+      "font": "system",
+      "fontSize": 18,
+      "lineHeight": 24,
+      "position": [
+        104,
+        145
+      ],
+      "color": "#afc798"
+    },
+    {
+      "id": "caption",
+      "type": "text",
+      "text": "想法有了形状，表达就有了力量。",
+      "font": "system",
+      "fontSize": 25,
+      "lineHeight": 35,
+      "position": [
+        104,
+        554
+      ],
+      "color": "#a4b897"
+    },
+    {
+      "id": "route",
+      "type": "path",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          356,
+          0
+        ],
+        [
+          405,
+          -44
+        ],
+        [
+          548,
+          -44
+        ]
+      ],
+      "strokeWidth": 5,
+      "position": [
+        104,
+        458
+      ],
+      "color": "#d6f99b"
+    },
+    {
+      "id": "orbit",
+      "type": "path",
+      "points": [
+        [
+          98,
+          0
+        ],
+        [
+          96.117,
+          19.119
+        ],
+        [
+          90.54,
+          37.503
+        ],
+        [
+          81.484,
+          54.446
+        ],
+        [
+          69.296,
+          69.296
+        ],
+        [
+          54.446,
+          81.484
+        ],
+        [
+          37.503,
+          90.54
+        ],
+        [
+          19.119,
+          96.117
+        ],
+        [
+          0,
+          98
+        ],
+        [
+          -19.119,
+          96.117
+        ],
+        [
+          -37.503,
+          90.54
+        ],
+        [
+          -54.446,
+          81.484
+        ],
+        [
+          -69.296,
+          69.296
+        ],
+        [
+          -81.484,
+          54.446
+        ],
+        [
+          -90.54,
+          37.503
+        ],
+        [
+          -96.117,
+          19.119
+        ],
+        [
+          -98,
+          0
+        ],
+        [
+          -96.117,
+          -19.119
+        ],
+        [
+          -90.54,
+          -37.503
+        ],
+        [
+          -81.484,
+          -54.446
+        ],
+        [
+          -69.296,
+          -69.296
+        ],
+        [
+          -54.446,
+          -81.484
+        ],
+        [
+          -37.503,
+          -90.54
+        ],
+        [
+          -19.119,
+          -96.117
+        ],
+        [
+          0,
+          -98
+        ],
+        [
+          19.119,
+          -96.117
+        ],
+        [
+          37.503,
+          -90.54
+        ],
+        [
+          54.446,
+          -81.484
+        ],
+        [
+          69.296,
+          -69.296
+        ],
+        [
+          81.484,
+          -54.446
+        ],
+        [
+          90.54,
+          -37.503
+        ],
+        [
+          96.117,
+          -19.119
+        ],
+        [
+          98,
+          0
+        ]
+      ],
+      "strokeWidth": 2,
+      "position": [
+        1010,
+        330
+      ],
+      "color": "#89a76d"
+    },
+    {
+      "id": "cross",
+      "type": "path",
+      "points": [
+        [
+          -34,
+          0
+        ],
+        [
+          34,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -34
+        ],
+        [
+          0,
+          34
+        ]
+      ],
+      "strokeWidth": 3,
+      "position": [
+        1010,
+        330
+      ],
+      "color": "#d6f99b"
+    }
+  ],
+  "clips": [
+    {
+      "id": "title-enter",
+      "target": "title",
+      "recipe": "text.lines",
+      "startFrame": 0,
+      "durationFrames": 48,
+      "fillAfter": "hold",
+      "params": {
+        "stepFrames": 6,
+        "distancePx": 48
+      }
+    },
+    {
+      "id": "route-draw",
+      "target": "route",
+      "recipe": "prop.draw",
+      "startFrame": 36,
+      "durationFrames": 54,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1,
+        "trailRatio": 0
+      }
+    },
+    {
+      "id": "orbit-drift",
+      "target": "orbit",
+      "recipe": "loop.float",
+      "startFrame": 0,
+      "durationFrames": 150,
+      "fillAfter": "hold",
+      "params": {
+        "amplitudePx": 36,
+        "rotateDeg": 0,
+        "frequencyHz": 0.8
+      }
+    }
+  ]
+}

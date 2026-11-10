@@ -1,0 +1,109 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 80,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -110,
+          -15
+        ],
+        [
+          110,
+          -15
+        ],
+        [
+          110,
+          15
+        ],
+        [
+          -110,
+          15
+        ]
+      ],
+      "strokeWidth": 4,
+      "closed": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "choreo.stagger",
+      "startFrame": 0,
+      "durationFrames": 80,
+      "fillAfter": "hold",
+      "params": {
+        "stepFrames": 5,
+        "order": "forward"
+      }
+    },
+    {
+      "id": "carrier-1",
+      "target": "subject",
+      "recipe": "choreo.array",
+      "startFrame": 0,
+      "durationFrames": 80,
+      "fillAfter": "hold",
+      "params": {
+        "count": 5,
+        "gapPx": 54,
+        "angleDeg": 90
+      }
+    },
+    {
+      "id": "carrier-2",
+      "target": "subject",
+      "recipe": "timing.overshoot",
+      "startFrame": 0,
+      "durationFrames": 80,
+      "fillAfter": "hold",
+      "params": {
+        "tension": 1.8
+      }
+    },
+    {
+      "id": "carrier-3",
+      "target": "subject",
+      "recipe": "prop.move",
+      "startFrame": 4,
+      "durationFrames": 30,
+      "fillAfter": "hold",
+      "params": {
+        "fromPx": -440,
+        "toPx": 0,
+        "angleDeg": 0
+      }
+    },
+    {
+      "id": "carrier-4",
+      "target": "subject",
+      "recipe": "prop.opacity",
+      "startFrame": 4,
+      "durationFrames": 30,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1
+      }
+    }
+  ]
+}

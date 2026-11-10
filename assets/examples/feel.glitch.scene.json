@@ -1,0 +1,46 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 240,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "text",
+      "position": [
+        138,
+        238
+      ],
+      "color": "#1d201d",
+      "text": "GLITCH",
+      "font": "system",
+      "fontSize": 108,
+      "lineHeight": 108
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "feel.glitch",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "offsetPx": 34,
+        "bandPx": 14,
+        "chance": 0.4,
+        "rateHz": 8
+      }
+    }
+  ]
+}

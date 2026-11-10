@@ -1,0 +1,64 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 1280,
+    "height": 720,
+    "background": "#1b2919"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 90,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "route",
+      "type": "path",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          240,
+          0
+        ],
+        [
+          360,
+          -100
+        ],
+        [
+          580,
+          -100
+        ],
+        [
+          720,
+          40
+        ]
+      ],
+      "strokeWidth": 8,
+      "position": [
+        240,
+        370
+      ],
+      "color": "#d6f99b"
+    }
+  ],
+  "clips": [
+    {
+      "id": "route-draw",
+      "target": "route",
+      "recipe": "prop.draw",
+      "startFrame": 0,
+      "durationFrames": 60,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1,
+        "trailRatio": 0
+      }
+    }
+  ]
+}

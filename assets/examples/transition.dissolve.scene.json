@@ -1,0 +1,110 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 78,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "guide-frame",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#d7d8d5",
+      "points": [
+        [
+          -130,
+          -80
+        ],
+        [
+          130,
+          -80
+        ],
+        [
+          130,
+          80
+        ],
+        [
+          -130,
+          80
+        ]
+      ],
+      "strokeWidth": 2,
+      "closed": true
+    },
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -130,
+          80
+        ],
+        [
+          -130,
+          -20
+        ],
+        [
+          -80,
+          -62
+        ],
+        [
+          -46,
+          -30
+        ],
+        [
+          6,
+          -80
+        ],
+        [
+          62,
+          -14
+        ],
+        [
+          92,
+          -40
+        ],
+        [
+          130,
+          -6
+        ],
+        [
+          130,
+          80
+        ]
+      ],
+      "strokeWidth": 5,
+      "closed": true,
+      "fill": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "transition.dissolve",
+      "startFrame": 0,
+      "durationFrames": 54,
+      "fillAfter": "hold",
+      "params": {
+        "mode": "in",
+        "grainPx": 6
+      }
+    }
+  ]
+}

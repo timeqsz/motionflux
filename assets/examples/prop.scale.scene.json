@@ -1,0 +1,118 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 76,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "guide-from",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#d7d8d5",
+      "points": [
+        [
+          -14.4,
+          -14.4
+        ],
+        [
+          14.4,
+          -14.4
+        ],
+        [
+          14.4,
+          14.4
+        ],
+        [
+          -14.4,
+          14.4
+        ]
+      ],
+      "strokeWidth": 2,
+      "closed": true
+    },
+    {
+      "id": "guide-to",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#e69e92",
+      "points": [
+        [
+          -43.199999999999996,
+          -43.199999999999996
+        ],
+        [
+          43.199999999999996,
+          -43.199999999999996
+        ],
+        [
+          43.199999999999996,
+          43.199999999999996
+        ],
+        [
+          -43.199999999999996,
+          43.199999999999996
+        ]
+      ],
+      "strokeWidth": 2,
+      "closed": true
+    },
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -36,
+          -36
+        ],
+        [
+          36,
+          -36
+        ],
+        [
+          36,
+          36
+        ],
+        [
+          -36,
+          36
+        ]
+      ],
+      "strokeWidth": 5,
+      "closed": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "prop.scale",
+      "startFrame": 0,
+      "durationFrames": 54,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0.4,
+        "to": 1.2
+      }
+    }
+  ]
+}

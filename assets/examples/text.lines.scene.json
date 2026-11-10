@@ -1,0 +1,44 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 72,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "text",
+      "position": [
+        148,
+        180
+      ],
+      "color": "#1d201d",
+      "text": "让文字\n一行一行出现",
+      "font": "system",
+      "fontSize": 58,
+      "lineHeight": 80
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "text.lines",
+      "startFrame": 0,
+      "durationFrames": 44,
+      "fillAfter": "hold",
+      "params": {
+        "stepFrames": 8,
+        "distancePx": 40
+      }
+    }
+  ]
+}

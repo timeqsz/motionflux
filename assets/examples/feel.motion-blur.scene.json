@@ -1,0 +1,93 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 240,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "guide-track",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#d7d8d5",
+      "points": [
+        [
+          -240,
+          0
+        ],
+        [
+          240,
+          0
+        ]
+      ],
+      "strokeWidth": 2
+    },
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        200
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -28,
+          -28
+        ],
+        [
+          28,
+          -28
+        ],
+        [
+          28,
+          28
+        ],
+        [
+          -28,
+          28
+        ]
+      ],
+      "strokeWidth": 5,
+      "closed": true,
+      "fill": true
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "feel.motion-blur",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "shutterDeg": 360
+      }
+    },
+    {
+      "id": "carrier-1",
+      "target": "subject",
+      "recipe": "loop.swing",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "axis": "x",
+        "amount": 210,
+        "periodS": 1.4
+      }
+    }
+  ]
+}

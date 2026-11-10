@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>二维组合 · 阵列 × 错开 × 位移 × 弹簧</title>
+<style>body{margin:0;padding:24px;display:grid;place-items:center;gap:16px;background:#11151a;color:#eee;font:14px system-ui}canvas{max-width:100%;height:auto;border:1px solid #343a42;border-radius:12px}nav{display:flex;align-items:center;gap:16px;width:min(640px,100%)}input{flex:1;min-width:0}button{padding:8px 16px;font:inherit}p{color:#aeb8c4}</style>
+<h1>阵列 × 错开 × 位移 × 弹簧</h1><canvas width="640" height="400" aria-label="五个方块依次弹入"></canvas>
+<nav><button id="play">播放</button><input id="time" type="range" min="0" max="90" value="0" step="1" aria-label="帧位置"><output id="frame">0 / 90</output></nav>
+<p>阵列给出五个位置，错开给出各自的延迟，位移用弹簧曲线把每个方块从上方带到位置上。四个原子各管一件事。</p>
+<script type="module">
+import array from './choreo.array.mjs';
+import stagger from './choreo.stagger.mjs';
+import move from './prop.move.mjs';
+import spring from './timing.spring.mjs';
+import { drawAtom } from './draw.mjs';
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d'),time=document.querySelector('#time'),play=document.querySelector('#play');
+const subject={points:[[-28,-28],[28,-28],[28,28],[-28,28]],closed:true,fill:true};
+// Layout and order do not change over time: ask once for the copies and their delays.
+const row=array({frame:0,durationFrames:1,params:{count:5,gapPx:96}}).copies;
+const order=stagger({frame:0,durationFrames:1,items:row.map((copy)=>copy.offset),params:{stepFrames:6}}).copies;
+const curve=(t)=>spring({frame:t,durationFrames:1}).value;
+let frame=0,playing=false,origin=0;
+function renderAt(value){
+  frame=value;ctx.clearRect(0,0,640,400);
+  for(const copy of order){
+    const out=move({frame:frame-copy.delay,durationFrames:40,subject,params:{fromPx:-260,toPx:0,angleDeg:90},ease:curve});
+    drawAtom(ctx,out,{x:320+copy.offset[0],y:220+copy.offset[1],color:'#e2f98b'});
+  }
+  time.value=String(frame);document.querySelector('#frame').textContent=`${Math.floor(frame)} / 90`;
+}
+play.onclick=()=>{playing=!playing;origin=performance.now()-frame/30*1000;play.textContent=playing?'暂停':'播放';};
+time.oninput=()=>{playing=false;play.textContent='播放';renderAt(Number(time.value));};
+window.renderAt=renderAt;renderAt(0);
+function tick(now){if(playing)renderAt(((now-origin)/1000*30)%90);requestAnimationFrame(tick);}requestAnimationFrame(tick);
+</script></html>

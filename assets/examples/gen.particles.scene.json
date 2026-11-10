@@ -1,0 +1,75 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 240,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "guide-ground",
+      "type": "path",
+      "position": [
+        320,
+        290
+      ],
+      "color": "#d7d8d5",
+      "points": [
+        [
+          -200,
+          0
+        ],
+        [
+          200,
+          0
+        ]
+      ],
+      "strokeWidth": 2
+    },
+    {
+      "id": "subject",
+      "type": "path",
+      "position": [
+        320,
+        290
+      ],
+      "color": "#1d201d",
+      "points": [
+        [
+          -1,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "strokeWidth": 2
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "gen.particles",
+      "startFrame": 0,
+      "durationFrames": 240,
+      "fillAfter": "hold",
+      "params": {
+        "count": 48,
+        "speedPx": 260,
+        "spreadDeg": 80,
+        "gravityPx": 420,
+        "lifeFrames": 40,
+        "sizePx": 7
+      }
+    }
+  ]
+}

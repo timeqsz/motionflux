@@ -1,0 +1,358 @@
+{
+  "specVersion": "0.1",
+  "seed": 7,
+  "canvas": {
+    "width": 1280,
+    "height": 720,
+    "background": "#12151a"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 180,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "sparks",
+      "type": "path",
+      "position": [
+        640,
+        470
+      ],
+      "color": "#5c6470",
+      "strokeWidth": 2,
+      "points": [
+        [
+          -1,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "ring",
+      "type": "path",
+      "position": [
+        250,
+        360
+      ],
+      "color": "#f2b84b",
+      "strokeWidth": 8,
+      "closed": true,
+      "points": [
+        [
+          0,
+          -92
+        ],
+        [
+          79.67,
+          -46
+        ],
+        [
+          79.67,
+          46
+        ],
+        [
+          0,
+          92
+        ],
+        [
+          -79.67,
+          46
+        ],
+        [
+          -79.67,
+          -46
+        ]
+      ]
+    },
+    {
+      "id": "badge",
+      "type": "path",
+      "position": [
+        250,
+        360
+      ],
+      "color": "#f4f1ea",
+      "strokeWidth": 6,
+      "closed": true,
+      "fill": true,
+      "points": [
+        [
+          0,
+          -44
+        ],
+        [
+          38.11,
+          -22
+        ],
+        [
+          38.11,
+          22
+        ],
+        [
+          0,
+          44
+        ],
+        [
+          -38.11,
+          22
+        ],
+        [
+          -38.11,
+          -22
+        ]
+      ]
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "position": [
+        410,
+        350
+      ],
+      "color": "#f4f1ea",
+      "font": "system",
+      "fontSize": 104,
+      "lineHeight": 120,
+      "text": "动效周期表"
+    },
+    {
+      "id": "rule",
+      "type": "path",
+      "position": [
+        414,
+        392
+      ],
+      "color": "#f2b84b",
+      "strokeWidth": 6,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          520,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "caption",
+      "type": "text",
+      "position": [
+        414,
+        452
+      ],
+      "color": "#f4f1ea",
+      "font": "system",
+      "fontSize": 34,
+      "lineHeight": 44,
+      "text": "79 ATOMS OF MOTION"
+    }
+  ],
+  "clips": [
+    {
+      "id": "sparks-rise",
+      "target": "sparks",
+      "recipe": "gen.particles",
+      "startFrame": 0,
+      "durationFrames": 180,
+      "fillAfter": "hold",
+      "params": {
+        "count": 70,
+        "speedPx": 150,
+        "spreadDeg": 150,
+        "gravityPx": -40,
+        "lifeFrames": 70,
+        "sizePx": 5
+      }
+    },
+    {
+      "id": "ring-draw",
+      "target": "ring",
+      "recipe": "prop.draw",
+      "startFrame": 4,
+      "durationFrames": 30,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1,
+        "trailRatio": 0
+      }
+    },
+    {
+      "id": "ring-run",
+      "target": "ring",
+      "recipe": "loop.breathe",
+      "startFrame": 34,
+      "durationFrames": 110,
+      "fillAfter": "hold",
+      "params": {
+        "amount": 0.06,
+        "periodS": 1.5
+      }
+    },
+    {
+      "id": "ring-out",
+      "target": "ring",
+      "recipe": "transition.iris",
+      "startFrame": 150,
+      "durationFrames": 22,
+      "fillAfter": "hold",
+      "params": {
+        "mode": "out",
+        "centerX": 0.5,
+        "centerY": 0.5
+      }
+    },
+    {
+      "id": "badge-pop",
+      "target": "badge",
+      "recipe": "timing.overshoot",
+      "startFrame": 12,
+      "durationFrames": 20,
+      "fillAfter": "hold",
+      "params": {
+        "tension": 2.2
+      }
+    },
+    {
+      "id": "badge-in",
+      "target": "badge",
+      "recipe": "prop.scale",
+      "startFrame": 12,
+      "durationFrames": 20,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1
+      }
+    },
+    {
+      "id": "badge-beat",
+      "target": "badge",
+      "recipe": "loop.breathe",
+      "startFrame": 50,
+      "durationFrames": 90,
+      "fillAfter": "hold",
+      "params": {
+        "amount": 0.08,
+        "periodS": 0.5
+      }
+    },
+    {
+      "id": "badge-out",
+      "target": "badge",
+      "recipe": "prop.scale",
+      "startFrame": 150,
+      "durationFrames": 18,
+      "fillAfter": "hold",
+      "params": {
+        "from": 1,
+        "to": 0
+      }
+    },
+    {
+      "id": "badge-spin",
+      "target": "badge",
+      "recipe": "prop.rotate",
+      "startFrame": 12,
+      "durationFrames": 156,
+      "fillAfter": "hold",
+      "params": {
+        "fromDeg": 0,
+        "toDeg": 180
+      }
+    },
+    {
+      "id": "title-in",
+      "target": "title",
+      "recipe": "text.lines",
+      "startFrame": 24,
+      "durationFrames": 26,
+      "fillAfter": "hold",
+      "params": {
+        "stepFrames": 0,
+        "distancePx": 60
+      }
+    },
+    {
+      "id": "title-out",
+      "target": "title",
+      "recipe": "prop.opacity",
+      "startFrame": 152,
+      "durationFrames": 20,
+      "fillAfter": "hold",
+      "params": {
+        "from": 1,
+        "to": 0
+      }
+    },
+    {
+      "id": "rule-in",
+      "target": "rule",
+      "recipe": "prop.draw",
+      "startFrame": 44,
+      "durationFrames": 24,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1,
+        "trailRatio": 0
+      }
+    },
+    {
+      "id": "rule-out",
+      "target": "rule",
+      "recipe": "prop.opacity",
+      "startFrame": 150,
+      "durationFrames": 18,
+      "fillAfter": "hold",
+      "params": {
+        "from": 1,
+        "to": 0
+      }
+    },
+    {
+      "id": "caption-decode",
+      "target": "caption",
+      "recipe": "text.decode",
+      "startFrame": 58,
+      "durationFrames": 50,
+      "fillAfter": "hold",
+      "params": {
+        "rateHz": 14,
+        "charset": "own"
+      }
+    },
+    {
+      "id": "caption-in",
+      "target": "caption",
+      "recipe": "prop.opacity",
+      "startFrame": 58,
+      "durationFrames": 12,
+      "fillAfter": "hold",
+      "params": {
+        "from": 0,
+        "to": 1
+      }
+    },
+    {
+      "id": "caption-out",
+      "target": "caption",
+      "recipe": "prop.opacity",
+      "startFrame": 150,
+      "durationFrames": 18,
+      "fillAfter": "hold",
+      "params": {
+        "from": 1,
+        "to": 0
+      }
+    }
+  ]
+}

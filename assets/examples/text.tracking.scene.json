@@ -1,0 +1,45 @@
+{
+  "specVersion": "0.1",
+  "seed": 42,
+  "canvas": {
+    "width": 640,
+    "height": 400,
+    "background": "#fbfbf8"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 78,
+  "assets": {},
+  "nodes": [
+    {
+      "id": "subject",
+      "type": "text",
+      "position": [
+        168,
+        226
+      ],
+      "color": "#1d201d",
+      "text": "TRACKING",
+      "font": "system",
+      "fontSize": 72,
+      "lineHeight": 72
+    }
+  ],
+  "clips": [
+    {
+      "id": "effect",
+      "target": "subject",
+      "recipe": "text.tracking",
+      "startFrame": 0,
+      "durationFrames": 54,
+      "fillAfter": "hold",
+      "params": {
+        "fromPx": 60,
+        "toPx": 0,
+        "anchor": "center"
+      }
+    }
+  ]
+}
