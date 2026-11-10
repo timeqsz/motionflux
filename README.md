@@ -61,6 +61,10 @@ npm run verify
 
 `npm run build` 同时生成带文件校验清单的 `dist/downloads/motion-atoms.zip`。`npm run verify` 在临时目录中校验安装包文件并运行 CLI 与所有示例。发布前一起提交源码和更新后的发行文件。版本在 `package.json`；`VERSION.json` 记录初始分离时的 MotionFlux 来源提交。
 
+## 参考与致谢
+
+MotionFlux 的早期动效索引构思参考了 Kazuki Akamine（赤嶺一希）的 [Motion Periodic Table](https://selected.musabi.ac.jp/y2015/di/s01)。感谢其对基础动效整理与展示的启发。MotionFlux 与本 Skill 为独立项目。
+
 ## 许可
 
 [MIT](LICENSE)，可免费商用、修改和分发，保留许可证。外部字体、浏览器、编码器及用户提供的视频素材遵守各自许可，详见[第三方说明](THIRD_PARTY_NOTICES.md)。
