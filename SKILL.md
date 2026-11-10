@@ -1,9 +1,9 @@
 ---
-name: motion-atoms
+name: motionflux
 description: 根据描述生成、组合和修改可运行的动效；也可拆解参考视频中的动作、节奏、层级和转场，映射到 MotionFlux 原子与组合并说明复现边界。适用于网页、演示和视频中的文字、图形、循环与质感，支持单项能力查询和验证交付。提供动效层，不替代整片制作或通用视频内容总结。
 ---
 
-# Motion Atoms
+# MotionFlux
 
 让 Agent 按描述制作动效，也能从参考视频中拆出可复用的动作与组合。Agent 负责观察、理解用途和编排，包内原子、校验器与渲染工具负责执行；用户不必先挑效果或记住原子名。发行包包含 53 个二维原子，分 8 族，与网站共用实现。使用相对路径访问随包资源，不依赖网站在线、源码仓库或 npm 安装。首次安装见 [安装与环境](references/install.md)；`manifest.json` 记录本包版本、文件与校验值。
 
@@ -57,7 +57,7 @@ function renderFrame(ctx, frame) {
 
 ## 二维：交付素材文件
 
-以下命令在解压后的 `motion-atoms/` 内运行；输出写入自己的工作目录。导出前按需检测本机浏览器／FFmpeg，不在基础检索时要求这些工具。
+以下命令在解压后的 `motionflux/` 内运行；输出写入自己的工作目录。导出前按需检测本机浏览器／FFmpeg，不在基础检索时要求这些工具。
 
 ```sh
 node scripts/motion.mjs describe transition.slices

@@ -1,6 +1,6 @@
 {
-  "name": "motion-atoms",
-  "version": "0.4.0",
+  "name": "motionflux",
+  "version": "0.4.1",
   "atoms2d": 53,
   "files": [
     {
@@ -860,8 +860,8 @@
     },
     {
       "path": "references/install.md",
-      "bytes": 1996,
-      "sha256": "8a4bb55f7aec61dc519c5b813776fc18e4b35b892045ea65a8ac2948a3b87af7"
+      "bytes": 1986,
+      "sha256": "cad91d3ba785ba4da6273e811652b9c889b8aeceb5960a041f378f48c6c3cfc4"
     },
     {
       "path": "references/intent.md",
@@ -910,8 +910,8 @@
     },
     {
       "path": "SKILL.md",
-      "bytes": 9583,
-      "sha256": "f22d983378cb036577362f6dde86e60111cc8951bbef51adb1f08159c08285e9"
+      "bytes": 9577,
+      "sha256": "502545d626bd8c8f57a4e5fd41cc3a20ea61f404c511420a042f5440cff419a9"
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
@@ -920,8 +920,8 @@
     },
     {
       "path": "VERSION.json",
-      "bytes": 163,
-      "sha256": "8e66f9b4ba57a80a9bddce22af6847544d92e9ce8b32a470ddd849af2379e671"
+      "bytes": 161,
+      "sha256": "6453f0463edb243b2acb08b1f489b2d2b591ba930c5fdbc6fba785f17b1611ea"
     }
   ]
 }

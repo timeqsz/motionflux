@@ -38,7 +38,7 @@ export async function archiveSkill(directory, destination, metadata) {
   const local = [], central = [];
   let offset = 0;
   for (const entry of entries) {
-    const name = Buffer.from(`motion-atoms/${entry.path}`), compressed = deflateRawSync(entry.bytes, { level: 9 });
+    const name = Buffer.from(`motionflux/${entry.path}`), compressed = deflateRawSync(entry.bytes, { level: 9 });
     const header = Buffer.alloc(30), record = Buffer.alloc(46), checksum = crc32(entry.bytes);
     header.writeUInt32LE(0x04034b50, 0); header.writeUInt16LE(20, 4); header.writeUInt16LE(0x800, 6);
     header.writeUInt16LE(8, 8); header.writeUInt16LE(33, 12); header.writeUInt32LE(checksum, 14);
@@ -52,7 +52,7 @@ export async function archiveSkill(directory, destination, metadata) {
   end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
   end.writeUInt32LE(directoryBytes.length, 12); end.writeUInt32LE(offset, 16);
   const zip = Buffer.concat([...local, directoryBytes, end]), checksum = sha256(zip);
-  const filename = `motion-atoms.${checksum.slice(0, 12)}.zip`;
+  const filename = `motionflux.${checksum.slice(0, 12)}.zip`;
   await mkdir(destination, { recursive: true });
   await writeFile(join(destination, filename), zip);
   await writeFile(join(destination, 'skill-download.json'), JSON.stringify({ ...metadata, filename, bytes: zip.length, sha256: checksum }, null, 2) + '\n');

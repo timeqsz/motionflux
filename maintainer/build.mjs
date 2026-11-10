@@ -68,7 +68,7 @@ await mkdir(stage, { recursive: true });
 for (const name of ['SKILL.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'VERSION.json', 'references', 'atoms', 'scripts', 'assets']) {
   await cp(name, `${stage}/${name}`, { recursive: true });
 }
-const archive = await archiveSkill(stage, 'dist/downloads', { name: 'motion-atoms', version, atoms2d: capabilities.length });
+const archive = await archiveSkill(stage, 'dist/downloads', { name: 'motionflux', version, atoms2d: capabilities.length });
 await cp(`${stage}/manifest.json`, 'manifest.json');
-await cp(`dist/downloads/${archive}`, 'dist/downloads/motion-atoms.zip');
-console.log(JSON.stringify({ version, atoms: capabilities.length, archive, installable: 'dist/downloads/motion-atoms.zip' }));
+await cp(`dist/downloads/${archive}`, 'dist/downloads/motionflux.zip');
+console.log(JSON.stringify({ version, atoms: capabilities.length, archive, installable: 'dist/downloads/motionflux.zip' }));

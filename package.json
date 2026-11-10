@@ -1,13 +1,13 @@
 {
-  "name": "motion-atoms",
-  "version": "0.4.0",
-  "description": "Composable motion atoms and video motion breakdown for coding agents",
+  "name": "motionflux",
+  "version": "0.4.1",
+  "description": "MotionFlux: composable motion and video breakdown for coding agents",
   "private": true,
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/timeqsz/motion-atoms.git"
+    "url": "https://github.com/timeqsz/motionflux.git"
   },
   "engines": {
     "node": ">=22"

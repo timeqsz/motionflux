@@ -1,6 +1,6 @@
 {
-  "name": "motion-atoms",
-  "version": "0.4.0",
+  "name": "motionflux",
+  "version": "0.4.1",
   "atoms2d": 53,
   "sourceProject": "MotionFlux",
   "sourceCommit": "97b8f09ab17cd70f1dae9abe5d0bf754fcd6b26f"
