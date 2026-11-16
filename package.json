@@ -1,6 +1,6 @@
 {
   "name": "motionflux",
-  "version": "0.4.1",
+  "version": "0.6.0",
   "description": "MotionFlux: composable motion and video breakdown for coding agents",
   "private": true,
   "type": "module",
@@ -16,11 +16,13 @@
     "build": "node maintainer/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "verify": "node maintainer/verify.mjs"
+    "verify": "node maintainer/verify.mjs",
+    "test:browser": "node --test tests/browser/*.test.mjs"
   },
   "devDependencies": {
+    "@types/node": "22.15.30",
     "esbuild": "0.25.5",
-    "typescript": "5.8.3",
-    "@types/node": "22.15.30"
+    "three": "0.187.0",
+    "typescript": "5.8.3"
   }
 }

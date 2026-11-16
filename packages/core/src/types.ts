@@ -3,7 +3,16 @@ export type Vec2 = [number, number];
 export interface FontAsset {
   type: 'font'; src: string; sha256: string; family: string; postscriptName: string;
 }
-interface BaseNode { id: string; position: Vec2; color: string }
+export interface ImageAsset { type: 'image'; src: string; sha256: string }
+/** Self-contained, user-authored ESM. Code stays in a file, never in MotionSpec. */
+export interface ModuleAsset { type: 'module'; src: string; sha256: string }
+export type Asset = FontAsset | ImageAsset | ModuleAsset;
+export type Matrix2D = [number, number, number, number, number, number];
+interface BaseNode {
+  id: string; position: Vec2; color: string;
+  /** 0.2 only: parent-local pixels; sibling order follows nodes. */
+  parent?: string; pivot?: Vec2; rotation?: number; scale?: number; opacity?: number; stretch?: Vec2;
+}
 export interface TextNode extends BaseNode {
   /** `system` and `mono` use the device's sans-serif or monospace font without an asset; other values reference assets. */
   type: 'text'; text: string; font: string; fontSize: number; lineHeight: number;
@@ -15,16 +24,38 @@ export interface PathNode extends BaseNode {
   /** Fill the outline with the node color instead of stroking it. Defaults to a stroke. */
   fill?: boolean;
 }
-export type SceneNode = TextNode | PathNode;
+export type VectorCommand = { op: 'M' | 'L'; to: Vec2 } | { op: 'Q'; control: Vec2; to: Vec2 }
+  | { op: 'C'; control1: Vec2; control2: Vec2; to: Vec2 } | { op: 'Z' };
+export interface VectorNode extends BaseNode {
+  type: 'vector'; commands: VectorCommand[]; fill: boolean; strokeWidth: number;
+}
+export interface ImageNode extends BaseNode {
+  type: 'image'; asset: string; width: number; height: number; fit: 'contain' | 'cover' | 'stretch';
+}
+export interface GroupNode extends BaseNode {
+  type: 'group';
+  /** Explicit cell pitch avoids font- or decoder-dependent layout. Children retain their own local offsets. */
+  layout?: { type: 'row' | 'column' | 'grid'; cell: Vec2; gap: Vec2; columns: number };
+}
+export interface CustomNode extends BaseNode {
+  type: 'custom'; module: string; width: number; height: number; params: Record<string, number>;
+}
+export type SceneNode = TextNode | PathNode | VectorNode | ImageNode | GroupNode | CustomNode;
+export type AnimatedProperty = 'position.x' | 'position.y' | 'rotation' | 'scale' | 'opacity' | 'stretch.x' | 'stretch.y'
+  | 'color' | 'fontSize' | 'strokeWidth' | 'width' | 'height' | `params.${string}`;
+export interface Keyframe { frame: number; value: number | string; easing?: 'linear' | 'smooth' | 'hold' | [number, number, number, number] }
+export interface AnimationTrack { id: string; target: string; property: AnimatedProperty; keyframes: Keyframe[] }
 export interface Clip {
   id: string; target: string; recipe: RecipeId; startFrame: number; durationFrames: number;
   fillAfter: 'hold'; params: Record<string, number | string>;
 }
 export interface MotionSpec {
-  specVersion: '0.1'; seed: number;
+  specVersion: '0.1' | '0.2'; seed: number;
   canvas: { width: number; height: number; background: string };
   fps: { numerator: number; denominator: number }; durationFrames: number;
-  assets: Record<string, FontAsset>; nodes: SceneNode[]; clips: Clip[];
+  assets: Record<string, Asset>; nodes: SceneNode[]; clips: Clip[];
+  animations?: AnimationTrack[];
+  study?: import('./study.js').MotionStudy;
 }
 export interface Issue { path: string; code: string; message: string }
 /** One draw call in node-local pixels. `paths` share a single fill or stroke, so overlaps do not double their opacity. */
@@ -72,6 +103,11 @@ interface FrameTransform {
 }
 export type TextFrame = TextNode & FrameTransform & { lines: Line[] };
 export type PathFrame = PathNode & FrameTransform & { visiblePoints: Vec2[]; layers: Layer[] };
+export type VectorFrame = VectorNode & FrameTransform;
+export type ImageFrame = ImageNode & FrameTransform;
+export type CustomFrame = CustomNode & FrameTransform;
+export type GroupFrame = GroupNode & FrameTransform & { children: FrameNode[] };
 /** Lines in scene coordinates, drawn beneath the node they belong to. */
-export interface OverlayFrame { type: 'overlay'; id: string; color: string; layers: Layer[] }
-export interface EvaluatedFrame { frame: number; timeSeconds: number; nodes: (TextFrame | PathFrame | OverlayFrame)[] }
+export interface OverlayFrame { type: 'overlay'; id: string; color: string; layers: Layer[]; offset?: Vec2 }
+export type FrameNode = TextFrame | PathFrame | VectorFrame | ImageFrame | CustomFrame | GroupFrame | OverlayFrame;
+export interface EvaluatedFrame { frame: number; timeSeconds: number; nodes: FrameNode[] }

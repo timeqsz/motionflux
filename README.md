@@ -44,7 +44,27 @@ node scripts/motion.mjs preview assets/examples/showcase.scene.json --out work/s
 
 属性、节奏、循环、文字、质感、转场、编排、生成，共 8 族。常用组合：**位移 × 弹簧 × 错开 ＋ 拖影**。参数、作用对象和组合限制见[原子清单](assets/catalog.md)。
 
-可生成离线 HTML、MotionSpec JSON、PNG 帧、MP4，以及带透明通道的 MOV / WebM。当前场景引擎支持二维文字与路径；图片、视频、音频、三维和整片剪辑由调用方宿主处理。渲染出的素材视频没有音轨。
+可生成离线 HTML、MotionSpec JSON、PNG 帧、MP4，以及带透明通道的 MOV / WebM。0.5.0 新增图片、贝塞尔路径、父子分组、基本布局、可编辑关键帧和独立渲染模块；Three.js 示例能与二维内容共用时间轴并导出。Motion Study 记录拉片证据并关联制作对象，保留观察、推断与未知。渲染出的素材视频没有音轨。
+
+先看 [二维场景](references/scene-02.md)、[拉片记录](references/motion-study.md) 和 [Three.js / 模块接口](references/render-modules.md)。原生三维对象、glTF、视频帧节点、音轨与时间轴编辑器仍是后续工作。
+
+```sh
+node scripts/motion.mjs preview assets/examples/composition.scene.json --out work/composition.html
+node scripts/motion.mjs preview assets/examples/three-orbit.scene.json --out work/orbit.html
+node scripts/motion.mjs study assets/examples/composition.study.json --scene assets/examples/composition.scene.json
+```
+
+## 编排模式与品牌改编
+
+0.6.0 加入原创编排模式检索、品牌规则输入和参数绑定。首个模式是标题让位于产品，附横屏英文音箱和竖屏中文台灯两种改编。
+
+```sh
+node scripts/motion.mjs patterns 产品 标题
+node scripts/motion.mjs compose assets/patterns/title-yields-to-product/speaker-landscape.brief.json --out work/speaker-v1
+node scripts/motion.mjs controls work/speaker-v1/authoring.json --scene work/speaker-v1/scene.json
+```
+
+详见 [模式流程](references/patterns.md) 和 [品牌与编辑约定](references/brand-and-controls.md)。生成后修改保存的场景，deliver --authoring 保留上下文；没有参数面板，视觉和播放仍需实际检查。
 
 ## 开发
 
@@ -54,6 +74,7 @@ node scripts/motion.mjs preview assets/examples/showcase.scene.json --out work/s
 npm ci
 npm run typecheck
 npm test
+npm run test:browser
 npm run verify
 ```
 

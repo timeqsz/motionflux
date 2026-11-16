@@ -1,6 +1,6 @@
 {
   "name": "motionflux",
-  "version": "0.4.1",
+  "version": "0.6.0",
   "atoms2d": 53,
   "files": [
     {
@@ -12,6 +12,16 @@
       "path": "assets/catalog.md",
       "bytes": 12948,
       "sha256": "87d98f15c6ae9960ff97cd4b171761245caa8e8c90d3736d4bd117179abd991f"
+    },
+    {
+      "path": "assets/examples/assets/orbit-mark.png",
+      "bytes": 3278,
+      "sha256": "58f832e500f9dfe2c1ed731c7b6abd45b4570ff6755209a8f899eb7881a22c11"
+    },
+    {
+      "path": "assets/examples/assets/three-orbit.mjs",
+      "bytes": 542214,
+      "sha256": "aee3bdfbaa23122fd82da8235e0ac4bf2d830c07b5a9872476e68e5dad0a741b"
     },
     {
       "path": "assets/examples/choreo.array.scene.json",
@@ -52,6 +62,16 @@
       "path": "assets/examples/choreo.stagger.scene.json",
       "bytes": 1909,
       "sha256": "c427f3e58d2de3b00fea1928734309353b06ab04e083a8b68ff4dbe542d898fc"
+    },
+    {
+      "path": "assets/examples/composition.scene.json",
+      "bytes": 8604,
+      "sha256": "9a72008100e6f975477d1d374ec34fea14b269e78a4ca53ee21da32274863474"
+    },
+    {
+      "path": "assets/examples/composition.study.json",
+      "bytes": 911,
+      "sha256": "22004165acf6f84f7b1724338ee6737b649d8aef619528e3ea7b54e17d7f6675"
     },
     {
       "path": "assets/examples/feel.chroma.scene.json",
@@ -229,6 +249,11 @@
       "sha256": "0b6c59a1fb67df99d71ccb16cc0d70a51f43572eeb65bcfe5b8b86b5c7dc059a"
     },
     {
+      "path": "assets/examples/three-orbit.scene.json",
+      "bytes": 6959,
+      "sha256": "1db37e8eb92f3b068d43e7dd1ad98fc77c6d15e8e93a52ff5f87b5314f2fc303"
+    },
+    {
       "path": "assets/examples/timing.anticipate.scene.json",
       "bytes": 1433,
       "sha256": "c9a5073039de66b0759967be606d7d195bea66c4e9b7baf9270e633e58b7525f"
@@ -295,8 +320,83 @@
     },
     {
       "path": "assets/motion-spec.schema.json",
-      "bytes": 114576,
-      "sha256": "8b104803c98d6f6cbd0fdb8a70e33cb6cd8608f0746594adec43b7399322e757"
+      "bytes": 294153,
+      "sha256": "f880b650d6e28778ec659b32f2488ff6ff3fdd661e205b008dcc457801af2fe6"
+    },
+    {
+      "path": "assets/patterns/authoring.schema.json",
+      "bytes": 5388,
+      "sha256": "7cdd88575605b5a9277ef32396451bc8c28905b0194f8ae3710938d63dbd050a"
+    },
+    {
+      "path": "assets/patterns/brief.schema.json",
+      "bytes": 4819,
+      "sha256": "1ecaf895a0bc6ed8d48e8538e68c667cd721135ab218f6484858fe60fafb812d"
+    },
+    {
+      "path": "assets/patterns/index.json",
+      "bytes": 1189,
+      "sha256": "35d655eb5d4e4e8915920e212d28756a8f7f9e65db6a0f2576fdee2214ff8041"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/assets/lamp.png",
+      "bytes": 17576,
+      "sha256": "bfd602a140930405440540ae58e424cc2bedf02afabde2dc0a2191c9c908ee42"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/assets/speaker.png",
+      "bytes": 61914,
+      "sha256": "017b57286673f7c9c3b398e84f5e1255fc111d1a918fa116dd895a5c8f1fc59b"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/lamp-portrait.authoring.json",
+      "bytes": 6864,
+      "sha256": "e9dac3a1e5071ca36bdc1b92184fe5da4339471c905c4f4f3299027f48673c97"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/lamp-portrait.brief.json",
+      "bytes": 1011,
+      "sha256": "6f142e9a479a85c4646040e5c6d0ec660eed35ac25a718352aba577f3329066f"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/lamp-portrait.html",
+      "bytes": 169264,
+      "sha256": "5b8f1d3da30a9f6ef2e9f3423addaf76dd4094baa66aed116c2eb54443735a63"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/lamp-portrait.scene.json",
+      "bytes": 7847,
+      "sha256": "6af5cf3126de3c496d79f580e46394453fa53f47f0d8ddbf1e8f0a4163f8e0a6"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/PATTERN.md",
+      "bytes": 2708,
+      "sha256": "b6fddfe8612b7514375274e226993fdab76ef6cff14c5c818268090794be21ad"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/speaker-landscape.authoring.json",
+      "bytes": 6860,
+      "sha256": "c24a6c8d712e691860a590790ee1fb562ec7877b7d22404e2cc661b67d4ac36e"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/speaker-landscape.brief.json",
+      "bytes": 977,
+      "sha256": "67c25bfef2413041a2b7150ac32b6d8ae77c918030694bf430027e2d9b896258"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/speaker-landscape.html",
+      "bytes": 228253,
+      "sha256": "e4c4c046a152685af4140d9d9b7412c41d050bd2205520148dc047b272436447"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/speaker-landscape.scene.json",
+      "bytes": 7714,
+      "sha256": "45b199c02ba8f7c9070078f80868b49f0c668780e2ea509ff6a97986a3d4b742"
+    },
+    {
+      "path": "assets/patterns/title-yields-to-product/validation.json",
+      "bytes": 2866,
+      "sha256": "df76ff11bd6238cfcd89a0bed5ea32abe3c60b91f4da24594be3746fdaed7b6f"
     },
     {
       "path": "atoms/choreo.array.md",
@@ -380,8 +480,8 @@
     },
     {
       "path": "atoms/draw.mjs",
-      "bytes": 15125,
-      "sha256": "6bc55e54355bd44e40c26c159d6f1ca638d45ea446ff3625c44d3ca9211a5d3b"
+      "bytes": 15209,
+      "sha256": "0be421c10135850c2f33f789f524c9c63186dafc9cbd33a6e809d128ea1ed8d4"
     },
     {
       "path": "atoms/example.html",
@@ -854,6 +954,11 @@
       "sha256": "c24a55883299dfc2cb4ca8c454f7caaa25f665d9e8d9c0250c1f1051e93829ed"
     },
     {
+      "path": "references/brand-and-controls.md",
+      "bytes": 3042,
+      "sha256": "94d1dbd078007f17623f0d1c8a97b4ae0c7b964af8e3f0d43f6ed19c934559f7"
+    },
+    {
       "path": "references/composition.md",
       "bytes": 10881,
       "sha256": "6271bd6e93a1342d8ebde2ffb81d011d012265e7d79bfab18d51c3222de4993b"
@@ -870,33 +975,58 @@
     },
     {
       "path": "references/motion-spec.md",
-      "bytes": 11635,
-      "sha256": "3b2a0ca00d29d4ff73ec49f8827f4c3eaef65b2aad9d2e4ebf609b5395e38934"
+      "bytes": 11741,
+      "sha256": "500106021c315ac1344b9b55a4b36f82ad58c5555e273a725236aebccfaaf750"
+    },
+    {
+      "path": "references/motion-study.md",
+      "bytes": 3328,
+      "sha256": "57dca284d61d433b0c32872e6c8ffdf2d2e9def619c0bfc99d92af0f0373887f"
+    },
+    {
+      "path": "references/patterns.md",
+      "bytes": 3346,
+      "sha256": "a050334da0ba6dfb1524cecf76e210afc76ad94441f8e9871cc291667a13625c"
     },
     {
       "path": "references/quality.md",
-      "bytes": 3540,
-      "sha256": "5d2cd6cd57540715dbfca350fce6865db6a0641c24b979d0f47609e700c280f4"
+      "bytes": 3591,
+      "sha256": "fa47037f3712bf00be65b976fef6d9c998342d918f2dc4d6f97e2d893d00721c"
+    },
+    {
+      "path": "references/render-modules.md",
+      "bytes": 3857,
+      "sha256": "6f551933a71f59fbe786c0ff58f7f5ec6d3bcdc39c39a8a76bfcc60dac746b12"
+    },
+    {
+      "path": "references/scene-02.md",
+      "bytes": 5082,
+      "sha256": "acea245b586924a0522399f7aabf04207ad50c8737f3585ce9655950d55cdcc4"
+    },
+    {
+      "path": "references/three-license.txt",
+      "bytes": 1081,
+      "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
     },
     {
       "path": "references/video-breakdown.md",
-      "bytes": 12234,
-      "sha256": "a7ce4f87d96b5249fea31c416f3cc850d4e1715812403fd4626f396fc54afed7"
+      "bytes": 14669,
+      "sha256": "720ea06509941df26cb8e6ab7b52cef43349d22572e474233382a2f9903658bd"
     },
     {
       "path": "references/workflow.md",
-      "bytes": 3580,
-      "sha256": "f7ac6f71f1af8748a25346026bdcc4bafba6ae412383930f102c008a88f6d8d9"
+      "bytes": 7218,
+      "sha256": "becd8a40b63a4956dc7620bc1c1e5d50de021bb9e39e1938390ae645181b36fb"
     },
     {
       "path": "scripts/motion.mjs",
-      "bytes": 147252,
-      "sha256": "f45392497d99c7297ee5b101dd87f0065e9cfab4e162b3c29aabc311ce5632ca"
+      "bytes": 182114,
+      "sha256": "370c7498af6cf932c4bba137821614325e64a3b8b9d046055fa2aa350142e636"
     },
     {
       "path": "scripts/resources/breakdown-panel.js",
-      "bytes": 4338,
-      "sha256": "51d58cb190fcd552bb0ec39be56bfaeba8631b8e45240f830f32375e657ce8e8"
+      "bytes": 4355,
+      "sha256": "2fe8872035d6ee036f17ee6798848d58d18fd4ed9303fe4f97d52090631633cc"
     },
     {
       "path": "scripts/resources/OFL.txt",
@@ -905,23 +1035,23 @@
     },
     {
       "path": "scripts/resources/standalone.js",
-      "bytes": 114076,
-      "sha256": "fe6d76f9bd54e7d23f20e6e89f70c0a1ec71d3e6dac4faf21f464e89042f6c49"
+      "bytes": 140689,
+      "sha256": "a63c05c76ef740d2c6ea3ca718e87e84be16aa23b93ca2dae2f1f2849144de97"
     },
     {
       "path": "SKILL.md",
-      "bytes": 9577,
-      "sha256": "502545d626bd8c8f57a4e5fd41cc3a20ea61f404c511420a042f5440cff419a9"
+      "bytes": 12142,
+      "sha256": "2ab7aee9ec778f94ac7d47ba9316ae1c1bb3bfbccaddfc311e673d9c061f7a88"
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "bytes": 871,
-      "sha256": "3b063394eef05f96910a7f294628a89376d83f57a72fd635268238eeef87c238"
+      "bytes": 1245,
+      "sha256": "a8ee8a38daa420c63fd791c52110d6d771b73023f0be3b563417e9c2cec1618e"
     },
     {
       "path": "VERSION.json",
       "bytes": 161,
-      "sha256": "6453f0463edb243b2acb08b1f489b2d2b591ba930c5fdbc6fba785f17b1611ea"
+      "sha256": "9810b220a42c34cf9e0755480ca37ad55fb26e027a2e77daf313b97fc7c464d1"
     }
   ]
 }

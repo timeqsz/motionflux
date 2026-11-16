@@ -1,7 +1,7 @@
 import { mountScene } from './index.js';
 import { loopTiming, loopElapsed } from '../../core/src/playback.js';
 import { breakdownSize, drawBreakdown, type BreakdownPlan } from './breakdown.js';
-declare global { interface Window { motionFlux?: { renderFrame(frame: number, background?: boolean): void; scene: unknown } } }
+declare global { interface Window { motionFlux?: { renderFrame(frame: number, background?: boolean): Promise<void>; scene: unknown } } }
 async function main(): Promise<void> {
   const input = JSON.parse(document.getElementById('scene-data')!.textContent!);
   const assets = JSON.parse(document.getElementById('asset-data')!.textContent!) as Record<string, string>;
@@ -14,7 +14,7 @@ async function main(): Promise<void> {
   const status = document.getElementById('status')!;
   const mounted = await mountScene(canvas, input, async (asset) => {
     const encoded = assets[asset.src];
-    if (!encoded) throw new Error(`Missing embedded font ${asset.src}`);
+    if (!encoded) throw new Error(`Missing embedded asset ${asset.src}`);
     return Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)).buffer;
   });
   if (composite && breakdown) { const size = breakdownSize(breakdown, mounted.scene.spec.canvas); composite.width = size.width; composite.height = size.height; }
@@ -29,43 +29,49 @@ async function main(): Promise<void> {
   let elapsed = 0;
   let last = 0;
   let animation = 0;
+  let generation = 0;
+  const stop = () => { playing = false; generation++; cancelAnimationFrame(animation); button.textContent = '播放'; };
+  const fail = (error: unknown) => { stop(); status.textContent = String(error); };
   // Frame capture passes background false to keep the alpha channel; the player always shows the canvas colour.
-  const renderFrame = (next: number, background = true) => {
-    frame = next; mounted.renderFrame(next, background); slider.value = String(next);
+  const renderFrame = async (next: number, background = true) => {
+    await mounted.renderAt(next, background); frame = next; slider.value = String(next);
     if (composite && breakdown) drawBreakdown(composite, canvas, breakdown, next);
     status.textContent = `Frame ${next.toFixed(0)} / ${slider.max} · ${(next / fps).toFixed(2)}s`;
   };
-  const renderLoop = (displayFrame?: number) => {
-    const state = mounted.renderLoop(elapsed); frame = displayFrame ?? state.frame; slider.value = String(frame);
+  const renderLoop = async (displayFrame?: number) => {
+    const state = await mounted.renderLoopAt(elapsed); frame = displayFrame ?? state.frame; slider.value = String(frame);
     if (composite && breakdown) drawBreakdown(composite, canvas, breakdown, state.frame);
     status.textContent = `Frame ${frame.toFixed(0)} / ${slider.max} · ${(frame / fps).toFixed(2)}s`;
   };
-  const tick = (now: number) => {
+  const tick = async (now: number) => {
     if (!playing) return;
+    const request = generation;
     if (!document.hidden && last) elapsed += Math.min(now - last, 100) / 1000 * fps;
     last = now;
-    if (playback.loop) renderLoop();
-    else renderFrame(Math.min(mounted.scene.spec.durationFrames - 1, elapsed));
+    if (playback.loop) await renderLoop();
+    else await renderFrame(Math.min(mounted.scene.spec.durationFrames - 1, elapsed));
+    if (!playing || request !== generation) return;
     if (!playback.loop && frame >= mounted.scene.spec.durationFrames - 1) { playing = false; button.textContent = '播放'; }
-    else animation = requestAnimationFrame(tick);
+    else animation = requestAnimationFrame(now => { void tick(now).catch(fail); });
   };
   button.onclick = () => {
     playing = !playing;
+    generation++;
     button.textContent = playing ? '暂停' : '播放';
     if (playing) {
       if (playback.loop) elapsed = loopElapsed(timing, frame, elapsed);
       else { if (frame >= mounted.scene.spec.durationFrames - 1) frame = 0; elapsed = frame; }
-      last = 0; animation = requestAnimationFrame(tick);
+      last = 0; animation = requestAnimationFrame(now => { void tick(now).catch(fail); });
     }
     else cancelAnimationFrame(animation);
   };
   slider.oninput = () => {
-    playing = false; cancelAnimationFrame(animation); button.textContent = '播放';
-    if (playback.loop) { const next = Number(slider.value); elapsed = loopElapsed(timing, next, elapsed); renderLoop(next); }
-    else renderFrame(Number(slider.value));
+    stop();
+    if (playback.loop) { const next = Number(slider.value); elapsed = loopElapsed(timing, next, elapsed); void renderLoop(next).catch(fail); }
+    else void renderFrame(Number(slider.value)).catch(fail);
   };
-  window.motionFlux = { renderFrame, scene: mounted.scene.spec };
-  window.addEventListener('pagehide', () => { cancelAnimationFrame(animation); mounted.destroy(); });
-  renderFrame(0);
+  window.addEventListener('pagehide', () => { stop(); void mounted.destroy().catch(fail); });
+  await renderFrame(0);
+  window.motionFlux = { renderFrame: async (next, background = true) => { stop(); await renderFrame(next, background); }, scene: mounted.scene.spec };
 }
 main().catch((error: unknown) => { document.getElementById('status')!.textContent = String(error); });

@@ -5,7 +5,11 @@ import { slice } from './geometry.js';
 import { recipes, type Copy, type Curve, type NodeState, type Recipe, type RecipeContext } from './recipes/index.js';
 import { single } from './recipes/context.js';
 import { canContinueScene } from './playback.js';
-import type { Clip, EvaluatedFrame, MotionSpec, OverlayFrame, PathFrame, SceneNode, TextFrame, Vec2 } from './types.js';
+import type { Clip, EvaluatedFrame, FrameNode, MotionSpec, SceneNode, Vec2 } from './types.js';
+import { sampleNode, layoutOffset } from './animation.js';
+export * from './animation.js';
+export * from './study.js';
+export * from './authoring.js';
 export * from './types.js';
 export * from './playback.js';
 export * from './validate.js';
@@ -15,7 +19,7 @@ export { applyFilter, filterReach, type Mask } from './raster.js';
 export { createAtom, type Atom, type AtomInput, type AtomMeta, type AtomOutput } from './atom.js';
 export { motionSchema } from './schema.js';
 export type { Copy } from './recipes/index.js';
-export const ENGINE_VERSION = '0.4.0';
+export const ENGINE_VERSION = '0.6.0';
 export const ALGORITHM_VERSION = 'value-noise-fnv-mix-v1';
 export interface CompiledScene {
   readonly spec: MotionSpec;
@@ -38,11 +42,13 @@ export function placeOf(node: SceneNode, copy: Copy, state: NodeState): Vec2 {
   return [node.position[0] + copy.offset[0] + x * Math.cos(angle) - y * Math.sin(angle), node.position[1] + copy.offset[1] + x * Math.sin(angle) + y * Math.cos(angle)];
 }
 /** Turn one copy's state into a drawable frame. */
-export function finishFrame(node: SceneNode, copy: Copy, index: number, state: NodeState): TextFrame | PathFrame {
-  const common = { position: placeOf(node, copy, state), rotation: copy.rotation + copy.flip[0] * copy.flip[1] * state.rotation, scale: copy.scale * state.scale,
-    stretch: [state.stretch[0] * copy.flip[0], state.stretch[1] * copy.flip[1]] as Vec2, opacity: clamp(copy.opacity * state.opacity), color: state.color,
+export function finishFrame(node: SceneNode, copy: Copy, index: number, state: NodeState): Exclude<FrameNode, { type: 'overlay' }> {
+  const common = { position: placeOf(node, copy, state), rotation: (node.rotation ?? 0) + copy.rotation + copy.flip[0] * copy.flip[1] * state.rotation, scale: (node.scale ?? 1) * copy.scale * state.scale,
+    stretch: [state.stretch[0] * copy.flip[0] * (node.stretch?.[0] ?? 1), state.stretch[1] * copy.flip[1] * (node.stretch?.[1] ?? 1)] as Vec2, opacity: clamp((node.opacity ?? 1) * copy.opacity * state.opacity), color: state.color,
     filters: state.filters, copy: index, ...(state.pieces ? { pieces: state.pieces } : {}) };
   if (node.type === 'text') return { ...node, ...common, lines: state.lines };
+  if (node.type === 'group') return { ...node, ...common, children: [] };
+  if (node.type !== 'path') return { ...node, ...common };
   const whole = state.trimStart <= 0 && state.trim >= 1;
   const visiblePoints = whole ? node.points.map((point): Vec2 => [...point]) : slice(node.points, Boolean(node.closed), state.trimStart, state.trim);
   // Without a geometry recipe the node draws its own, possibly trimmed, outline.
@@ -78,8 +84,10 @@ export function compileScene(input: unknown): CompiledScene {
     return copies.sort((a, b) => b.ghost - a.ghost);
   }
 
-  function evaluateNode(node: SceneNode, time: number, continuous: boolean): (TextFrame | PathFrame | OverlayFrame)[] {
+  function evaluateNode(node: SceneNode, time: number, continuous: boolean): FrameNode[] {
     const nodePlans = plans.get(node.id) ?? [];
+    const tracks = scene.animations?.filter(track => track.target === node.id) ?? [];
+    const sourceAt = (at: number) => sampleNode(node, tracks, at);
     const context = contextFor(node, continuous);
     const copies = arrange(node, time, context);
     const curves = nodePlans.filter((plan) => plan.role === 'timing').map((plan) => {
@@ -89,25 +97,39 @@ export function compileScene(input: unknown): CompiledScene {
     });
     const ease = (clip: Clip): Curve => curves.find((entry) => clip.startFrame >= entry.start && clip.startFrame < entry.end)?.curve ?? smooth;
     const stateAt = (copy: Copy, at: number, withFeel: boolean): NodeState => {
-      const state = freshState(node);
+      const source = sourceAt(at); const state = freshState(source); const sampleContext = contextFor(source, continuous);
       for (const plan of nodePlans) {
         if (plan.role !== 'property' && plan.role !== 'loop' && !(withFeel && plan.role === 'feel')) continue;
         // Of the clips taking turns, the latest one that has started is in effect; before any starts, the earliest is.
         const started = plan.clip.startFrame <= at;
         if (plan.rivals.some((other) => started ? other.startFrame <= at && other.startFrame > plan.clip.startFrame : other.startFrame < plan.clip.startFrame)) continue;
-        plan.recipe(context(plan, at, state, copy, { ease: ease(plan.clip), pastPosition: (frames) => placeOf(node, copy, stateAt(copy, at - frames, false)) }));
+        plan.recipe(sampleContext(plan, at, state, copy, { ease: ease(plan.clip), pastPosition: (frames) => placeOf(sourceAt(at - frames), copy, stateAt(copy, at - frames, false)) }));
       }
       return state;
     };
-    const frames: (TextFrame | PathFrame | OverlayFrame)[] = [];
+    const frames: FrameNode[] = [];
     for (const plan of nodePlans) {
       if (plan.role !== 'overlay') continue;
       const state = freshState(node);
       plan.recipe(context(plan, time, state, single(), { history: (length, samples) => copies.filter((copy) => copy.ghost === 0).map((copy) =>
-        Array.from({ length: samples }, (_, i) => placeOf(node, copy, stateAt(copy, time - copy.delay - length * (samples > 1 ? 1 - i / (samples - 1) : 0), false)))) }));
-      frames.push({ type: 'overlay', id: `${node.id}:${plan.clip.id}`, color: node.color, layers: state.layers ?? [] });
+        Array.from({ length: samples }, (_, i) => {
+          const at = time - copy.delay - length * (samples > 1 ? 1 - i / (samples - 1) : 0);
+          return placeOf(sourceAt(at), copy, stateAt(copy, at, false));
+        })) }));
+      frames.push({ type: 'overlay', id: `${node.id}:${plan.clip.id}`, color: sourceAt(time).color, layers: state.layers ?? [] });
     }
-    copies.forEach((copy, index) => frames.push(finishFrame(node, copy, index, stateAt(copy, time - copy.delay, true))));
+    copies.forEach((copy, index) => {
+      const rendered = finishFrame(sourceAt(time - copy.delay), copy, index, stateAt(copy, time - copy.delay, true));
+      if (rendered.type === 'group') rendered.children = scene.nodes.filter(child => child.parent === node.id).flatMap((child, i) => {
+        const [x, y] = layoutOffset(node, i);
+        return evaluateNode(child, time, continuous).map(frame => {
+          if (frame.type !== 'overlay') frame.position = [frame.position[0] + x, frame.position[1] + y];
+          else if (x || y) frame.offset = [x, y];
+          return frame;
+        });
+      });
+      frames.push(rendered);
+    });
     return frames;
   }
 
@@ -119,7 +141,7 @@ export function compileScene(input: unknown): CompiledScene {
       if (continuous && !canContinueScene(scene)) throw new RangeError('Continuous time requires a scene made only of ongoing and timeless recipes.');
       // Evaluation permits subframes and clamps outside the scene to its boundary.
       const sampled = continuous ? Math.max(0, frame) : clamp(frame, 0, scene.durationFrames);
-      return { frame: sampled, timeSeconds: sampled * scene.fps.denominator / scene.fps.numerator, nodes: scene.nodes.flatMap((node) => evaluateNode(node, sampled, continuous)) };
+      return { frame: sampled, timeSeconds: sampled * scene.fps.denominator / scene.fps.numerator, nodes: scene.nodes.filter(node => !node.parent).flatMap((node) => evaluateNode(node, sampled, continuous)) };
     },
     copies(nodeId: string): readonly Copy[] {
       const node = scene.nodes.find((item) => item.id === nodeId);

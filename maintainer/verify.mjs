@@ -50,17 +50,39 @@ try {
   }
   const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['scripts/motion.mjs', ...args], { cwd: root, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })).result;
   assert.equal(cli('doctor', '--backend', 'js').available, true);
+  assert.equal(cli('doctor', '--backend', 'js').version, manifest.version);
   const catalog = JSON.parse(await readFile(join(root, 'assets/catalog-index.json'), 'utf8'));
   assert.equal(catalog.length, manifest.atoms2d);
   for (const entry of catalog) assert.equal(cli('describe', entry.id).id, entry.id);
   const examples = (await readdir(join(root, 'assets/examples'))).filter(name => name.endsWith('.scene.json'));
   for (const name of examples) assert.equal(cli('validate', `assets/examples/${name}`).valid, true);
+  const patterns = cli('patterns').patterns;
+  assert.equal(patterns.length, 1);
+  let patternExamples = 0;
+  for (const pattern of patterns) {
+    const validation = JSON.parse(await readFile(join(root, `assets/patterns/${pattern.id}/validation.json`), 'utf8'));
+    assert.equal(validation.status, pattern.status);
+    for (const example of pattern.examples) {
+      const prefix = `assets/patterns/${pattern.id}/${example}`;
+      if (pattern.status === 'validated-example') {
+        const evidence = validation.examples.find(item => item.name === example);
+        assert.equal(evidence?.sceneSha256, hash(await readFile(join(root, `${prefix}.scene.json`))), 'Example changed since visual review; inspect it again or return the pattern to candidate.');
+      }
+      assert.equal(cli('validate', `${prefix}.scene.json`).valid, true);
+      const delivery = cli('compose', `${prefix}.brief.json`, '--out', join(temp, example));
+      const controls = cli('controls', delivery.authoring, '--scene', delivery.scene);
+      assert.equal(controls.bindingsVerified, true);
+      assert.equal(controls.savedValuesOnly, true);
+      assert.equal(controls.record.pattern.id, pattern.id);
+      patternExamples++;
+    }
+  }
   const scene = join(temp, 'title.scene.json');
   cli('scaffold', 'text.lines', '--out', scene, '--text', '把想法\\n变成动作');
   assert.equal(cli('validate', scene).valid, true);
   cli('preview', scene, '--out', join(temp, 'title.html'));
   assert.ok((await stat(join(temp, 'title.html'))).size < 500_000);
-  console.log(JSON.stringify({ verified: true, atoms: catalog.length, examples: examples.length, files: manifest.files.length, zipBytes: zip.length, sha256: metadata.sha256 }));
+  console.log(JSON.stringify({ verified: true, atoms: catalog.length, examples: examples.length, patterns: patterns.length, patternExamples, files: manifest.files.length, zipBytes: zip.length, sha256: metadata.sha256 }));
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

@@ -1,6 +1,6 @@
 import { applyFilter, filterReach } from '../../core/src/raster.js';
 import type { AtomOutput } from '../../core/src/atom.js';
-import type { Filter, Layer, Line, Piece, Region, Shape, Vec2 } from '../../core/src/types.js';
+import type { Filter, Layer, Line, Matrix2D, Piece, Region, Shape, Vec2 } from '../../core/src/types.js';
 
 type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 /** Everything needed to paint one subject: an evaluated node, one copy of it, or an atom's output. */
@@ -9,6 +9,8 @@ export interface Subject {
   layers?: readonly Layer[]; lines?: readonly Line[]; pieces?: readonly Piece[]; filters?: readonly Filter[];
   /** CSS font for text subjects; it must already be loaded. */
   font?: string;
+  /** Complete scene transform, including parents and pivot, when drawing a scene node. */
+  matrix?: Matrix2D;
 }
 interface Box { minX: number; minY: number; width: number; height: number }
 const red = [255, 51, 85]; const cyan = [34, 211, 238];
@@ -124,8 +126,11 @@ export function drawSubject(context: Context, subject: Subject, pixelScale = 1):
   const stretch = subject.stretch ?? [1, 1];
   if (Math.abs(subject.scale * stretch[0] * stretch[1]) < 1e-9 || subject.opacity <= 0) return;
   const place = (target: Context) => {
-    target.translate(...subject.position); target.rotate(subject.rotation * Math.PI / 180);
-    target.scale(subject.scale * stretch[0], subject.scale * stretch[1]);
+    if (subject.matrix) target.transform(...subject.matrix);
+    else {
+      target.translate(...subject.position); target.rotate(subject.rotation * Math.PI / 180);
+      target.scale(subject.scale * stretch[0], subject.scale * stretch[1]);
+    }
     target.lineCap = 'round'; target.lineJoin = 'round'; target.textBaseline = 'alphabetic'; target.textAlign = 'left';
     if (subject.font) target.font = subject.font;
   };

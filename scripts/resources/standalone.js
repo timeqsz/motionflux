@@ -730,67 +730,362 @@
     ["generate", ["gen.particles", "gen.shatter", "gen.ripple", "gen.trace", "gen.link"]]
   ];
   var placement = /* @__PURE__ */ new Map();
-  table.forEach(([family, ids], column) => ids.forEach((id2, index) => placement.set(id2, { family, cell: [tableRows - ids.length + index + 1, column + 1] })));
+  table.forEach(([family, ids], column) => ids.forEach((id4, index) => placement.set(id4, { family, cell: [tableRows - ids.length + index + 1, column + 1] })));
   var capabilities = definitions.map((definition) => {
     const placed = placement.get(definition.id);
     if (!placed) throw new Error(`Capability ${definition.id} has no cell in the periodic table.`);
     const entry = definition;
     return { version: "0.1.0", targets: ["path"], backend: { js: "implemented" }, engine: "vector", time: "finite", ...entry, id: definition.id, ...placed };
   });
-  function getCapability(id2) {
-    return capabilities.find((entry) => entry.id === id2);
+  function getCapability(id4) {
+    return capabilities.find((entry) => entry.id === id4);
+  }
+
+  // packages/core/src/study.ts
+  var object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+  var text2 = { type: "string", minLength: 1, maxLength: 2e3 };
+  var id = { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]*$", minLength: 1, maxLength: 64 };
+  var seconds = { type: "number", minimum: 0, maximum: 86400 };
+  var array = (items, minItems = 0) => ({ type: "array", items, minItems, maxItems: 1e3 });
+  var event = object({
+    id,
+    subject: id,
+    from: seconds,
+    to: seconds,
+    status: { enum: ["observed", "inferred", "unknown"] },
+    description: text2,
+    evidence: array(object({ at: seconds, note: text2 }))
+  });
+  var studySchema = object({
+    studyVersion: { const: "0.1" },
+    title: text2,
+    source: object({ video: text2, from: seconds, to: seconds }),
+    subjects: array(object({ id, description: text2 }), 1),
+    events: array({ ...event, properties: {
+      ...event.properties,
+      implementation: object({
+        targets: array(id, 1),
+        clips: array(id),
+        animations: array(id),
+        method: { enum: ["direct", "approximate", "custom"] },
+        note: text2
+      })
+    } }, 1)
+  });
+  function studyIssues(study, scene) {
+    const issues = [];
+    const add = (path, message) => issues.push({ path, code: "STUDY", message });
+    if (study.source.to <= study.source.from) add("$.source.to", "Source end must follow source start, in seconds.");
+    const subjectIds = /* @__PURE__ */ new Set();
+    study.subjects.forEach((subject, i) => {
+      if (subjectIds.has(subject.id)) add(`$.subjects[${i}].id`, "Subject IDs must be unique.");
+      subjectIds.add(subject.id);
+    });
+    const eventIds = /* @__PURE__ */ new Set();
+    study.events.forEach((event2, i) => {
+      const at = `$.events[${i}]`;
+      if (eventIds.has(event2.id)) add(`${at}.id`, "Event IDs must be unique.");
+      eventIds.add(event2.id);
+      if (!subjectIds.has(event2.subject)) add(`${at}.subject`, "Reference an existing subject.");
+      if (event2.to <= event2.from || event2.from < study.source.from || event2.to > study.source.to) add(at, "Event must have positive duration and fit in the source range.");
+      if (event2.status !== "unknown" && !event2.evidence.length) add(`${at}.evidence`, "Observations and inferences require timestamped evidence.");
+      for (const evidence of event2.evidence) if (evidence.at < event2.from || evidence.at > event2.to) add(`${at}.evidence`, "Evidence timestamp must lie within this event.");
+      if (!scene || !event2.implementation) return;
+      const binding = event2.implementation;
+      for (const target of binding.targets) if (!scene.nodes.some((node) => node.id === target)) add(`${at}.implementation.targets`, `Missing scene object ${target}.`);
+      for (const [field, collection] of [["clips", scene.clips], ["animations", scene.animations ?? []]]) for (const id4 of binding[field]) {
+        const item = collection.find((item2) => item2.id === id4);
+        if (!item) add(`${at}.implementation.${field}`, `Missing ${field} ID ${id4}.`);
+        else if (!binding.targets.includes(item.target)) add(`${at}.implementation.${field}`, `${id4} must animate a bound target.`);
+      }
+    });
+    return issues;
   }
 
   // packages/core/src/schema.ts
   var number = (minimum, maximum) => ({ type: "number", minimum, maximum });
   var integer = (minimum, maximum) => ({ type: "integer", minimum, maximum });
   var string = (maxLength, pattern) => ({ type: "string", minLength: 1, maxLength, ...pattern ? { pattern } : {} });
-  var object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
-  var id = string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$");
+  var object2 = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+  var id2 = string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$");
   var color2 = string(7, "^#[0-9a-fA-F]{6}$");
   var point = { type: "array", items: number(-32768, 32768), minItems: 2, maxItems: 2 };
-  var baseNode = { id, position: point, color: color2 };
-  var textNode = object({
+  var baseNode = { id: id2, position: point, color: color2 };
+  var textNode = object2({
     ...baseNode,
     type: { const: "text" },
     text: string(2e3),
-    font: { ...id, description: "system and mono use the device sans-serif or monospace font without a download; otherwise reference a declared font asset." },
+    font: { ...id2, description: "system and mono use the device sans-serif or monospace font without a download; otherwise reference a declared font asset." },
     fontSize: number(1, 512),
     lineHeight: number(1, 1024)
   });
   var pathFields = { ...baseNode, type: { const: "path" }, points: { type: "array", items: point, minItems: 2, maxItems: 1e3 }, strokeWidth: number(0.1, 100) };
-  var pathNode = { ...object(pathFields), properties: { ...pathFields, closed: { type: "boolean" }, fill: { type: "boolean" } } };
+  var pathNode = { ...object2(pathFields), properties: { ...pathFields, closed: { type: "boolean" }, fill: { type: "boolean" } } };
+  var legacyScene = object2({
+    specVersion: { const: "0.1" },
+    seed: integer(0, 4294967295),
+    canvas: object2({ width: integer(16, 4096), height: integer(16, 4096), background: color2 }),
+    fps: object2({ numerator: integer(1, 12e4), denominator: integer(1, 1e4) }),
+    durationFrames: integer(1, 18e3),
+    assets: { type: "object", additionalProperties: object2({
+      type: { const: "font" },
+      src: string(200, "^assets/[a-zA-Z0-9_-]+\\.(otf|ttf|woff2)$"),
+      sha256: string(64, "^[0-9a-f]{64}$"),
+      family: string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$"),
+      postscriptName: string(100)
+    }) },
+    nodes: { type: "array", items: { oneOf: [textNode, pathNode] }, minItems: 1, maxItems: 100 },
+    clips: { type: "array", maxItems: 300, items: { oneOf: capabilities.map((entry) => object2({
+      id: id2,
+      target: id2,
+      recipe: { const: entry.id },
+      startFrame: integer(0, 17999),
+      durationFrames: integer(1, 18e3),
+      fillAfter: { const: "hold" },
+      params: object2(Object.fromEntries(Object.entries(entry.params).map(([key, parameter]) => [
+        key,
+        parameter.type === "number" ? { type: parameter.integer ? "integer" : "number", minimum: parameter.minimum, maximum: parameter.maximum, description: `${parameter.title} (${parameter.unit})` } : parameter.type === "color" ? { ...color2, description: parameter.title } : { type: "string", enum: parameter.enum }
+      ])))
+    })) } }
+  });
+  var transform = { parent: id2, pivot: point, rotation: number(-36e4, 36e4), scale: number(0, 100), opacity: number(0, 1), stretch: point };
+  var extendNode = (schema) => ({ ...schema, properties: { ...schema.properties, ...transform } });
+  var vectorNode = object2({
+    ...baseNode,
+    type: { const: "vector" },
+    fill: { type: "boolean" },
+    strokeWidth: number(0.1, 100),
+    commands: { type: "array", minItems: 2, maxItems: 1e3, items: { oneOf: [
+      ...["M", "L"].map((op) => object2({ op: { const: op }, to: point })),
+      object2({ op: { const: "Q" }, control: point, to: point }),
+      object2({ op: { const: "C" }, control1: point, control2: point, to: point }),
+      object2({ op: { const: "Z" } })
+    ] } }
+  });
+  var size = { width: number(1, 4096), height: number(1, 4096) };
+  var groupNode = { ...object2({ ...baseNode, type: { const: "group" } }), properties: {
+    ...baseNode,
+    type: { const: "group" },
+    layout: object2({
+      type: { enum: ["row", "column", "grid"] },
+      cell: { ...point, items: number(0, 4096) },
+      gap: { ...point, items: number(0, 4096) },
+      columns: integer(1, 100)
+    })
+  } };
+  var imageNode = object2({ ...baseNode, type: { const: "image" }, asset: id2, ...size, fit: { enum: ["contain", "cover", "stretch"] } });
+  var customNode = object2({
+    ...baseNode,
+    type: { const: "custom" },
+    module: id2,
+    ...size,
+    params: { type: "object", additionalProperties: number(-1e6, 1e6) }
+  });
+  var keyframe = { ...object2({ frame: number(0, 18e3), value: { oneOf: [number(-1e6, 1e6), color2] } }), properties: {
+    frame: number(0, 18e3),
+    value: { oneOf: [number(-1e6, 1e6), color2] },
+    easing: { oneOf: [{ enum: ["linear", "smooth", "hold"] }, { type: "array", items: number(-10, 10), minItems: 4, maxItems: 4 }] }
+  } };
+  var modernScene = { ...legacyScene, properties: {
+    ...legacyScene.properties,
+    specVersion: { const: "0.2" },
+    assets: { type: "object", additionalProperties: { oneOf: [
+      legacyScene.properties.assets.additionalProperties,
+      object2({ type: { const: "image" }, src: string(200, "^assets/[a-zA-Z0-9_-]+\\.(png|jpg|jpeg|webp)$"), sha256: string(64, "^[0-9a-f]{64}$") }),
+      object2({ type: { const: "module" }, src: string(200, "^assets/[a-zA-Z0-9_-]+\\.mjs$"), sha256: string(64, "^[0-9a-f]{64}$") })
+    ] } },
+    nodes: { ...legacyScene.properties.nodes, items: { oneOf: [textNode, pathNode, vectorNode, imageNode, groupNode, customNode].map(extendNode) } },
+    animations: { type: "array", maxItems: 500, items: object2({
+      id: id2,
+      target: id2,
+      property: string(100, "^(position\\.[xy]|rotation|scale|opacity|stretch\\.[xy]|color|fontSize|strokeWidth|width|height|params\\.[a-zA-Z][a-zA-Z0-9_-]*)$"),
+      keyframes: { type: "array", minItems: 1, maxItems: 1e3, items: keyframe }
+    }) },
+    // The study validator owns its domain rules and can also validate an independent analysis document.
+    study: studySchema
+  } };
   var motionSchema = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "urn:motionflux:spec:0.1",
-    ...object({
-      specVersion: { const: "0.1" },
-      seed: integer(0, 4294967295),
-      canvas: object({ width: integer(16, 4096), height: integer(16, 4096), background: color2 }),
-      fps: object({ numerator: integer(1, 12e4), denominator: integer(1, 1e4) }),
-      durationFrames: integer(1, 18e3),
-      assets: { type: "object", additionalProperties: object({
-        type: { const: "font" },
-        src: string(200, "^assets/[a-zA-Z0-9_-]+\\.(otf|ttf|woff2)$"),
-        sha256: string(64, "^[0-9a-f]{64}$"),
-        family: string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$"),
-        postscriptName: string(100)
-      }) },
-      nodes: { type: "array", items: { oneOf: [textNode, pathNode] }, minItems: 1, maxItems: 100 },
-      clips: { type: "array", maxItems: 300, items: { oneOf: capabilities.map((entry) => object({
-        id,
-        target: id,
-        recipe: { const: entry.id },
-        startFrame: integer(0, 17999),
-        durationFrames: integer(1, 18e3),
-        fillAfter: { const: "hold" },
-        params: object(Object.fromEntries(Object.entries(entry.params).map(([key, parameter]) => [
-          key,
-          parameter.type === "number" ? { type: parameter.integer ? "integer" : "number", minimum: parameter.minimum, maximum: parameter.maximum, description: `${parameter.title} (${parameter.unit})` } : parameter.type === "color" ? { ...color2, description: parameter.title } : { type: "string", enum: parameter.enum }
-        ])))
-      })) } }
-    })
+    $id: "urn:motionflux:spec:0.2",
+    oneOf: [legacyScene, modernScene]
   };
+
+  // packages/core/src/math.ts
+  var clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+  var lerp = (a, b, t) => a + (b - a) * t;
+  var smooth = (t) => {
+    const u = clamp(t);
+    return u * u * (3 - 2 * u);
+  };
+  function hashId(seed, id4) {
+    let value = seed >>> 0;
+    for (let i = 0; i < id4.length; i++) value = Math.imul(value ^ id4.charCodeAt(i), 16777619) >>> 0;
+    return value;
+  }
+  function sample(seed, index) {
+    let value = (seed ^ Math.imul(index, 2654435761)) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 569420461);
+    value = Math.imul(value ^ value >>> 15, 1935289751);
+    return ((value ^ value >>> 15) >>> 0) / 4294967295 * 2 - 1;
+  }
+  function noise(seed, time) {
+    const index = Math.floor(time);
+    return lerp(sample(seed, index), sample(seed, index + 1), smooth(time - index));
+  }
+  var TAU = Math.PI * 2;
+  var fract = (value) => value - Math.floor(value);
+  function rand(seed, a = 0, b = 0, c = 0) {
+    let value = (seed ^ Math.imul(a | 0, 2654435761) ^ Math.imul(b | 0, 2246822507) ^ Math.imul(c | 0, 3266489909)) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 569420461);
+    value = Math.imul(value ^ value >>> 15, 1935289751);
+    return ((value ^ value >>> 15) >>> 0) / 4294967296;
+  }
+  function cubicBezier(x1, y1, x2, y2, t) {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    const axis = (a, b, u) => 3 * a * u * (1 - u) ** 2 + 3 * b * u * u * (1 - u) + u ** 3;
+    let low = 0;
+    let high = 1;
+    for (let i = 0; i < 32; i++) {
+      const middle = (low + high) / 2;
+      if (axis(x1, x2, middle) < t) low = middle;
+      else high = middle;
+    }
+    return axis(y1, y2, (low + high) / 2);
+  }
+  function mixColor(from, to, t) {
+    const linear = (hex, i) => {
+      const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    const encode = (v) => Math.round(clamp(v <= 31308e-7 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255).toString(16).padStart(2, "0");
+    const u = clamp(t);
+    return `#${[1, 3, 5].map((i) => encode(lerp(linear(from, i), linear(to, i), u))).join("")}`;
+  }
+
+  // packages/core/src/animation.ts
+  function supportsNode(recipe, node) {
+    const entry = getCapability(recipe);
+    if (node.type === "text" || node.type === "path") return entry.targets.includes(node.type);
+    return entry.role === "timing" || entry.role === "loop" || ["prop.move", "prop.rotate", "prop.scale", "prop.opacity"].includes(recipe) || node.type === "vector" && recipe === "prop.color";
+  }
+  function animationIssues(scene) {
+    const issues = [];
+    const ids = new Set(scene.clips.map((clip) => clip.id));
+    const properties = /* @__PURE__ */ new Set();
+    const add = (path, message) => issues.push({ path, code: "ANIMATION", message });
+    (scene.animations ?? []).forEach((track, i) => {
+      const path = `$.animations[${i}]`;
+      const node = scene.nodes.find((node2) => node2.id === track.target);
+      if (ids.has(track.id)) add(`${path}.id`, "Animation and clip IDs must be unique.");
+      ids.add(track.id);
+      if (!node) {
+        add(`${path}.target`, "Reference an existing object.");
+        return;
+      }
+      const property = track.property;
+      const domain = property.split(".")[0];
+      const supported = ["position", "rotation", "scale", "opacity", "stretch"].includes(domain) || domain === "color" && ["text", "path", "vector"].includes(node.type) || domain === "fontSize" && node.type === "text" || domain === "strokeWidth" && ["path", "vector"].includes(node.type) || ["width", "height"].includes(domain) && ["image", "custom"].includes(node.type) || domain === "params" && node.type === "custom" && Object.hasOwn(node.params, property.slice(7));
+      if (!supported) add(`${path}.property`, `${property} is not editable on ${node.type}.`);
+      const key = `${track.target}:${property}`;
+      if (properties.has(key)) add(path, "Use one track per target property.");
+      properties.add(key);
+      if (scene.clips.some((clip) => clip.target === track.target && getCapability(clip.recipe).writes.includes(domain)))
+        add(path, `A clip already writes ${domain}; choose a keyframe track or a recipe for this property.`);
+      const limits = {
+        opacity: [0, 1],
+        scale: [0, 100],
+        position: [-32768, 32768],
+        stretch: [-100, 100],
+        rotation: [-36e4, 36e4],
+        fontSize: [1, 512],
+        strokeWidth: [0.1, 100],
+        width: [1, 4096],
+        height: [1, 4096],
+        params: [-1e6, 1e6]
+      };
+      track.keyframes.forEach((keyframe2, k) => {
+        const at = `${path}.keyframes[${k}]`;
+        if (keyframe2.frame > scene.durationFrames || k > 0 && keyframe2.frame <= track.keyframes[k - 1].frame) add(at, "Frames must increase strictly and fit inside the scene.");
+        if (domain === "color") {
+          if (typeof keyframe2.value !== "string") add(at, "Color keyframes require #RRGGBB values.");
+        } else {
+          const [min, max] = limits[domain] ?? [-1e6, 1e6];
+          if (typeof keyframe2.value !== "number" || keyframe2.value < min || keyframe2.value > max) add(at, `${property} requires numeric values in ${min}\u2026${max}.`);
+        }
+        if (Array.isArray(keyframe2.easing) && keyframe2.easing.some((n, axis) => n < 0 || n > 1))
+          add(`${at}.easing`, "Cubic B\xE9zier control coordinates must be in 0\u20261; use explicit keyframes for overshoot.");
+      });
+    });
+    return issues;
+  }
+  var bezier = (t, a, b) => 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3;
+  function ease(t, easing) {
+    if (easing === "hold") return 0;
+    if (easing === "smooth") return smooth(t);
+    if (!Array.isArray(easing)) return t;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 40; i++) {
+      const m = (lo + hi) / 2;
+      if (bezier(m, easing[0], easing[2]) < t) lo = m;
+      else hi = m;
+    }
+    return bezier((lo + hi) / 2, easing[1], easing[3]);
+  }
+  function sampleTrack(track, frame) {
+    const keys = track.keyframes;
+    if (frame <= keys[0].frame) return keys[0].value;
+    const next = keys.findIndex((key) => key.frame > frame);
+    if (next < 0) return keys.at(-1).value;
+    const a = keys[next - 1];
+    const b = keys[next];
+    const t = ease((frame - a.frame) / (b.frame - a.frame), a.easing);
+    return typeof a.value === "string" ? mixColor(a.value, b.value, t) : a.value + (b.value - a.value) * t;
+  }
+  function sampleNode(source, tracks, frame) {
+    if (!tracks.length) return source;
+    const node = { ...source };
+    for (const track of tracks) {
+      const value = sampleTrack(track, frame);
+      const property = track.property;
+      if (property.startsWith("position.") || property.startsWith("stretch.")) {
+        const field = property.startsWith("position.") ? "position" : "stretch";
+        node[field] = [...node[field] ?? [1, 1]];
+        node[field][property.endsWith(".x") ? 0 : 1] = value;
+      } else if (property.startsWith("params.") && node.type === "custom") node.params = { ...node.params, [property.slice(7)]: value };
+      else if (property === "fontSize" && node.type === "text") node.fontSize = value;
+      else if (property === "strokeWidth" && (node.type === "path" || node.type === "vector")) {
+        node.strokeWidth = value;
+      } else if ((property === "width" || property === "height") && (node.type === "image" || node.type === "custom")) node[property] = value;
+      else if (property === "color") node.color = value;
+      else if (property === "rotation" || property === "scale" || property === "opacity") node[property] = value;
+    }
+    return node;
+  }
+  var identity = [1, 0, 0, 1, 0, 0];
+  function multiply(a, b) {
+    return [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
+  }
+  function nodeMatrix(node) {
+    const r = node.rotation * Math.PI / 180;
+    const sx = node.scale * node.stretch[0];
+    const sy = node.scale * node.stretch[1];
+    const a = Math.cos(r) * sx;
+    const b = Math.sin(r) * sx;
+    const c = -Math.sin(r) * sy;
+    const d = Math.cos(r) * sy;
+    const [x, y] = node.pivot ?? [0, 0];
+    return [a, b, c, d, node.position[0] - a * x - c * y, node.position[1] - b * x - d * y];
+  }
+  function layoutOffset(node, index) {
+    if (node.type !== "group" || !node.layout) return [0, 0];
+    const { type, cell, gap, columns } = node.layout;
+    return [
+      (type === "column" ? 0 : type === "row" ? index : index % columns) * (cell[0] + gap[0]),
+      (type === "row" ? 0 : type === "column" ? index : Math.floor(index / columns)) * (cell[1] + gap[1])
+    ];
+  }
 
   // packages/core/src/validate.ts
   function check(value, schema, path, issues) {
@@ -804,8 +1099,8 @@
         return errors;
       });
       if (results.filter((errors) => !errors.length).length === 1) return;
-      const object2 = value && typeof value === "object" ? value : {};
-      const selected = schema.oneOf.findIndex((variant) => Object.entries(variant.properties ?? {}).some(([key, field]) => field.const !== void 0 && object2[key] === field.const));
+      const object3 = value && typeof value === "object" ? value : {};
+      const selected = schema.oneOf.findIndex((variant) => Object.entries(variant.properties ?? {}).some(([key, field]) => field.const !== void 0 && object3[key] === field.const));
       if (selected >= 0) issues.push(...results[selected]);
       else issue("Unsupported node type or recipe. Use a catalog entry supported by this version.");
       return;
@@ -869,17 +1164,44 @@
       if (ids.has(node.id)) add(`$.nodes[${i}].id`, "DUPLICATE_ID", "Node ID must be unique.");
       ids.add(node.id);
       if (node.type === "text") {
-        if (node.font !== "system" && node.font !== "mono" && !Object.hasOwn(scene.assets, node.font)) add(`$.nodes[${i}].font`, "MISSING_FONT", "Use system or mono, or declare this font asset and include the matching file.");
+        if (node.font !== "system" && node.font !== "mono" && scene.assets[node.font]?.type !== "font") add(`$.nodes[${i}].font`, "MISSING_FONT", "Use system or mono, or declare this font asset and include the matching file.");
         if (node.text.includes("\r") || node.text.includes("	")) add(`$.nodes[${i}].text`, "TEXT_LAYOUT", "Use explicit LF newlines and spaces, not CR or tabs.");
         if (node.text.split("\n").length > 20) add(`$.nodes[${i}].text`, "TEXT_LAYOUT", "At most 20 explicit lines are supported.");
       }
+      if (node.type === "image" && scene.assets[node.asset]?.type !== "image") add(`$.nodes[${i}].asset`, "MISSING_IMAGE", "Reference a declared image asset.");
+      if (node.type === "custom" && scene.assets[node.module]?.type !== "module") add(`$.nodes[${i}].module`, "MISSING_MODULE", "Reference a declared module asset.");
+      if (node.type === "custom" && Object.keys(node.params).some((key) => !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) || ["__proto__", "constructor", "prototype"].includes(key)))
+        add(`$.nodes[${i}].params`, "PARAMETER", "Use stable parameter names, excluding JavaScript prototype keys.");
+      if (node.type === "vector" && node.commands[0]?.op !== "M") add(`$.nodes[${i}].commands`, "VECTOR", "A vector must start with M.");
+      const ancestors = /* @__PURE__ */ new Set([node.id]);
+      let parent = node.parent;
+      while (parent) {
+        if (ancestors.has(parent)) {
+          add(`$.nodes[${i}].parent`, "PARENT_CYCLE", "Groups must not contain themselves, directly or indirectly.");
+          break;
+        }
+        ancestors.add(parent);
+        const group = scene.nodes.find((item) => item.id === parent);
+        if (group?.type !== "group") {
+          add(`$.nodes[${i}].parent`, "MISSING_GROUP", "Parent must reference a group.");
+          break;
+        }
+        parent = group.parent;
+      }
     });
     const assetFamilies = /* @__PURE__ */ new Set();
-    for (const [id2, asset] of Object.entries(scene.assets)) {
-      if (id2 === "system" || id2 === "mono") add(`$.assets.${id2}`, "ASSET_ID", `${id2} is reserved for a device font; choose another asset ID.`);
-      if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id2)) add(`$.assets.${id2}`, "ASSET_ID", "Use a stable alphanumeric asset ID.");
-      if (assetFamilies.has(asset.family)) add(`$.assets.${id2}.family`, "FONT_FAMILY", "Each font asset must have a unique family.");
-      assetFamilies.add(asset.family);
+    for (const [id4, asset] of Object.entries(scene.assets)) {
+      if (id4 === "system" || id4 === "mono") add(`$.assets.${id4}`, "ASSET_ID", `${id4} is reserved for a device font; choose another asset ID.`);
+      if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id4)) add(`$.assets.${id4}`, "ASSET_ID", "Use a stable alphanumeric asset ID.");
+      if (asset.type === "font") {
+        if (assetFamilies.has(asset.family)) add(`$.assets.${id4}.family`, "FONT_FAMILY", "Each font asset must have a unique family.");
+        assetFamilies.add(asset.family);
+      }
+    }
+    const assetPaths = /* @__PURE__ */ new Set();
+    for (const asset of Object.values(scene.assets)) {
+      if (assetPaths.has(asset.src)) add("$.assets", "ASSET_PATH", "Each asset must have a unique path. Reuse its ID for shared resources.");
+      assetPaths.add(asset.src);
     }
     const clipIds = /* @__PURE__ */ new Set();
     const writers = /* @__PURE__ */ new Map();
@@ -890,7 +1212,7 @@
       const node = scene.nodes.find((node2) => node2.id === clip.target);
       const capability = getCapability(clip.recipe);
       if (!node) add(`${path}.target`, "MISSING_TARGET", "Reference an existing node ID.");
-      else if (!capability.targets.includes(node.type)) add(`${path}.target`, "TARGET_TYPE", `${clip.recipe} cannot target ${node.type}.`);
+      else if (!supportsNode(clip.recipe, node)) add(`${path}.target`, "TARGET_TYPE", `${clip.recipe} cannot target ${node.type}.`);
       if (clip.startFrame + clip.durationFrames > scene.durationFrames) add(`${path}.durationFrames`, "CLIP_BOUNDS", "Clip must fit inside the scene.");
       if (capability.role === "property") for (const property of capability.writes) {
         const key = `${clip.target}:${property}`;
@@ -904,6 +1226,8 @@
       if (node?.type === "text" && clip.recipe === "text.chars" && ([...node.text].filter((character) => character.trim()).length - 1) * Number(clip.params.stepFrames) >= clip.durationFrames)
         add(`${path}.params.stepFrames`, "STAGGER_BOUNDS", "Leave positive animation time for every character within the clip.");
     });
+    issues.push(...animationIssues(scene));
+    if (scene.study) issues.push(...studyIssues(scene.study, scene).map((issue) => ({ ...issue, path: issue.path.replace("$", "$.study") })));
     return issues;
   }
   var SceneValidationError = class extends Error {
@@ -916,59 +1240,6 @@
   function assertScene(value) {
     const issues = validateScene(value);
     if (issues.length) throw new SceneValidationError(issues);
-  }
-
-  // packages/core/src/math.ts
-  var clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
-  var lerp = (a, b, t) => a + (b - a) * t;
-  var smooth = (t) => {
-    const u = clamp(t);
-    return u * u * (3 - 2 * u);
-  };
-  function hashId(seed, id2) {
-    let value = seed >>> 0;
-    for (let i = 0; i < id2.length; i++) value = Math.imul(value ^ id2.charCodeAt(i), 16777619) >>> 0;
-    return value;
-  }
-  function sample(seed, index) {
-    let value = (seed ^ Math.imul(index, 2654435761)) >>> 0;
-    value = Math.imul(value ^ value >>> 16, 569420461);
-    value = Math.imul(value ^ value >>> 15, 1935289751);
-    return ((value ^ value >>> 15) >>> 0) / 4294967295 * 2 - 1;
-  }
-  function noise(seed, time) {
-    const index = Math.floor(time);
-    return lerp(sample(seed, index), sample(seed, index + 1), smooth(time - index));
-  }
-  var TAU = Math.PI * 2;
-  var fract = (value) => value - Math.floor(value);
-  function rand(seed, a = 0, b = 0, c = 0) {
-    let value = (seed ^ Math.imul(a | 0, 2654435761) ^ Math.imul(b | 0, 2246822507) ^ Math.imul(c | 0, 3266489909)) >>> 0;
-    value = Math.imul(value ^ value >>> 16, 569420461);
-    value = Math.imul(value ^ value >>> 15, 1935289751);
-    return ((value ^ value >>> 15) >>> 0) / 4294967296;
-  }
-  function cubicBezier(x1, y1, x2, y2, t) {
-    if (t <= 0) return 0;
-    if (t >= 1) return 1;
-    const axis = (a, b, u) => 3 * a * u * (1 - u) ** 2 + 3 * b * u * u * (1 - u) + u ** 3;
-    let low = 0;
-    let high = 1;
-    for (let i = 0; i < 32; i++) {
-      const middle = (low + high) / 2;
-      if (axis(x1, x2, middle) < t) low = middle;
-      else high = middle;
-    }
-    return axis(y1, y2, (low + high) / 2);
-  }
-  function mixColor(from, to, t) {
-    const linear = (hex, i) => {
-      const v = parseInt(hex.slice(i, i + 2), 16) / 255;
-      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-    };
-    const encode = (v) => Math.round(clamp(v <= 31308e-7 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255).toString(16).padStart(2, "0");
-    const u = clamp(t);
-    return `#${[1, 3, 5].map((i) => encode(lerp(linear(from, i), linear(to, i), u))).join("")}`;
   }
 
   // packages/core/src/geometry.ts
@@ -1476,7 +1747,7 @@
       });
     }
   };
-  var text2 = { "text.chars": textChars, "text.lines": textLines, "text.decode": textDecode, "text.type": textType, "text.count": textCount, "text.tracking": textTracking };
+  var text3 = { "text.chars": textChars, "text.lines": textLines, "text.decode": textDecode, "text.type": textType, "text.count": textCount, "text.tracking": textTracking };
 
   // packages/core/src/recipes/feel.ts
   var feelTrail = (c) => {
@@ -1555,12 +1826,12 @@
         const away = [centre[0] - box2.cx, centre[1] - box2.cy];
         const distance = Math.hypot(...away);
         const local = clamp((c.progress - c.n("delayRatio") * distance / far) / (1 - c.n("delayRatio")));
-        const id2 = (i * count + j) * 2 + half;
-        const push = c.n("forcePx") * (1 - (1 - local) ** 2) * (0.6 + 0.8 * rand(c.seed, id2, 2));
+        const id4 = (i * count + j) * 2 + half;
+        const push = c.n("forcePx") * (1 - (1 - local) ** 2) * (0.6 + 0.8 * rand(c.seed, id4, 2));
         const pose = {
           x: (distance ? away[0] / distance : 0) * push,
           y: (distance ? away[1] / distance : -1) * push + c.n("gravityPx") * local * local,
-          rotation: c.n("spinDeg") * local * (rand(c.seed, id2, 3) - 0.5) * 2,
+          rotation: c.n("spinDeg") * local * (rand(c.seed, id4, 3) - 0.5) * 2,
           ox: centre[0],
           oy: centre[1]
         };
@@ -1612,15 +1883,16 @@
   var generate = { "gen.particles": genParticles, "gen.shatter": genShatter, "gen.ripple": genRipple, "gen.trace": genTrace, "gen.link": genLink };
 
   // packages/core/src/recipes/index.ts
-  var recipes = { ...prop, ...timing, ...loop, ...choreo, ...transition, ...text2, ...feel, ...generate };
+  var recipes = { ...prop, ...timing, ...loop, ...choreo, ...transition, ...text3, ...feel, ...generate };
 
   // packages/core/src/playback.ts
   function canContinueScene(scene) {
     const kinds = scene.clips.map((clip) => getCapability(clip.recipe).time);
-    return kinds.includes("ongoing") && !kinds.includes("finite");
+    return !scene.animations?.length && !scene.nodes.some((node) => node.type === "custom") && kinds.includes("ongoing") && !kinds.includes("finite");
   }
   function loopTiming(scene) {
-    const start = scene.clips.length ? Math.min(...scene.clips.map((clip) => clip.startFrame)) : 0;
+    const starts = [...scene.clips.map((clip) => clip.startFrame), ...(scene.animations ?? []).map((track) => track.keyframes[0].frame)];
+    const start = scene.nodes.some((node) => node.type === "custom") ? 0 : starts.length ? Math.min(scene.durationFrames - 1, ...starts) : 0;
     const end = scene.durationFrames;
     const mode2 = canContinueScene(scene) ? "continuous" : "restart";
     const transitionFrames = mode2 === "continuous" ? 0 : Math.min((end - start) * 0.2, scene.fps.numerator / scene.fps.denominator * 0.2);
@@ -1640,6 +1912,51 @@
     if (timing2.mode === "continuous" && frame === timing2.end && previous > 0 && Math.abs(wrap(previous, timing2.period)) < 1e-7) return previous;
     return Math.floor(Math.max(0, previous) / timing2.period) * timing2.period + Math.max(0, Math.min(timing2.end - timing2.start, frame - timing2.start));
   }
+
+  // packages/core/src/authoring.ts
+  var color3 = string(7, "^#[0-9a-fA-F]{6}$");
+  var id3 = string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$");
+  var brandSchema = object2({
+    name: string(80),
+    palette: object2({ background: color3, ink: color3, muted: color3, accent: color3 }),
+    typography: object2({ headlineRatio: number(0.06, 0.18), bodyRatio: number(0.018, 0.045) }),
+    motion: object2({
+      enterSeconds: number(0.2, 2),
+      travelSeconds: number(0.3, 2),
+      minReadSeconds: number(0.8, 5),
+      readUnitsPerSecond: number(3, 20),
+      endHoldSeconds: number(0.8, 4)
+    })
+  });
+  var briefSchema = object2({
+    briefVersion: { const: "0.1" },
+    pattern: { const: "title-yields-to-product" },
+    canvas: object2({ width: integer(320, 1920), height: integer(320, 1920) }),
+    fps: integer(24, 60),
+    durationSeconds: number(4, 30),
+    copy: object2({ headline: string(160), detail: string(240), closing: string(100) }),
+    product: object2({ src: string(300), sha256: string(64, "^[0-9a-f]{64}$"), license: string(500) }),
+    brand: brandSchema
+  });
+  var controlSchema = object2({
+    id: id3,
+    label: string(100),
+    collection: { enum: ["nodes", "animations", "assets", "scene"] },
+    target: string(100),
+    field: string(100),
+    kind: { enum: ["text", "color", "number", "vector", "keyframes", "asset"] },
+    unit: string(100),
+    note: string(500)
+  });
+  var authoringSchema = object2({
+    authoringVersion: { const: "0.1" },
+    pattern: object2({ id: id3, version: string(32) }),
+    origin: { const: "original" },
+    brand: brandSchema,
+    assetLicense: string(500),
+    decisions: { type: "array", items: string(1e3), maxItems: 30 },
+    controls: { type: "array", items: controlSchema, minItems: 1, maxItems: 100 }
+  });
 
   // packages/core/src/raster.ts
   function box(src, width, height, radius, horizontal) {
@@ -1767,7 +2084,7 @@
     trimStart: 0,
     trim: 1,
     filters: [],
-    lines: node.type === "text" ? node.text.split("\n").map((text3, i) => ({ text: text3, y: i * node.lineHeight, opacity: 1 })) : []
+    lines: node.type === "text" ? node.text.split("\n").map((text4, i) => ({ text: text4, y: i * node.lineHeight, opacity: 1 })) : []
   });
   function placeOf(node, copy, state) {
     const angle = copy.rotation * Math.PI / 180;
@@ -1778,16 +2095,18 @@
   function finishFrame(node, copy, index, state) {
     const common = {
       position: placeOf(node, copy, state),
-      rotation: copy.rotation + copy.flip[0] * copy.flip[1] * state.rotation,
-      scale: copy.scale * state.scale,
-      stretch: [state.stretch[0] * copy.flip[0], state.stretch[1] * copy.flip[1]],
-      opacity: clamp(copy.opacity * state.opacity),
+      rotation: (node.rotation ?? 0) + copy.rotation + copy.flip[0] * copy.flip[1] * state.rotation,
+      scale: (node.scale ?? 1) * copy.scale * state.scale,
+      stretch: [state.stretch[0] * copy.flip[0] * (node.stretch?.[0] ?? 1), state.stretch[1] * copy.flip[1] * (node.stretch?.[1] ?? 1)],
+      opacity: clamp((node.opacity ?? 1) * copy.opacity * state.opacity),
       color: state.color,
       filters: state.filters,
       copy: index,
       ...state.pieces ? { pieces: state.pieces } : {}
     };
     if (node.type === "text") return { ...node, ...common, lines: state.lines };
+    if (node.type === "group") return { ...node, ...common, children: [] };
+    if (node.type !== "path") return { ...node, ...common };
     const whole = state.trimStart <= 0 && state.trim >= 1;
     const visiblePoints = whole ? node.points.map((point2) => [...point2]) : slice(node.points, Boolean(node.closed), state.trimStart, state.trim);
     const layers = state.layers ?? [{ blend: "normal", filters: [], shapes: visiblePoints.length >= 2 ? [{ paths: [visiblePoints], closed: Boolean(node.closed) && whole, fill: Boolean(node.fill) && whole, strokeWidth: node.strokeWidth, opacity: 1 }] : [] }];
@@ -1837,6 +2156,8 @@
     }
     function evaluateNode(node, time, continuous) {
       const nodePlans = plans.get(node.id) ?? [];
+      const tracks = scene.animations?.filter((track) => track.target === node.id) ?? [];
+      const sourceAt = (at) => sampleNode(node, tracks, at);
       const context = contextFor(node, continuous);
       const copies = arrange(node, time, context);
       const curves = nodePlans.filter((plan) => plan.role === "timing").map((plan) => {
@@ -1846,14 +2167,16 @@
         } }));
         return { start: plan.clip.startFrame, end: plan.clip.startFrame + plan.clip.durationFrames, curve };
       });
-      const ease = (clip) => curves.find((entry) => clip.startFrame >= entry.start && clip.startFrame < entry.end)?.curve ?? smooth;
+      const ease2 = (clip) => curves.find((entry) => clip.startFrame >= entry.start && clip.startFrame < entry.end)?.curve ?? smooth;
       const stateAt = (copy, at, withFeel) => {
-        const state = freshState(node);
+        const source = sourceAt(at);
+        const state = freshState(source);
+        const sampleContext = contextFor(source, continuous);
         for (const plan of nodePlans) {
           if (plan.role !== "property" && plan.role !== "loop" && !(withFeel && plan.role === "feel")) continue;
           const started = plan.clip.startFrame <= at;
           if (plan.rivals.some((other) => started ? other.startFrame <= at && other.startFrame > plan.clip.startFrame : other.startFrame < plan.clip.startFrame)) continue;
-          plan.recipe(context(plan, at, state, copy, { ease: ease(plan.clip), pastPosition: (frames2) => placeOf(node, copy, stateAt(copy, at - frames2, false)) }));
+          plan.recipe(sampleContext(plan, at, state, copy, { ease: ease2(plan.clip), pastPosition: (frames2) => placeOf(sourceAt(at - frames2), copy, stateAt(copy, at - frames2, false)) }));
         }
         return state;
       };
@@ -1861,10 +2184,24 @@
       for (const plan of nodePlans) {
         if (plan.role !== "overlay") continue;
         const state = freshState(node);
-        plan.recipe(context(plan, time, state, single(), { history: (length, samples) => copies.filter((copy) => copy.ghost === 0).map((copy) => Array.from({ length: samples }, (_, i) => placeOf(node, copy, stateAt(copy, time - copy.delay - length * (samples > 1 ? 1 - i / (samples - 1) : 0), false)))) }));
-        frames.push({ type: "overlay", id: `${node.id}:${plan.clip.id}`, color: node.color, layers: state.layers ?? [] });
+        plan.recipe(context(plan, time, state, single(), { history: (length, samples) => copies.filter((copy) => copy.ghost === 0).map((copy) => Array.from({ length: samples }, (_, i) => {
+          const at = time - copy.delay - length * (samples > 1 ? 1 - i / (samples - 1) : 0);
+          return placeOf(sourceAt(at), copy, stateAt(copy, at, false));
+        })) }));
+        frames.push({ type: "overlay", id: `${node.id}:${plan.clip.id}`, color: sourceAt(time).color, layers: state.layers ?? [] });
       }
-      copies.forEach((copy, index) => frames.push(finishFrame(node, copy, index, stateAt(copy, time - copy.delay, true))));
+      copies.forEach((copy, index) => {
+        const rendered = finishFrame(sourceAt(time - copy.delay), copy, index, stateAt(copy, time - copy.delay, true));
+        if (rendered.type === "group") rendered.children = scene.nodes.filter((child) => child.parent === node.id).flatMap((child, i) => {
+          const [x, y] = layoutOffset(node, i);
+          return evaluateNode(child, time, continuous).map((frame) => {
+            if (frame.type !== "overlay") frame.position = [frame.position[0] + x, frame.position[1] + y];
+            else if (x || y) frame.offset = [x, y];
+            return frame;
+          });
+        });
+        frames.push(rendered);
+      });
       return frames;
     }
     return Object.freeze({
@@ -1874,7 +2211,7 @@
         const continuous = Boolean(options?.continuous);
         if (continuous && !canContinueScene(scene)) throw new RangeError("Continuous time requires a scene made only of ongoing and timeless recipes.");
         const sampled = continuous ? Math.max(0, frame) : clamp(frame, 0, scene.durationFrames);
-        return { frame: sampled, timeSeconds: sampled * scene.fps.denominator / scene.fps.numerator, nodes: scene.nodes.flatMap((node) => evaluateNode(node, sampled, continuous)) };
+        return { frame: sampled, timeSeconds: sampled * scene.fps.denominator / scene.fps.numerator, nodes: scene.nodes.filter((node) => !node.parent).flatMap((node) => evaluateNode(node, sampled, continuous)) };
       },
       copies(nodeId) {
         const node = scene.nodes.find((item) => item.id === nodeId);
@@ -2028,14 +2365,17 @@
     }
     return entry;
   }
-  var rgb = (color3) => [1, 3, 5].map((start) => parseInt(color3.slice(start, start + 2), 16));
+  var rgb = (color4) => [1, 3, 5].map((start) => parseInt(color4.slice(start, start + 2), 16));
   function drawSubject(context, subject, pixelScale = 1) {
     const stretch = subject.stretch ?? [1, 1];
     if (Math.abs(subject.scale * stretch[0] * stretch[1]) < 1e-9 || subject.opacity <= 0) return;
     const place2 = (target) => {
-      target.translate(...subject.position);
-      target.rotate(subject.rotation * Math.PI / 180);
-      target.scale(subject.scale * stretch[0], subject.scale * stretch[1]);
+      if (subject.matrix) target.transform(...subject.matrix);
+      else {
+        target.translate(...subject.position);
+        target.rotate(subject.rotation * Math.PI / 180);
+        target.scale(subject.scale * stretch[0], subject.scale * stretch[1]);
+      }
       target.lineCap = "round";
       target.lineJoin = "round";
       target.textBaseline = "alphabetic";
@@ -2102,12 +2442,12 @@
       }
       const column = i % width;
       let alpha = 0;
-      const color3 = [0, 0, 0];
+      const color4 = [0, 0, 0];
       for (const [tint, weight] of [[red, sample2(column + ox, row + oy)], [cyan, sample2(column - ox, row - oy)], [ink, sample2(column, row)]]) {
-        for (let channel = 0; channel < 3; channel++) color3[channel] = tint[channel] * weight + color3[channel] * (1 - weight);
+        for (let channel = 0; channel < 3; channel++) color4[channel] = tint[channel] * weight + color4[channel] * (1 - weight);
         alpha = weight + alpha * (1 - weight);
       }
-      for (let channel = 0; channel < 3; channel++) pixels[at + channel] = alpha ? color3[channel] / alpha : 0;
+      for (let channel = 0; channel < 3; channel++) pixels[at + channel] = alpha ? color4[channel] / alpha : 0;
       pixels[at + 3] = alpha * 255;
     }
     scratch.putImageData(image, 0, 0, x, y, width, height);
@@ -2118,40 +2458,138 @@
     context.restore();
   }
 
-  // packages/renderer-browser/src/index.ts
-  function textFont(scene, node) {
-    return `${node.fontSize}px ${node.font === "system" ? 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif' : node.font === "mono" ? '"SF Mono", ui-monospace, Menlo, Consolas, "PingFang SC", monospace' : `"mf_${scene.spec.assets[node.font].sha256}"`}`;
-  }
-  async function verifyFontBytes(asset, bytes) {
+  // packages/renderer-browser/src/resources.ts
+  async function verifyAssetBytes(asset, bytes) {
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
     if (hash !== asset.sha256) throw new Error(`ASSET_HASH: ${asset.src} does not match its locked SHA-256.`);
   }
-  function drawFrame(context, scene, frame, scale = 1, background = true) {
+  async function importRenderModule(_asset, bytes) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" }));
+    try {
+      const module = await import(
+        /* @vite-ignore */
+        url
+      );
+      if (typeof module.create !== "function") throw new Error("MODULE_CONTRACT: Export create({width,height,seed}).");
+      return module;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  function customFrames(nodes) {
+    return nodes.flatMap((node) => node.type === "group" ? customFrames(node.children) : node.type === "custom" ? [node] : []);
+  }
+  async function prepareFrame(state, scene, resources) {
+    for (const node of customFrames(state.nodes)) {
+      const module = resources.modules.get(node.id);
+      if (!module) throw new Error(`MODULE_MISSING: ${node.id}`);
+      await module.renderFrame({
+        frame: state.frame,
+        timeSeconds: state.timeSeconds,
+        fps: scene.spec.fps.numerator / scene.spec.fps.denominator,
+        seed: scene.spec.seed,
+        width: node.width,
+        height: node.height,
+        params: Object.freeze({ ...node.params })
+      });
+      if (!module.canvas.width || !module.canvas.height) throw new Error(`MODULE_FRAME: ${node.id} returned an empty canvas.`);
+    }
+  }
+
+  // packages/renderer-browser/src/index.ts
+  function textFont(scene, node) {
+    return `${node.fontSize}px ${node.font === "system" ? 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif' : node.font === "mono" ? '"SF Mono", ui-monospace, Menlo, Consolas, "PingFang SC", monospace' : `"mf_${scene.spec.assets[node.font].sha256}"`}`;
+  }
+  function drawFrame(context, scene, frame, scale = 1, background = true, resources) {
     const state = scene.evaluate(frame);
-    drawState(context, scene, state, scale, background);
+    drawState(context, scene, state, scale, background, resources);
     return state;
   }
-  function drawState(context, scene, state, scale, background) {
+  function drawState(context, scene, state, scale, background, resources) {
     const { width, height } = scene.spec.canvas;
     context.save();
     context.setTransform(scale, 0, 0, scale, 0, 0);
     context.globalAlpha = 1;
     context.globalCompositeOperation = "source-over";
-    if (background) {
-      context.fillStyle = scene.spec.canvas.background;
-      context.fillRect(0, 0, width, height);
-    } else context.clearRect(0, 0, width, height);
-    for (const node of state.nodes) drawSceneNode(context, scene, node, scale);
-    context.restore();
+    try {
+      if (background) {
+        context.fillStyle = scene.spec.canvas.background;
+        context.fillRect(0, 0, width, height);
+      } else context.clearRect(0, 0, width, height);
+      for (const node of state.nodes) drawSceneNode(context, scene, node, scale, resources);
+    } finally {
+      context.restore();
+    }
   }
-  function drawSceneNode(context, scene, node, scale = 1) {
-    if (node.type === "overlay") drawSubject(context, { position: [0, 0], rotation: 0, scale: 1, opacity: 1, color: node.color, layers: node.layers }, scale);
-    else drawSubject(context, node.type === "text" ? { ...node, font: textFont(scene, node) } : node, scale);
+  function drawSceneNode(context, scene, node, scale = 1, resources, parent = identity) {
+    if (node.type === "overlay") {
+      const matrix2 = multiply(parent, [1, 0, 0, 1, ...node.offset ?? [0, 0]]);
+      drawSubject(context, { position: [0, 0], rotation: 0, scale: 1, opacity: 1, color: node.color, layers: node.layers, matrix: matrix2 }, scale);
+      return;
+    }
+    const matrix = multiply(parent, nodeMatrix(node));
+    if (node.type === "group") {
+      let target = resources?.groups.get(node.id);
+      if (!target) {
+        target = context.canvas.ownerDocument.createElement("canvas");
+        resources?.groups.set(node.id, target);
+      }
+      target.width = context.canvas.width;
+      target.height = context.canvas.height;
+      const ctx = target.getContext("2d");
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      for (const child of node.children) drawSceneNode(ctx, scene, child, scale, resources, matrix);
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalAlpha = node.opacity;
+      context.drawImage(target, 0, 0);
+      context.restore();
+      return;
+    }
+    if (node.type === "text" || node.type === "path") {
+      drawSubject(context, node.type === "text" ? { ...node, font: textFont(scene, node), matrix } : { ...node, matrix }, scale);
+      return;
+    }
+    context.save();
+    try {
+      context.transform(...matrix);
+      context.globalAlpha = node.opacity;
+      if (node.type === "vector") {
+        context.beginPath();
+        for (const command of node.commands) {
+          if (command.op === "M") context.moveTo(...command.to);
+          else if (command.op === "L") context.lineTo(...command.to);
+          else if (command.op === "Q") context.quadraticCurveTo(...command.control, ...command.to);
+          else if (command.op === "C") context.bezierCurveTo(...command.control1, ...command.control2, ...command.to);
+          else context.closePath();
+        }
+        context.fillStyle = node.color;
+        context.strokeStyle = node.color;
+        context.lineWidth = node.strokeWidth;
+        context.lineJoin = "round";
+        context.lineCap = "round";
+        if (node.fill) context.fill();
+        else context.stroke();
+      } else {
+        const source = node.type === "image" ? resources?.images.get(node.asset) : resources?.modules.get(node.id)?.canvas;
+        if (!source) throw new Error(`ASSET_NOT_PREPARED: ${node.id}. Use mountScene and await renderAt.`);
+        const fit = node.type === "image" ? node.fit : "stretch";
+        const ratio = fit === "contain" ? Math.min(node.width / source.width, node.height / source.height) : Math.max(node.width / source.width, node.height / source.height);
+        const width = fit === "stretch" ? node.width : source.width * ratio;
+        const height = fit === "stretch" ? node.height : source.height * ratio;
+        context.beginPath();
+        context.rect(0, 0, node.width, node.height);
+        context.clip();
+        context.drawImage(source, (node.width - width) / 2, (node.height - height) / 2, width, height);
+      }
+    } finally {
+      context.restore();
+    }
   }
   var loopPlans = /* @__PURE__ */ new WeakMap();
   var restartCanvases = /* @__PURE__ */ new WeakMap();
-  function drawLoopFrame(context, scene, elapsed, scale = 1) {
+  function drawLoopFrame(context, scene, elapsed, scale = 1, resources) {
     let timing2 = loopPlans.get(scene);
     if (!timing2) {
       timing2 = loopTiming(scene.spec);
@@ -2159,7 +2597,7 @@
     }
     const frame = loopFrame(timing2, elapsed);
     const state = timing2.mode === "continuous" ? scene.evaluate(timing2.start + elapsed, { continuous: true }) : scene.evaluate(frame);
-    drawState(context, scene, state, scale, true);
+    drawState(context, scene, state, scale, true, resources);
     const mix = loopBlend(timing2, elapsed);
     if (mix > 0) {
       let target = restartCanvases.get(context.canvas);
@@ -2169,7 +2607,7 @@
       }
       if (target.width !== context.canvas.width) target.width = context.canvas.width;
       if (target.height !== context.canvas.height) target.height = context.canvas.height;
-      drawFrame(target.getContext("2d"), scene, timing2.start, scale);
+      drawFrame(target.getContext("2d"), scene, timing2.start, scale, true, resources);
       context.save();
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.globalAlpha = mix;
@@ -2179,41 +2617,113 @@
     }
     return { ...state, frame, timeSeconds: frame * scene.spec.fps.denominator / scene.spec.fps.numerator };
   }
-  async function mountScene(canvas, input, resolveAsset) {
+  async function mountScene(canvas, input, resolveAsset, options = {}) {
     const scene = compileScene(input);
     const loaded = [];
+    const resources = { images: /* @__PURE__ */ new Map(), modules: /* @__PURE__ */ new Map(), groups: /* @__PURE__ */ new Map() };
+    const modules = /* @__PURE__ */ new Map();
+    const cleanup = async () => {
+      const results = await Promise.allSettled([...resources.modules.values()].map((instance) => Promise.resolve().then(() => instance.destroy())));
+      resources.images.forEach((image) => image.close());
+      loaded.forEach((face) => document.fonts.delete(face));
+      resources.groups.forEach((canvas2) => {
+        canvas2.width = canvas2.height = 0;
+      });
+      resources.modules.clear();
+      resources.images.clear();
+      resources.groups.clear();
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+    };
     try {
-      for (const asset of Object.values(scene.spec.assets)) {
+      for (const [id4, asset] of Object.entries(scene.spec.assets)) {
         const bytes = await resolveAsset(asset);
-        await verifyFontBytes(asset, bytes);
-        const face = await new FontFace(`mf_${asset.sha256}`, bytes).load();
-        document.fonts.add(face);
-        loaded.push(face);
+        await verifyAssetBytes(asset, bytes);
+        if (asset.type === "font") {
+          const face = await new FontFace(`mf_${asset.sha256}`, bytes).load();
+          document.fonts.add(face);
+          loaded.push(face);
+        } else if (asset.type === "image") resources.images.set(id4, await createImageBitmap(new Blob([bytes])));
+        else modules.set(id4, await (options.loadModule ?? importRenderModule)(asset, bytes));
+      }
+      for (const node of scene.spec.nodes) if (node.type === "custom") {
+        const instance = await modules.get(node.module).create({ width: node.width, height: node.height, seed: scene.spec.seed });
+        if (!instance || typeof instance.renderFrame !== "function" || typeof instance.destroy !== "function" || !instance.canvas) {
+          if (typeof instance?.destroy === "function") await instance.destroy();
+          throw new Error(`MODULE_CONTRACT: ${node.id} must return canvas, renderFrame and destroy.`);
+        }
+        resources.modules.set(node.id, instance);
       }
       canvas.width = scene.spec.canvas.width;
       canvas.height = scene.spec.canvas.height;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("CANVAS_UNAVAILABLE: Canvas 2D is required.");
       let destroyed = false;
+      let tail = Promise.resolve();
+      let queued = 0;
+      let destruction;
+      const enqueue = (run) => {
+        if (destroyed) return Promise.reject(new Error("Renderer has been destroyed."));
+        queued++;
+        const result = tail.then(run).finally(() => {
+          queued--;
+        });
+        tail = result.catch(() => {
+        });
+        return result;
+      };
+      const checkSync = () => {
+        if (destroyed) throw new Error("Renderer has been destroyed.");
+        if (resources.modules.size || queued) throw new Error("ASYNC_FRAME_REQUIRED: Await renderAt or renderLoopAt.");
+      };
+      const draw = async (state, background, ctx = context) => {
+        await prepareFrame(state, scene, resources);
+        drawState(ctx, scene, state, 1, background, resources);
+        return state;
+      };
       return {
         scene,
         renderFrame(frame, background = true) {
-          if (destroyed) throw new Error("Renderer has been destroyed.");
-          return drawFrame(context, scene, frame, 1, background);
+          checkSync();
+          return drawFrame(context, scene, frame, 1, background, resources);
         },
         renderLoop(elapsed) {
-          if (destroyed) throw new Error("Renderer has been destroyed.");
-          return drawLoopFrame(context, scene, elapsed);
+          checkSync();
+          return drawLoopFrame(context, scene, elapsed, 1, resources);
+        },
+        renderAt(frame, background = true) {
+          return enqueue(() => draw(scene.evaluate(frame), background));
+        },
+        renderLoopAt(elapsed) {
+          return enqueue(async () => {
+            if (!Number.isFinite(elapsed) || elapsed < 0) throw new RangeError("Elapsed frames must be finite and non-negative.");
+            const timing2 = loopTiming(scene.spec);
+            const frame = loopFrame(timing2, elapsed);
+            const state = scene.evaluate(timing2.mode === "continuous" ? timing2.start + elapsed : frame, { continuous: timing2.mode === "continuous" });
+            await draw(state, true);
+            const mix = loopBlend(timing2, elapsed);
+            if (mix > 0) {
+              const target = canvas.ownerDocument.createElement("canvas");
+              target.width = canvas.width;
+              target.height = canvas.height;
+              await draw(scene.evaluate(timing2.start), true, target.getContext("2d"));
+              context.save();
+              context.setTransform(1, 0, 0, 1, 0, 0);
+              context.globalAlpha = mix;
+              context.drawImage(target, 0, 0);
+              context.restore();
+            }
+            return { ...state, frame, timeSeconds: frame * scene.spec.fps.denominator / scene.spec.fps.numerator };
+          });
         },
         destroy() {
-          if (!destroyed) {
-            loaded.forEach((face) => document.fonts.delete(face));
-            destroyed = true;
-          }
+          destroyed = true;
+          return destruction ??= tail.then(cleanup);
         }
       };
     } catch (error) {
-      loaded.forEach((face) => document.fonts.delete(face));
+      await cleanup().catch(() => {
+      });
       throw error;
     }
   }
@@ -2334,13 +2844,13 @@
     const status = document.getElementById("status");
     const mounted = await mountScene(canvas, input, async (asset) => {
       const encoded = assets[asset.src];
-      if (!encoded) throw new Error(`Missing embedded font ${asset.src}`);
+      if (!encoded) throw new Error(`Missing embedded asset ${asset.src}`);
       return Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)).buffer;
     });
     if (composite && breakdown) {
-      const size = breakdownSize(breakdown, mounted.scene.spec.canvas);
-      composite.width = size.width;
-      composite.height = size.height;
+      const size2 = breakdownSize(breakdown, mounted.scene.spec.canvas);
+      composite.width = size2.width;
+      composite.height = size2.height;
     }
     const slider = document.querySelector("input");
     const button = document.querySelector("button");
@@ -2353,33 +2863,49 @@
     let elapsed = 0;
     let last = 0;
     let animation = 0;
-    const renderFrame = (next, background = true) => {
+    let generation = 0;
+    const stop = () => {
+      playing = false;
+      generation++;
+      cancelAnimationFrame(animation);
+      button.textContent = "\u64AD\u653E";
+    };
+    const fail = (error) => {
+      stop();
+      status.textContent = String(error);
+    };
+    const renderFrame = async (next, background = true) => {
+      await mounted.renderAt(next, background);
       frame = next;
-      mounted.renderFrame(next, background);
       slider.value = String(next);
       if (composite && breakdown) drawBreakdown(composite, canvas, breakdown, next);
       status.textContent = `Frame ${next.toFixed(0)} / ${slider.max} \xB7 ${(next / fps).toFixed(2)}s`;
     };
-    const renderLoop = (displayFrame) => {
-      const state = mounted.renderLoop(elapsed);
+    const renderLoop = async (displayFrame) => {
+      const state = await mounted.renderLoopAt(elapsed);
       frame = displayFrame ?? state.frame;
       slider.value = String(frame);
       if (composite && breakdown) drawBreakdown(composite, canvas, breakdown, state.frame);
       status.textContent = `Frame ${frame.toFixed(0)} / ${slider.max} \xB7 ${(frame / fps).toFixed(2)}s`;
     };
-    const tick = (now) => {
+    const tick = async (now) => {
       if (!playing) return;
+      const request = generation;
       if (!document.hidden && last) elapsed += Math.min(now - last, 100) / 1e3 * fps;
       last = now;
-      if (playback.loop) renderLoop();
-      else renderFrame(Math.min(mounted.scene.spec.durationFrames - 1, elapsed));
+      if (playback.loop) await renderLoop();
+      else await renderFrame(Math.min(mounted.scene.spec.durationFrames - 1, elapsed));
+      if (!playing || request !== generation) return;
       if (!playback.loop && frame >= mounted.scene.spec.durationFrames - 1) {
         playing = false;
         button.textContent = "\u64AD\u653E";
-      } else animation = requestAnimationFrame(tick);
+      } else animation = requestAnimationFrame((now2) => {
+        void tick(now2).catch(fail);
+      });
     };
     button.onclick = () => {
       playing = !playing;
+      generation++;
       button.textContent = playing ? "\u6682\u505C" : "\u64AD\u653E";
       if (playing) {
         if (playback.loop) elapsed = loopElapsed(timing2, frame, elapsed);
@@ -2388,25 +2914,28 @@
           elapsed = frame;
         }
         last = 0;
-        animation = requestAnimationFrame(tick);
+        animation = requestAnimationFrame((now) => {
+          void tick(now).catch(fail);
+        });
       } else cancelAnimationFrame(animation);
     };
     slider.oninput = () => {
-      playing = false;
-      cancelAnimationFrame(animation);
-      button.textContent = "\u64AD\u653E";
+      stop();
       if (playback.loop) {
         const next = Number(slider.value);
         elapsed = loopElapsed(timing2, next, elapsed);
-        renderLoop(next);
-      } else renderFrame(Number(slider.value));
+        void renderLoop(next).catch(fail);
+      } else void renderFrame(Number(slider.value)).catch(fail);
     };
-    window.motionFlux = { renderFrame, scene: mounted.scene.spec };
     window.addEventListener("pagehide", () => {
-      cancelAnimationFrame(animation);
-      mounted.destroy();
+      stop();
+      void mounted.destroy().catch(fail);
     });
-    renderFrame(0);
+    await renderFrame(0);
+    window.motionFlux = { renderFrame: async (next, background = true) => {
+      stop();
+      await renderFrame(next, background);
+    }, scene: mounted.scene.spec };
   }
   main().catch((error) => {
     document.getElementById("status").textContent = String(error);

@@ -46,7 +46,9 @@ export function breakdownPlan(scene: MotionSpec, options: { width: number; title
     }
   }
   return { width: options.width, ...(options.title ? { title: options.title } : {}), durationFrames: scene.durationFrames, fps: scene.fps.numerator / scene.fps.denominator,
-    tracks: actionTracks(actions) };
+    tracks: [...actionTracks(actions), ...(scene.animations ?? []).map(track => ({ symbol: 'KF', name: `${track.target} · ${track.property}`, color: '#a8d88b',
+      blocks: [{ name: track.id, from: Math.min(scene.durationFrames - 1, track.keyframes[0]!.frame),
+        to: Math.min(scene.durationFrames, Math.max(track.keyframes[0]!.frame + 1, track.keyframes.at(-1)!.frame)) }] }))] };
 }
 
 /**

@@ -75,7 +75,7 @@ export async function captureFrames(htmlPath: string, frames: readonly number[],
     const { targetId } = await session.send('Target.createTarget', { url: pathToFileURL(htmlPath).href }) as { targetId: string };
     const { sessionId } = await session.send('Target.attachToTarget', { targetId, flatten: true }) as { sessionId: string };
     const evaluate = async (expression: string): Promise<unknown> => {
-      const reply = await session.send('Runtime.evaluate', { expression, returnByValue: true }, sessionId) as { result: { value?: unknown }; exceptionDetails?: { text: string; exception?: { description?: string } } };
+      const reply = await session.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sessionId) as { result: { value?: unknown }; exceptionDetails?: { text: string; exception?: { description?: string } } };
       if (reply.exceptionDetails) throw new Error(`RENDER_FAILED: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
       return reply.result.value;
     };
@@ -89,7 +89,7 @@ export async function captureFrames(htmlPath: string, frames: readonly number[],
       await new Promise((wait) => setTimeout(wait, 50));
     }
     for (const frame of frames) {
-      const encoded = await evaluate(`(() => { window.motionFlux.renderFrame(${frame}, ${!transparent}); return document.querySelector('canvas').toDataURL('image/png').slice(22); })()`) as string;
+      const encoded = await evaluate(`(async () => { await window.motionFlux.renderFrame(${frame}, ${!transparent}); return document.querySelector('canvas').toDataURL('image/png').slice(22); })()`) as string;
       await onFrame(frame, Buffer.from(encoded, 'base64'));
     }
   } finally { await session.close(); }
@@ -113,10 +113,17 @@ export async function encodeVideo(out: string, format: VideoFormat, transparent:
     child.once('error', (error: NodeJS.ErrnoException) => reject(new Error(error.code === 'ENOENT' ? 'FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use the frames command for a PNG sequence instead.' : `ENCODE_FAILED: ${error.message}`)));
     child.once('close', (code) => code === 0 ? done() : reject(new Error(`ENCODE_FAILED: ffmpeg exited with code ${code}. ${log.trim().split('\n').slice(-3).join(' ')}`)));
   });
+  // Encoding can fail while an asynchronous browser frame is still being prepared.
+  // Observe that failure immediately; report it through the normal CLI error path after feed has cleaned up.
+  let encoderError: Error | undefined;
+  void finished.catch((error: Error) => { encoderError = error; });
   child.stdin.on('error', () => { /* A failed encoder closes its input; the exit code carries the reason. */ });
   try {
-    await feed((png) => new Promise<void>((written, reject) => { child.stdin.write(png, (error) => error ? reject(new Error(`ENCODE_FAILED: ${error.message}`)) : written()); }));
-  } catch (error) { child.kill(); await finished.catch(() => undefined); throw error; }
+    await feed((png) => new Promise<void>((written, reject) => {
+      if (encoderError) { reject(encoderError); return; }
+      child.stdin.write(png, (error) => error ? reject(encoderError ?? new Error(`ENCODE_FAILED: ${error.message}`)) : written());
+    }));
+  } catch (error) { child.kill(); await finished.catch(() => undefined); throw encoderError ?? error; }
   child.stdin.end();
   await finished;
 }

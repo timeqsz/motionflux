@@ -1,0 +1,40 @@
+{
+  "briefVersion": "0.1",
+  "pattern": "title-yields-to-product",
+  "canvas": {
+    "width": 720,
+    "height": 1080
+  },
+  "fps": 30,
+  "durationSeconds": 12,
+  "copy": {
+    "headline": "给每一次专注，\n留一束温柔的光。",
+    "detail": "让桌面安静下来。\n让想法慢慢展开。",
+    "closing": "弧光 ARC · 照亮此刻"
+  },
+  "brand": {
+    "name": "弧光 ARC",
+    "palette": {
+      "background": "#212a28",
+      "ink": "#f4ead7",
+      "muted": "#b8c4b6",
+      "accent": "#dfae64"
+    },
+    "typography": {
+      "headlineRatio": 0.1,
+      "bodyRatio": 0.029
+    },
+    "motion": {
+      "enterSeconds": 0.7,
+      "travelSeconds": 0.8,
+      "minReadSeconds": 1.8,
+      "readUnitsPerSecond": 6,
+      "endHoldSeconds": 1.2
+    }
+  },
+  "product": {
+    "src": "assets/lamp.png",
+    "sha256": "bfd602a140930405440540ae58e424cc2bedf02afabde2dc0a2191c9c908ee42",
+    "license": "Original fictional product illustration by MotionFlux; MIT. No real product claims."
+  }
+}

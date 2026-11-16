@@ -748,18 +748,18 @@ var table = [
   ["generate", ["gen.particles", "gen.shatter", "gen.ripple", "gen.trace", "gen.link"]]
 ];
 var placement = /* @__PURE__ */ new Map();
-table.forEach(([family, ids], column) => ids.forEach((id2, index) => placement.set(id2, { family, cell: [tableRows - ids.length + index + 1, column + 1] })));
+table.forEach(([family, ids], column) => ids.forEach((id4, index) => placement.set(id4, { family, cell: [tableRows - ids.length + index + 1, column + 1] })));
 var capabilities = definitions.map((definition) => {
   const placed = placement.get(definition.id);
   if (!placed) throw new Error(`Capability ${definition.id} has no cell in the periodic table.`);
   const entry = definition;
   return { version: "0.1.0", targets: ["path"], backend: { js: "implemented" }, engine: "vector", time: "finite", ...entry, id: definition.id, ...placed };
 });
-function getCapability(id2) {
-  return capabilities.find((entry) => entry.id === id2);
+function getCapability(id4) {
+  return capabilities.find((entry) => entry.id === id4);
 }
-function defaultParams(id2) {
-  return Object.fromEntries(Object.entries(getCapability(id2).params).map(([key, parameter]) => [key, parameter.default]));
+function defaultParams(id4) {
+  return Object.fromEntries(Object.entries(getCapability(id4).params).map(([key, parameter]) => [key, parameter.default]));
 }
 function searchCapabilities(query) {
   const terms = query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
@@ -773,9 +773,9 @@ var smooth = (t) => {
   const u = clamp(t);
   return u * u * (3 - 2 * u);
 };
-function hashId(seed, id2) {
+function hashId(seed, id4) {
   let value = seed >>> 0;
-  for (let i = 0; i < id2.length; i++) value = Math.imul(value ^ id2.charCodeAt(i), 16777619) >>> 0;
+  for (let i = 0; i < id4.length; i++) value = Math.imul(value ^ id4.charCodeAt(i), 16777619) >>> 0;
   return value;
 }
 function sample(seed, index) {
@@ -903,9 +903,9 @@ var palettes = {
   dark: { paper: "#16181b", ink: "#eef0ea" }
 };
 var blend = (a, b, t) => `#${[1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0")).join("")}`;
-var inks = (theme, id2) => {
+var inks = (theme, id4) => {
   const { paper, ink } = palettes[theme];
-  const accent = families[getCapability(id2).family].color;
+  const accent = families[getCapability(id4).family].color;
   return { ink, accent, guide: blend(paper, accent, 0.55), ghost: blend(paper, ink, 0.16) };
 };
 var W = 640;
@@ -917,7 +917,7 @@ var arc = (radius, fromDeg, toDeg, steps = 48) => Array.from({ length: steps + 1
   const angle = (fromDeg + (toDeg - fromDeg) * i / steps) * Math.PI / 180;
   return [radius * Math.cos(angle), radius * Math.sin(angle)];
 });
-var path = (id2, position, color3, points, options = {}) => ({ id: id2, type: "path", position, color: color3, points, strokeWidth: 2, ...options });
+var path = (id4, position, color4, points, options = {}) => ({ id: id4, type: "path", position, color: color4, points, strokeWidth: 2, ...options });
 var subjectPath = (points, options = {}) => ({ points, closed: true, strokeWidth: 5, ...options });
 var square = subjectPath(rect(72, 72));
 var dot = (radius) => subjectPath(circle(radius), { fill: true });
@@ -1134,14 +1134,14 @@ var demos = {
     carriers: [{ recipe: "choreo.grid", params: { columns: 6, rows: 4, gapPx: 96 } }, { recipe: "loop.float", params: { amplitudePx: 90, rotateDeg: 0, frequencyHz: 0.4 } }]
   }
 };
-function createExampleScene(id2, font, theme = "light") {
-  const entry = getCapability(id2);
-  const demo = demos[id2];
-  const ink = inks(theme, id2);
-  const ongoing2 = [id2, ...(demo.carriers ?? []).map((carrier) => carrier.recipe)].every((recipe) => getCapability(recipe).time !== "finite");
+function createExampleScene(id4, font, theme = "light") {
+  const entry = getCapability(id4);
+  const demo = demos[id4];
+  const ink = inks(theme, id4);
+  const ongoing2 = [id4, ...(demo.carriers ?? []).map((carrier) => carrier.recipe)].every((recipe) => getCapability(recipe).time !== "finite");
   const frames = demo.frames ?? (ongoing2 ? 240 : 80);
   const at = demo.text ? demo.text.position : demo.position ?? [CX, CY];
-  const params = { ...defaultParams(id2), ...demo.params };
+  const params = { ...defaultParams(id4), ...demo.params };
   let subject;
   if (demo.text) {
     subject = {
@@ -1170,7 +1170,7 @@ function createExampleScene(id2, font, theme = "light") {
   const clip = (clipId, recipe, values, start, duration) => ({ id: clipId, target: "subject", recipe, startFrame: start, durationFrames: Math.min(duration, frames - start), fillAfter: "hold", params: values });
   const featuredStart = demo.start ?? 0;
   const featuredLength = demo.duration ?? frames;
-  const clips = [clip("effect", id2, params, featuredStart, entry.time === "finite" ? featuredLength : frames - featuredStart)];
+  const clips = [clip("effect", id4, params, featuredStart, entry.time === "finite" ? featuredLength : frames - featuredStart)];
   (demo.carriers ?? []).forEach((carrier, i) => {
     const time = getCapability(carrier.recipe).time;
     clips.push(clip(`carrier-${i + 1}`, carrier.recipe, { ...defaultParams(carrier.recipe), ...carrier.params }, carrier.start ?? 0, time === "finite" ? carrier.duration ?? frames : frames));
@@ -1186,65 +1186,320 @@ function createExampleScene(id2, font, theme = "light") {
     clips
   };
   if (subject.type === "text" && subject.font === "demoFont" && font) scene.assets = { demoFont: structuredClone(font) };
-  if (id2 === "prop.color") {
+  if (id4 === "prop.color") {
     scene.clips[0].params.from = ink.ink;
     scene.clips[0].params.to = ink.accent;
   }
-  if (id2 === "feel.glow") subject.color = ink.accent;
+  if (id4 === "feel.glow") subject.color = ink.accent;
   return scene;
 }
-var previewKind = (id2) => demos[id2].text ? "text" : "geometry";
+var previewKind = (id4) => demos[id4].text ? "text" : "geometry";
+
+// packages/core/src/study.ts
+var object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+var text2 = { type: "string", minLength: 1, maxLength: 2e3 };
+var id = { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]*$", minLength: 1, maxLength: 64 };
+var seconds = { type: "number", minimum: 0, maximum: 86400 };
+var array = (items, minItems = 0) => ({ type: "array", items, minItems, maxItems: 1e3 });
+var event = object({
+  id,
+  subject: id,
+  from: seconds,
+  to: seconds,
+  status: { enum: ["observed", "inferred", "unknown"] },
+  description: text2,
+  evidence: array(object({ at: seconds, note: text2 }))
+});
+var studySchema = object({
+  studyVersion: { const: "0.1" },
+  title: text2,
+  source: object({ video: text2, from: seconds, to: seconds }),
+  subjects: array(object({ id, description: text2 }), 1),
+  events: array({ ...event, properties: {
+    ...event.properties,
+    implementation: object({
+      targets: array(id, 1),
+      clips: array(id),
+      animations: array(id),
+      method: { enum: ["direct", "approximate", "custom"] },
+      note: text2
+    })
+  } }, 1)
+});
+function studyIssues(study, scene) {
+  const issues = [];
+  const add = (path2, message) => issues.push({ path: path2, code: "STUDY", message });
+  if (study.source.to <= study.source.from) add("$.source.to", "Source end must follow source start, in seconds.");
+  const subjectIds = /* @__PURE__ */ new Set();
+  study.subjects.forEach((subject, i) => {
+    if (subjectIds.has(subject.id)) add(`$.subjects[${i}].id`, "Subject IDs must be unique.");
+    subjectIds.add(subject.id);
+  });
+  const eventIds = /* @__PURE__ */ new Set();
+  study.events.forEach((event2, i) => {
+    const at = `$.events[${i}]`;
+    if (eventIds.has(event2.id)) add(`${at}.id`, "Event IDs must be unique.");
+    eventIds.add(event2.id);
+    if (!subjectIds.has(event2.subject)) add(`${at}.subject`, "Reference an existing subject.");
+    if (event2.to <= event2.from || event2.from < study.source.from || event2.to > study.source.to) add(at, "Event must have positive duration and fit in the source range.");
+    if (event2.status !== "unknown" && !event2.evidence.length) add(`${at}.evidence`, "Observations and inferences require timestamped evidence.");
+    for (const evidence of event2.evidence) if (evidence.at < event2.from || evidence.at > event2.to) add(`${at}.evidence`, "Evidence timestamp must lie within this event.");
+    if (!scene || !event2.implementation) return;
+    const binding = event2.implementation;
+    for (const target of binding.targets) if (!scene.nodes.some((node) => node.id === target)) add(`${at}.implementation.targets`, `Missing scene object ${target}.`);
+    for (const [field, collection] of [["clips", scene.clips], ["animations", scene.animations ?? []]]) for (const id4 of binding[field]) {
+      const item = collection.find((item2) => item2.id === id4);
+      if (!item) add(`${at}.implementation.${field}`, `Missing ${field} ID ${id4}.`);
+      else if (!binding.targets.includes(item.target)) add(`${at}.implementation.${field}`, `${id4} must animate a bound target.`);
+    }
+  });
+  return issues;
+}
+function studyReport(study, scene) {
+  const fps = scene ? scene.fps.numerator / scene.fps.denominator : void 0;
+  return {
+    studyVersion: study.studyVersion,
+    title: study.title,
+    source: study.source,
+    bindingsVerified: Boolean(scene),
+    events: study.events.map((event2) => ({
+      ...event2,
+      localSeconds: [event2.from - study.source.from, event2.to - study.source.from],
+      output: scene && event2.implementation ? [
+        ...scene.clips.filter((item) => event2.implementation.clips.includes(item.id)).map((item) => ({
+          id: item.id,
+          target: item.target,
+          frames: [item.startFrame, item.startFrame + item.durationFrames],
+          seconds: [item.startFrame / fps, (item.startFrame + item.durationFrames) / fps]
+        })),
+        ...(scene.animations ?? []).filter((item) => event2.implementation.animations.includes(item.id)).map((item) => ({
+          id: item.id,
+          target: item.target,
+          frames: [item.keyframes[0].frame, item.keyframes.at(-1).frame],
+          seconds: [item.keyframes[0].frame / fps, item.keyframes.at(-1).frame / fps]
+        }))
+      ] : []
+    })),
+    visualComparison: "not-performed"
+  };
+}
 
 // packages/core/src/schema.ts
 var number = (minimum, maximum) => ({ type: "number", minimum, maximum });
 var integer = (minimum, maximum) => ({ type: "integer", minimum, maximum });
 var string = (maxLength, pattern) => ({ type: "string", minLength: 1, maxLength, ...pattern ? { pattern } : {} });
-var object = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
-var id = string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$");
+var object2 = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+var id2 = string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$");
 var color2 = string(7, "^#[0-9a-fA-F]{6}$");
 var point = { type: "array", items: number(-32768, 32768), minItems: 2, maxItems: 2 };
-var baseNode = { id, position: point, color: color2 };
-var textNode = object({
+var baseNode = { id: id2, position: point, color: color2 };
+var textNode = object2({
   ...baseNode,
   type: { const: "text" },
   text: string(2e3),
-  font: { ...id, description: "system and mono use the device sans-serif or monospace font without a download; otherwise reference a declared font asset." },
+  font: { ...id2, description: "system and mono use the device sans-serif or monospace font without a download; otherwise reference a declared font asset." },
   fontSize: number(1, 512),
   lineHeight: number(1, 1024)
 });
 var pathFields = { ...baseNode, type: { const: "path" }, points: { type: "array", items: point, minItems: 2, maxItems: 1e3 }, strokeWidth: number(0.1, 100) };
-var pathNode = { ...object(pathFields), properties: { ...pathFields, closed: { type: "boolean" }, fill: { type: "boolean" } } };
+var pathNode = { ...object2(pathFields), properties: { ...pathFields, closed: { type: "boolean" }, fill: { type: "boolean" } } };
+var legacyScene = object2({
+  specVersion: { const: "0.1" },
+  seed: integer(0, 4294967295),
+  canvas: object2({ width: integer(16, 4096), height: integer(16, 4096), background: color2 }),
+  fps: object2({ numerator: integer(1, 12e4), denominator: integer(1, 1e4) }),
+  durationFrames: integer(1, 18e3),
+  assets: { type: "object", additionalProperties: object2({
+    type: { const: "font" },
+    src: string(200, "^assets/[a-zA-Z0-9_-]+\\.(otf|ttf|woff2)$"),
+    sha256: string(64, "^[0-9a-f]{64}$"),
+    family: string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$"),
+    postscriptName: string(100)
+  }) },
+  nodes: { type: "array", items: { oneOf: [textNode, pathNode] }, minItems: 1, maxItems: 100 },
+  clips: { type: "array", maxItems: 300, items: { oneOf: capabilities.map((entry) => object2({
+    id: id2,
+    target: id2,
+    recipe: { const: entry.id },
+    startFrame: integer(0, 17999),
+    durationFrames: integer(1, 18e3),
+    fillAfter: { const: "hold" },
+    params: object2(Object.fromEntries(Object.entries(entry.params).map(([key, parameter]) => [
+      key,
+      parameter.type === "number" ? { type: parameter.integer ? "integer" : "number", minimum: parameter.minimum, maximum: parameter.maximum, description: `${parameter.title} (${parameter.unit})` } : parameter.type === "color" ? { ...color2, description: parameter.title } : { type: "string", enum: parameter.enum }
+    ])))
+  })) } }
+});
+var transform = { parent: id2, pivot: point, rotation: number(-36e4, 36e4), scale: number(0, 100), opacity: number(0, 1), stretch: point };
+var extendNode = (schema) => ({ ...schema, properties: { ...schema.properties, ...transform } });
+var vectorNode = object2({
+  ...baseNode,
+  type: { const: "vector" },
+  fill: { type: "boolean" },
+  strokeWidth: number(0.1, 100),
+  commands: { type: "array", minItems: 2, maxItems: 1e3, items: { oneOf: [
+    ...["M", "L"].map((op) => object2({ op: { const: op }, to: point })),
+    object2({ op: { const: "Q" }, control: point, to: point }),
+    object2({ op: { const: "C" }, control1: point, control2: point, to: point }),
+    object2({ op: { const: "Z" } })
+  ] } }
+});
+var size = { width: number(1, 4096), height: number(1, 4096) };
+var groupNode = { ...object2({ ...baseNode, type: { const: "group" } }), properties: {
+  ...baseNode,
+  type: { const: "group" },
+  layout: object2({
+    type: { enum: ["row", "column", "grid"] },
+    cell: { ...point, items: number(0, 4096) },
+    gap: { ...point, items: number(0, 4096) },
+    columns: integer(1, 100)
+  })
+} };
+var imageNode = object2({ ...baseNode, type: { const: "image" }, asset: id2, ...size, fit: { enum: ["contain", "cover", "stretch"] } });
+var customNode = object2({
+  ...baseNode,
+  type: { const: "custom" },
+  module: id2,
+  ...size,
+  params: { type: "object", additionalProperties: number(-1e6, 1e6) }
+});
+var keyframe = { ...object2({ frame: number(0, 18e3), value: { oneOf: [number(-1e6, 1e6), color2] } }), properties: {
+  frame: number(0, 18e3),
+  value: { oneOf: [number(-1e6, 1e6), color2] },
+  easing: { oneOf: [{ enum: ["linear", "smooth", "hold"] }, { type: "array", items: number(-10, 10), minItems: 4, maxItems: 4 }] }
+} };
+var modernScene = { ...legacyScene, properties: {
+  ...legacyScene.properties,
+  specVersion: { const: "0.2" },
+  assets: { type: "object", additionalProperties: { oneOf: [
+    legacyScene.properties.assets.additionalProperties,
+    object2({ type: { const: "image" }, src: string(200, "^assets/[a-zA-Z0-9_-]+\\.(png|jpg|jpeg|webp)$"), sha256: string(64, "^[0-9a-f]{64}$") }),
+    object2({ type: { const: "module" }, src: string(200, "^assets/[a-zA-Z0-9_-]+\\.mjs$"), sha256: string(64, "^[0-9a-f]{64}$") })
+  ] } },
+  nodes: { ...legacyScene.properties.nodes, items: { oneOf: [textNode, pathNode, vectorNode, imageNode, groupNode, customNode].map(extendNode) } },
+  animations: { type: "array", maxItems: 500, items: object2({
+    id: id2,
+    target: id2,
+    property: string(100, "^(position\\.[xy]|rotation|scale|opacity|stretch\\.[xy]|color|fontSize|strokeWidth|width|height|params\\.[a-zA-Z][a-zA-Z0-9_-]*)$"),
+    keyframes: { type: "array", minItems: 1, maxItems: 1e3, items: keyframe }
+  }) },
+  // The study validator owns its domain rules and can also validate an independent analysis document.
+  study: studySchema
+} };
 var motionSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "urn:motionflux:spec:0.1",
-  ...object({
-    specVersion: { const: "0.1" },
-    seed: integer(0, 4294967295),
-    canvas: object({ width: integer(16, 4096), height: integer(16, 4096), background: color2 }),
-    fps: object({ numerator: integer(1, 12e4), denominator: integer(1, 1e4) }),
-    durationFrames: integer(1, 18e3),
-    assets: { type: "object", additionalProperties: object({
-      type: { const: "font" },
-      src: string(200, "^assets/[a-zA-Z0-9_-]+\\.(otf|ttf|woff2)$"),
-      sha256: string(64, "^[0-9a-f]{64}$"),
-      family: string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$"),
-      postscriptName: string(100)
-    }) },
-    nodes: { type: "array", items: { oneOf: [textNode, pathNode] }, minItems: 1, maxItems: 100 },
-    clips: { type: "array", maxItems: 300, items: { oneOf: capabilities.map((entry) => object({
-      id,
-      target: id,
-      recipe: { const: entry.id },
-      startFrame: integer(0, 17999),
-      durationFrames: integer(1, 18e3),
-      fillAfter: { const: "hold" },
-      params: object(Object.fromEntries(Object.entries(entry.params).map(([key, parameter]) => [
-        key,
-        parameter.type === "number" ? { type: parameter.integer ? "integer" : "number", minimum: parameter.minimum, maximum: parameter.maximum, description: `${parameter.title} (${parameter.unit})` } : parameter.type === "color" ? { ...color2, description: parameter.title } : { type: "string", enum: parameter.enum }
-      ])))
-    })) } }
-  })
+  $id: "urn:motionflux:spec:0.2",
+  oneOf: [legacyScene, modernScene]
 };
+
+// packages/core/src/animation.ts
+function supportsNode(recipe, node) {
+  const entry = getCapability(recipe);
+  if (node.type === "text" || node.type === "path") return entry.targets.includes(node.type);
+  return entry.role === "timing" || entry.role === "loop" || ["prop.move", "prop.rotate", "prop.scale", "prop.opacity"].includes(recipe) || node.type === "vector" && recipe === "prop.color";
+}
+function animationIssues(scene) {
+  const issues = [];
+  const ids = new Set(scene.clips.map((clip) => clip.id));
+  const properties = /* @__PURE__ */ new Set();
+  const add = (path2, message) => issues.push({ path: path2, code: "ANIMATION", message });
+  (scene.animations ?? []).forEach((track, i) => {
+    const path2 = `$.animations[${i}]`;
+    const node = scene.nodes.find((node2) => node2.id === track.target);
+    if (ids.has(track.id)) add(`${path2}.id`, "Animation and clip IDs must be unique.");
+    ids.add(track.id);
+    if (!node) {
+      add(`${path2}.target`, "Reference an existing object.");
+      return;
+    }
+    const property = track.property;
+    const domain = property.split(".")[0];
+    const supported = ["position", "rotation", "scale", "opacity", "stretch"].includes(domain) || domain === "color" && ["text", "path", "vector"].includes(node.type) || domain === "fontSize" && node.type === "text" || domain === "strokeWidth" && ["path", "vector"].includes(node.type) || ["width", "height"].includes(domain) && ["image", "custom"].includes(node.type) || domain === "params" && node.type === "custom" && Object.hasOwn(node.params, property.slice(7));
+    if (!supported) add(`${path2}.property`, `${property} is not editable on ${node.type}.`);
+    const key = `${track.target}:${property}`;
+    if (properties.has(key)) add(path2, "Use one track per target property.");
+    properties.add(key);
+    if (scene.clips.some((clip) => clip.target === track.target && getCapability(clip.recipe).writes.includes(domain)))
+      add(path2, `A clip already writes ${domain}; choose a keyframe track or a recipe for this property.`);
+    const limits = {
+      opacity: [0, 1],
+      scale: [0, 100],
+      position: [-32768, 32768],
+      stretch: [-100, 100],
+      rotation: [-36e4, 36e4],
+      fontSize: [1, 512],
+      strokeWidth: [0.1, 100],
+      width: [1, 4096],
+      height: [1, 4096],
+      params: [-1e6, 1e6]
+    };
+    track.keyframes.forEach((keyframe2, k) => {
+      const at = `${path2}.keyframes[${k}]`;
+      if (keyframe2.frame > scene.durationFrames || k > 0 && keyframe2.frame <= track.keyframes[k - 1].frame) add(at, "Frames must increase strictly and fit inside the scene.");
+      if (domain === "color") {
+        if (typeof keyframe2.value !== "string") add(at, "Color keyframes require #RRGGBB values.");
+      } else {
+        const [min, max] = limits[domain] ?? [-1e6, 1e6];
+        if (typeof keyframe2.value !== "number" || keyframe2.value < min || keyframe2.value > max) add(at, `${property} requires numeric values in ${min}\u2026${max}.`);
+      }
+      if (Array.isArray(keyframe2.easing) && keyframe2.easing.some((n, axis) => n < 0 || n > 1))
+        add(`${at}.easing`, "Cubic B\xE9zier control coordinates must be in 0\u20261; use explicit keyframes for overshoot.");
+    });
+  });
+  return issues;
+}
+var bezier = (t, a, b) => 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3;
+function ease(t, easing) {
+  if (easing === "hold") return 0;
+  if (easing === "smooth") return smooth(t);
+  if (!Array.isArray(easing)) return t;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const m = (lo + hi) / 2;
+    if (bezier(m, easing[0], easing[2]) < t) lo = m;
+    else hi = m;
+  }
+  return bezier((lo + hi) / 2, easing[1], easing[3]);
+}
+function sampleTrack(track, frame) {
+  const keys = track.keyframes;
+  if (frame <= keys[0].frame) return keys[0].value;
+  const next = keys.findIndex((key) => key.frame > frame);
+  if (next < 0) return keys.at(-1).value;
+  const a = keys[next - 1];
+  const b = keys[next];
+  const t = ease((frame - a.frame) / (b.frame - a.frame), a.easing);
+  return typeof a.value === "string" ? mixColor(a.value, b.value, t) : a.value + (b.value - a.value) * t;
+}
+function sampleNode(source, tracks, frame) {
+  if (!tracks.length) return source;
+  const node = { ...source };
+  for (const track of tracks) {
+    const value = sampleTrack(track, frame);
+    const property = track.property;
+    if (property.startsWith("position.") || property.startsWith("stretch.")) {
+      const field = property.startsWith("position.") ? "position" : "stretch";
+      node[field] = [...node[field] ?? [1, 1]];
+      node[field][property.endsWith(".x") ? 0 : 1] = value;
+    } else if (property.startsWith("params.") && node.type === "custom") node.params = { ...node.params, [property.slice(7)]: value };
+    else if (property === "fontSize" && node.type === "text") node.fontSize = value;
+    else if (property === "strokeWidth" && (node.type === "path" || node.type === "vector")) {
+      node.strokeWidth = value;
+    } else if ((property === "width" || property === "height") && (node.type === "image" || node.type === "custom")) node[property] = value;
+    else if (property === "color") node.color = value;
+    else if (property === "rotation" || property === "scale" || property === "opacity") node[property] = value;
+  }
+  return node;
+}
+function layoutOffset(node, index) {
+  if (node.type !== "group" || !node.layout) return [0, 0];
+  const { type, cell, gap, columns } = node.layout;
+  return [
+    (type === "column" ? 0 : type === "row" ? index : index % columns) * (cell[0] + gap[0]),
+    (type === "row" ? 0 : type === "column" ? index : Math.floor(index / columns)) * (cell[1] + gap[1])
+  ];
+}
 
 // packages/core/src/validate.ts
 function check(value, schema, path2, issues) {
@@ -1258,8 +1513,8 @@ function check(value, schema, path2, issues) {
       return errors;
     });
     if (results.filter((errors) => !errors.length).length === 1) return;
-    const object3 = value && typeof value === "object" ? value : {};
-    const selected = schema.oneOf.findIndex((variant) => Object.entries(variant.properties ?? {}).some(([key, field]) => field.const !== void 0 && object3[key] === field.const));
+    const object4 = value && typeof value === "object" ? value : {};
+    const selected = schema.oneOf.findIndex((variant) => Object.entries(variant.properties ?? {}).some(([key, field]) => field.const !== void 0 && object4[key] === field.const));
     if (selected >= 0) issues.push(...results[selected]);
     else issue("Unsupported node type or recipe. Use a catalog entry supported by this version.");
     return;
@@ -1310,6 +1565,11 @@ function check(value, schema, path2, issues) {
     if (schema.maximum !== void 0 && value > schema.maximum) issue(`Maximum is ${schema.maximum}.`);
   }
 }
+function validateData(value, schema) {
+  const issues = [];
+  check(value, schema, "$", issues);
+  return issues;
+}
 function validateScene(value) {
   const issues = [];
   check(value, motionSchema, "$", issues);
@@ -1323,17 +1583,44 @@ function validateScene(value) {
     if (ids.has(node.id)) add(`$.nodes[${i}].id`, "DUPLICATE_ID", "Node ID must be unique.");
     ids.add(node.id);
     if (node.type === "text") {
-      if (node.font !== "system" && node.font !== "mono" && !Object.hasOwn(scene.assets, node.font)) add(`$.nodes[${i}].font`, "MISSING_FONT", "Use system or mono, or declare this font asset and include the matching file.");
+      if (node.font !== "system" && node.font !== "mono" && scene.assets[node.font]?.type !== "font") add(`$.nodes[${i}].font`, "MISSING_FONT", "Use system or mono, or declare this font asset and include the matching file.");
       if (node.text.includes("\r") || node.text.includes("	")) add(`$.nodes[${i}].text`, "TEXT_LAYOUT", "Use explicit LF newlines and spaces, not CR or tabs.");
       if (node.text.split("\n").length > 20) add(`$.nodes[${i}].text`, "TEXT_LAYOUT", "At most 20 explicit lines are supported.");
     }
+    if (node.type === "image" && scene.assets[node.asset]?.type !== "image") add(`$.nodes[${i}].asset`, "MISSING_IMAGE", "Reference a declared image asset.");
+    if (node.type === "custom" && scene.assets[node.module]?.type !== "module") add(`$.nodes[${i}].module`, "MISSING_MODULE", "Reference a declared module asset.");
+    if (node.type === "custom" && Object.keys(node.params).some((key) => !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) || ["__proto__", "constructor", "prototype"].includes(key)))
+      add(`$.nodes[${i}].params`, "PARAMETER", "Use stable parameter names, excluding JavaScript prototype keys.");
+    if (node.type === "vector" && node.commands[0]?.op !== "M") add(`$.nodes[${i}].commands`, "VECTOR", "A vector must start with M.");
+    const ancestors = /* @__PURE__ */ new Set([node.id]);
+    let parent = node.parent;
+    while (parent) {
+      if (ancestors.has(parent)) {
+        add(`$.nodes[${i}].parent`, "PARENT_CYCLE", "Groups must not contain themselves, directly or indirectly.");
+        break;
+      }
+      ancestors.add(parent);
+      const group = scene.nodes.find((item) => item.id === parent);
+      if (group?.type !== "group") {
+        add(`$.nodes[${i}].parent`, "MISSING_GROUP", "Parent must reference a group.");
+        break;
+      }
+      parent = group.parent;
+    }
   });
   const assetFamilies = /* @__PURE__ */ new Set();
-  for (const [id2, asset] of Object.entries(scene.assets)) {
-    if (id2 === "system" || id2 === "mono") add(`$.assets.${id2}`, "ASSET_ID", `${id2} is reserved for a device font; choose another asset ID.`);
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id2)) add(`$.assets.${id2}`, "ASSET_ID", "Use a stable alphanumeric asset ID.");
-    if (assetFamilies.has(asset.family)) add(`$.assets.${id2}.family`, "FONT_FAMILY", "Each font asset must have a unique family.");
-    assetFamilies.add(asset.family);
+  for (const [id4, asset] of Object.entries(scene.assets)) {
+    if (id4 === "system" || id4 === "mono") add(`$.assets.${id4}`, "ASSET_ID", `${id4} is reserved for a device font; choose another asset ID.`);
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id4)) add(`$.assets.${id4}`, "ASSET_ID", "Use a stable alphanumeric asset ID.");
+    if (asset.type === "font") {
+      if (assetFamilies.has(asset.family)) add(`$.assets.${id4}.family`, "FONT_FAMILY", "Each font asset must have a unique family.");
+      assetFamilies.add(asset.family);
+    }
+  }
+  const assetPaths = /* @__PURE__ */ new Set();
+  for (const asset of Object.values(scene.assets)) {
+    if (assetPaths.has(asset.src)) add("$.assets", "ASSET_PATH", "Each asset must have a unique path. Reuse its ID for shared resources.");
+    assetPaths.add(asset.src);
   }
   const clipIds = /* @__PURE__ */ new Set();
   const writers = /* @__PURE__ */ new Map();
@@ -1344,7 +1631,7 @@ function validateScene(value) {
     const node = scene.nodes.find((node2) => node2.id === clip.target);
     const capability = getCapability(clip.recipe);
     if (!node) add(`${path2}.target`, "MISSING_TARGET", "Reference an existing node ID.");
-    else if (!capability.targets.includes(node.type)) add(`${path2}.target`, "TARGET_TYPE", `${clip.recipe} cannot target ${node.type}.`);
+    else if (!supportsNode(clip.recipe, node)) add(`${path2}.target`, "TARGET_TYPE", `${clip.recipe} cannot target ${node.type}.`);
     if (clip.startFrame + clip.durationFrames > scene.durationFrames) add(`${path2}.durationFrames`, "CLIP_BOUNDS", "Clip must fit inside the scene.");
     if (capability.role === "property") for (const property of capability.writes) {
       const key = `${clip.target}:${property}`;
@@ -1358,7 +1645,18 @@ function validateScene(value) {
     if (node?.type === "text" && clip.recipe === "text.chars" && ([...node.text].filter((character) => character.trim()).length - 1) * Number(clip.params.stepFrames) >= clip.durationFrames)
       add(`${path2}.params.stepFrames`, "STAGGER_BOUNDS", "Leave positive animation time for every character within the clip.");
   });
+  issues.push(...animationIssues(scene));
+  if (scene.study) issues.push(...studyIssues(scene.study, scene).map((issue) => ({ ...issue, path: issue.path.replace("$", "$.study") })));
   return issues;
+}
+function validateStudy(value, scene) {
+  const issues = [];
+  check(value, studySchema, "$", issues);
+  return issues.length ? issues : studyIssues(value, scene);
+}
+function assertStudy(value, scene) {
+  const issues = validateStudy(value, scene);
+  if (issues.length) throw new SceneValidationError(issues);
 }
 var SceneValidationError = class extends Error {
   constructor(issues) {
@@ -1800,7 +2098,7 @@ var textTracking = (c) => {
     });
   }
 };
-var text2 = { "text.chars": textChars, "text.lines": textLines, "text.decode": textDecode, "text.type": textType, "text.count": textCount, "text.tracking": textTracking };
+var text3 = { "text.chars": textChars, "text.lines": textLines, "text.decode": textDecode, "text.type": textType, "text.count": textCount, "text.tracking": textTracking };
 
 // packages/core/src/recipes/feel.ts
 var feelTrail = (c) => {
@@ -1879,12 +2177,12 @@ var genShatter = (c) => {
       const away = [centre[0] - box.cx, centre[1] - box.cy];
       const distance = Math.hypot(...away);
       const local = clamp((c.progress - c.n("delayRatio") * distance / far) / (1 - c.n("delayRatio")));
-      const id2 = (i * count + j) * 2 + half;
-      const push = c.n("forcePx") * (1 - (1 - local) ** 2) * (0.6 + 0.8 * rand(c.seed, id2, 2));
+      const id4 = (i * count + j) * 2 + half;
+      const push = c.n("forcePx") * (1 - (1 - local) ** 2) * (0.6 + 0.8 * rand(c.seed, id4, 2));
       const pose = {
         x: (distance ? away[0] / distance : 0) * push,
         y: (distance ? away[1] / distance : -1) * push + c.n("gravityPx") * local * local,
-        rotation: c.n("spinDeg") * local * (rand(c.seed, id2, 3) - 0.5) * 2,
+        rotation: c.n("spinDeg") * local * (rand(c.seed, id4, 3) - 0.5) * 2,
         ox: centre[0],
         oy: centre[1]
       };
@@ -1936,16 +2234,226 @@ var genLink = (c) => {
 var generate = { "gen.particles": genParticles, "gen.shatter": genShatter, "gen.ripple": genRipple, "gen.trace": genTrace, "gen.link": genLink };
 
 // packages/core/src/recipes/index.ts
-var recipes = { ...prop, ...timing, ...loop, ...choreo, ...transition, ...text2, ...feel, ...generate };
+var recipes = { ...prop, ...timing, ...loop, ...choreo, ...transition, ...text3, ...feel, ...generate };
 
 // packages/core/src/playback.ts
 function canContinueScene(scene) {
   const kinds = scene.clips.map((clip) => getCapability(clip.recipe).time);
-  return kinds.includes("ongoing") && !kinds.includes("finite");
+  return !scene.animations?.length && !scene.nodes.some((node) => node.type === "custom") && kinds.includes("ongoing") && !kinds.includes("finite");
+}
+
+// packages/core/src/authoring.ts
+var color3 = string(7, "^#[0-9a-fA-F]{6}$");
+var id3 = string(64, "^[a-zA-Z][a-zA-Z0-9_-]*$");
+var brandSchema = object2({
+  name: string(80),
+  palette: object2({ background: color3, ink: color3, muted: color3, accent: color3 }),
+  typography: object2({ headlineRatio: number(0.06, 0.18), bodyRatio: number(0.018, 0.045) }),
+  motion: object2({
+    enterSeconds: number(0.2, 2),
+    travelSeconds: number(0.3, 2),
+    minReadSeconds: number(0.8, 5),
+    readUnitsPerSecond: number(3, 20),
+    endHoldSeconds: number(0.8, 4)
+  })
+});
+var briefSchema = object2({
+  briefVersion: { const: "0.1" },
+  pattern: { const: "title-yields-to-product" },
+  canvas: object2({ width: integer(320, 1920), height: integer(320, 1920) }),
+  fps: integer(24, 60),
+  durationSeconds: number(4, 30),
+  copy: object2({ headline: string(160), detail: string(240), closing: string(100) }),
+  product: object2({ src: string(300), sha256: string(64, "^[0-9a-f]{64}$"), license: string(500) }),
+  brand: brandSchema
+});
+function requireSchema(value, schema) {
+  const issues = validateData(value, schema);
+  if (issues.length) throw new Error(`AUTHORING_INVALID: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`);
+}
+function readBrief(value) {
+  requireSchema(value, briefSchema);
+  const brief = value;
+  const aspect = brief.canvas.width / brief.canvas.height;
+  if (aspect < 0.5 || aspect > 2) throw new Error("PATTERN_FIT: This pattern supports aspect ratios from 1:2 to 2:1.");
+  for (const [field, content] of Object.entries(brief.copy)) {
+    if (/\r|\t/u.test(content) || content.split("\n").some((line) => !line.trim()) || content.split("\n").length > 3)
+      throw new Error(`COPY_LAYOUT: ${field} needs one to three nonempty lines, using explicit LF breaks.`);
+  }
+  if (!/\.(png|jpe?g|webp)$/iu.test(brief.product.src)) throw new Error("PRODUCT_FORMAT: Use a static PNG, JPEG or WebP image.");
+  return structuredClone(brief);
+}
+var controlSchema = object2({
+  id: id3,
+  label: string(100),
+  collection: { enum: ["nodes", "animations", "assets", "scene"] },
+  target: string(100),
+  field: string(100),
+  kind: { enum: ["text", "color", "number", "vector", "keyframes", "asset"] },
+  unit: string(100),
+  note: string(500)
+});
+var authoringSchema = object2({
+  authoringVersion: { const: "0.1" },
+  pattern: object2({ id: id3, version: string(32) }),
+  origin: { const: "original" },
+  brand: brandSchema,
+  assetLicense: string(500),
+  decisions: { type: "array", items: string(1e3), maxItems: 30 },
+  controls: { type: "array", items: controlSchema, minItems: 1, maxItems: 100 }
+});
+function inspectControls(value, scene) {
+  requireSchema(value, authoringSchema);
+  assertScene(scene);
+  const record = value;
+  const ids = /* @__PURE__ */ new Set();
+  const controls = record.controls.map((control) => {
+    if (ids.has(control.id)) throw new Error(`CONTROL_DUPLICATE: ${control.id}`);
+    ids.add(control.id);
+    let entity;
+    if (control.collection === "scene") entity = control.target === "canvas" ? scene.canvas : void 0;
+    else if (control.collection === "assets") entity = scene.assets[control.target];
+    else entity = (scene[control.collection] ?? []).find((item) => item.id === control.target);
+    if (!entity || typeof entity !== "object") throw new Error(`CONTROL_TARGET: ${control.id} refers to missing ${control.target}.`);
+    const fields = {
+      scene: ["background"],
+      nodes: ["text", "color", "fontSize", "lineHeight", "position", "pivot", "scale", "width", "height", "asset"],
+      animations: ["keyframes"],
+      assets: ["src"]
+    };
+    if (!fields[control.collection].includes(control.field) || !Object.hasOwn(entity, control.field))
+      throw new Error(`CONTROL_FIELD: ${control.id} refers to unsupported ${control.field}.`);
+    const saved = entity[control.field];
+    const valid = control.kind === "keyframes" ? control.collection === "animations" && control.field === "keyframes" : control.kind === "vector" ? Array.isArray(saved) && saved.length === 2 && saved.every((n) => typeof n === "number") : control.kind === "number" ? typeof saved === "number" : control.kind === "color" ? typeof saved === "string" && /^#[0-9a-f]{6}$/iu.test(saved) : typeof saved === "string";
+    if (!valid) throw new Error(`CONTROL_TYPE: ${control.id} has the wrong saved value type.`);
+    const tracks = control.collection === "nodes" ? (scene.animations ?? []).filter((track) => track.target === control.target && (track.property === control.field || track.property.startsWith(`${control.field}.`))).map((track) => track.id) : [];
+    return { ...control, value: structuredClone(saved), animatedBy: tracks };
+  });
+  return { record, controls, bindingsVerified: true, visualReview: "not-performed" };
+}
+var widthUnits = (text4) => [...text4].reduce((sum, char) => sum + (/\s/u.test(char) ? 0.3 : /[\u0000-\u024f]/u.test(char) ? 0.6 : 1), 0);
+var readingUnits = (text4) => [...text4.replace(/\s/gu, "")].reduce((sum, char) => sum + (/[\u0000-\u024f]/u.test(char) ? 0.5 : 1), 0);
+function composePattern(input, product) {
+  const brief = readBrief(input);
+  const { width: w, height: h } = brief.canvas;
+  const portrait = h > w;
+  const { palette, typography, motion } = brief.brand;
+  const fps = brief.fps;
+  const frame = (seconds2) => Math.round(seconds2 * fps);
+  const enter = motion.enterSeconds;
+  const read = Math.max(motion.minReadSeconds, readingUnits(brief.copy.headline) / motion.readUnitsPerSecond);
+  const yieldAt = enter + read;
+  const productAt = yieldAt + motion.travelSeconds;
+  const detailAt = productAt + 0.35;
+  const detailRead = Math.max(motion.minReadSeconds, readingUnits(brief.copy.detail) / motion.readUnitsPerSecond);
+  const closingAt = detailAt + enter + detailRead;
+  const closingRead = Math.max(motion.endHoldSeconds, readingUnits(brief.copy.closing) / motion.readUnitsPerSecond);
+  const minimum = closingAt + enter + closingRead;
+  const durationFrames = frame(brief.durationSeconds);
+  if (durationFrames - 1 < frame(minimum)) throw new Error(`READING_TIME: Content needs at least ${(Math.ceil((minimum + 1 / fps) * 10) / 10).toFixed(1)} seconds. Increase duration or shorten copy; reading time is not compressed.`);
+  const margin = w * 0.065;
+  const headlineWidth = w * 0.87;
+  const maxUnits = Math.max(...brief.copy.headline.split("\n").map(widthUnits));
+  const headlineSize = Math.min(w * typography.headlineRatio, headlineWidth / maxUnits);
+  if (headlineSize < w * 0.045) throw new Error("COPY_LAYOUT: Headline is too wide. Add an explicit line break or shorten it.");
+  const titleScale = portrait ? 0.7 : 0.53;
+  const titleY = h * 0.42;
+  const finalTitleY = h * (portrait ? 0.18 : 0.29);
+  const productWidth = portrait ? w * 0.82 : w * 0.49;
+  const productHeight = portrait ? h * 0.43 : h * 0.72;
+  const productPosition = [portrait ? w * 0.5 : w * 0.73, h * (portrait ? 0.54 : 0.53)];
+  const body = w * typography.bodyRatio * (portrait ? 1.23 : 1);
+  const nodes = [];
+  const animations = [];
+  const text4 = (id4, content, position, size2, color4, parent) => {
+    nodes.push({ id: id4, type: "text", text: content, position, fontSize: size2, lineHeight: size2 * 1.15, color: color4, font: "system", ...parent ? { parent } : {} });
+  };
+  const track = (id4, target, property, keys) => {
+    animations.push({ id: id4, target, property, keyframes: keys.map(([seconds2, value]) => ({ frame: frame(seconds2), value, easing: [0.22, 1, 0.36, 1] })) });
+  };
+  const reveal = (target, start, y) => {
+    track(`${target}-opacity`, target, "opacity", start === 0 ? [[0, 0], [enter, 1]] : [[0, 0], [start, 0], [start + enter, 1]]);
+    track(`${target}-arrive`, target, "position.y", [[start, y + h * 0.035], [start + enter, y]]);
+  };
+  text4("brand", brief.brand.name, [margin, h * 0.095], body, palette.ink);
+  nodes.push({ id: "headline-group", type: "group", position: [margin, titleY], color: palette.ink });
+  text4("headline", brief.copy.headline, [0, 0], headlineSize, palette.ink, "headline-group");
+  track("headline-opacity", "headline-group", "opacity", [[0, 0], [enter, 1]]);
+  track("headline-y", "headline-group", "position.y", [[0, titleY + h * 0.08], [enter, titleY], [yieldAt, titleY], [productAt, finalTitleY]]);
+  track("headline-scale", "headline-group", "scale", [[0, 1], [yieldAt, 1], [productAt, titleScale]]);
+  nodes.push({
+    id: "product",
+    type: "image",
+    asset: "product-image",
+    color: "#ffffff",
+    position: productPosition,
+    pivot: [productWidth / 2, productHeight / 2],
+    width: productWidth,
+    height: productHeight,
+    fit: "contain"
+  });
+  track("product-opacity", "product", "opacity", [[0, 0], [yieldAt + 0.12, 0], [productAt, 1]]);
+  track("product-scale", "product", "scale", [[yieldAt, 0.78], [productAt, 1]]);
+  track("product-y", "product", "position.y", [[yieldAt, productPosition[1] + h * 0.12], [productAt, productPosition[1]]]);
+  const detailY = portrait ? h * 0.82 : h * 0.61;
+  nodes.push({ id: "detail-group", type: "group", color: palette.ink, position: [margin, detailY] });
+  nodes.push({
+    id: "detail-rule",
+    type: "path",
+    parent: "detail-group",
+    position: [0, -body * 1.6],
+    color: palette.accent,
+    points: [[0, 0], [w * 0.08, 0]],
+    strokeWidth: Math.max(2, w * 3e-3)
+  });
+  const detailWidth = w * (portrait ? 0.86 : 0.4);
+  const detailSize = Math.min(body, detailWidth / Math.max(...brief.copy.detail.split("\n").map(widthUnits)));
+  if (detailSize < w * 0.015) throw new Error("COPY_LAYOUT: Detail copy needs shorter lines.");
+  text4("detail", brief.copy.detail, [0, 0], detailSize, palette.muted, "detail-group");
+  reveal("detail-group", detailAt, detailY);
+  const closingSize = Math.min(body * 0.85, w * 0.86 / Math.max(...brief.copy.closing.split("\n").map(widthUnits)));
+  text4("closing", brief.copy.closing, [margin, h * 0.94 - (brief.copy.closing.split("\n").length - 1) * closingSize * 1.15], closingSize, palette.ink);
+  track("closing-opacity", "closing", "opacity", [[0, 0], [closingAt, 0], [closingAt + enter, 1]]);
+  const scene = {
+    specVersion: "0.2",
+    seed: 17,
+    canvas: { ...brief.canvas, background: palette.background },
+    fps: { numerator: fps, denominator: 1 },
+    durationFrames,
+    assets: { "product-image": product },
+    nodes,
+    clips: [],
+    animations
+  };
+  assertScene(scene);
+  const controls = [
+    ...["brand", "headline", "detail", "closing"].map((target) => ({ id: `${target}-copy`, label: `${target} \u6587\u6848`, collection: "nodes", target, field: "text", kind: "text", unit: "LF \u5206\u884C\u6587\u672C", note: "\u6539\u957F\u6587\u672C\u540E\u68C0\u67E5\u5B57\u53F7\u3001\u5E03\u5C40\u548C\u505C\u7A33\u9605\u8BFB\u65F6\u95F4\u3002" })),
+    { id: "background", label: "\u80CC\u666F\u8272", collection: "scene", target: "canvas", field: "background", kind: "color", unit: "#RRGGBB", note: "\u54C1\u724C\u89C4\u5219\u53EA\u4F5C\u521B\u4F5C\u53C2\u8003\uFF1B\u5F53\u524D\u573A\u666F\u4E2D\u7684\u4FDD\u5B58\u503C\u751F\u6548\u3002" },
+    { id: "headline-color", label: "\u6807\u9898\u989C\u8272", collection: "nodes", target: "headline", field: "color", kind: "color", unit: "#RRGGBB", note: "\u4FDD\u6301\u4E0E\u80CC\u666F\u7684\u53EF\u8BFB\u5BF9\u6BD4\u3002" },
+    { id: "headline-size", label: "\u6807\u9898\u5B57\u53F7", collection: "nodes", target: "headline", field: "fontSize", kind: "number", unit: "px", note: "\u540C\u65F6\u68C0\u67E5 lineHeight\uFF1B\u5C4F\u5E55\u5B57\u53F7\u8FD8\u53D7\u5230\u7236\u7EC4\u7F29\u653E\u5F71\u54CD\u3002" },
+    { id: "product-source", label: "\u4EA7\u54C1\u56FE\u7247", collection: "assets", target: "product-image", field: "src", kind: "asset", unit: "\u672C\u5730\u76F8\u5BF9\u8DEF\u5F84", note: "\u66F4\u6362\u56FE\u7247\u540E\u66F4\u65B0 sha256\uFF0C\u68C0\u67E5 contain\u3001\u67A2\u8F74\u548C\u56FE\u50CF\u7559\u767D\u3002" },
+    ...animations.map((animation) => ({ id: animation.id, label: animation.id, collection: "animations", target: animation.id, field: "keyframes", kind: "keyframes", unit: "\u573A\u666F\u5E27 / \u5C5E\u6027\u539F\u5355\u4F4D", note: "\u4FEE\u6539\u660E\u786E\u7684\u5173\u952E\u5E27\uFF1B\u4E0D\u901A\u8FC7\u6539 fps \u8C03\u901F\u3002\u79FB\u52A8\u9636\u6BB5\u65F6\u540C\u6B65\u68C0\u67E5\u5173\u8054\u52A8\u4F5C\u53CA\u5C3E\u90E8\u505C\u7559\u3002" }))
+  ];
+  const authoring = {
+    authoringVersion: "0.1",
+    pattern: { id: brief.pattern, version: "0.1.0" },
+    origin: "original",
+    brand: structuredClone(brief.brand),
+    assetLicense: brief.product.license,
+    controls,
+    decisions: [
+      "\u539F\u521B\u7F16\u6392\u793A\u4F8B\uFF0C\u65E0\u5916\u90E8\u53C2\u8003\u89C2\u5BDF\u8BB0\u5F55\u3002\u54C1\u724C\u5FEB\u7167\u7528\u4E8E\u7406\u89E3\u8BBE\u8BA1\uFF0C\u4E0D\u4F1A\u8986\u76D6\u573A\u666F\u4FDD\u5B58\u503C\u3002",
+      `${portrait ? "\u7EB5\u5411" : "\u6A2A\u5411"}\u5E03\u5C40\uFF1A\u6807\u9898\u5148\u5B8C\u6210\u9605\u8BFB\uFF0C\u518D\u8BA9\u51FA\u4EA7\u54C1\u7A7A\u95F4\uFF1B\u4EA7\u54C1\u843D\u5B9A\u540E\u5F15\u5165\u7EC6\u8282\uFF0C\u6700\u540E\u51FA\u73B0\u6536\u5C3E\u6587\u6848\u3002`,
+      `\u521D\u59CB\u89C4\u5212\uFF08\u79D2\uFF09\uFF1A\u6807\u9898\u505C\u7A33 ${enter.toFixed(2)}\uFF0C\u8BA9\u4F4D ${yieldAt.toFixed(2)}\uFF0C\u4EA7\u54C1\u843D\u5B9A ${productAt.toFixed(2)}\uFF0C\u7EC6\u8282 ${detailAt.toFixed(2)}\uFF0C\u6536\u5C3E ${closingAt.toFixed(2)}\u3002\u540E\u7EED\u4EE5\u573A\u666F\u5173\u952E\u5E27\u4E3A\u51C6\u3002`,
+      "\u5B57\u53F7\u4F7F\u7528\u4F30\u7B97\u521D\u6392\uFF0C\u5B9E\u9645\u5B57\u5F62\u5BBD\u5EA6\u3001\u91CD\u53E0\u3001\u8282\u594F\u4E0E\u7F16\u7801\u540E\u64AD\u653E\u5C1A\u9700\u68C0\u67E5\uFF1B\u6CA1\u6709\u81EA\u52A8\u6392\u7248\u6216\u81EA\u52A8\u89C6\u89C9\u9A8C\u6536\u3002"
+    ]
+  };
+  inspectControls(authoring, scene);
+  return { scene, authoring };
 }
 
 // packages/core/src/index.ts
-var ENGINE_VERSION = "0.4.0";
+var ENGINE_VERSION = "0.6.0";
 var ALGORITHM_VERSION = "value-noise-fnv-mix-v1";
 function freeze(value) {
   if (value && typeof value === "object") {
@@ -1965,7 +2473,7 @@ var freshState = (node) => ({
   trimStart: 0,
   trim: 1,
   filters: [],
-  lines: node.type === "text" ? node.text.split("\n").map((text3, i) => ({ text: text3, y: i * node.lineHeight, opacity: 1 })) : []
+  lines: node.type === "text" ? node.text.split("\n").map((text4, i) => ({ text: text4, y: i * node.lineHeight, opacity: 1 })) : []
 });
 function placeOf(node, copy, state) {
   const angle = copy.rotation * Math.PI / 180;
@@ -1976,16 +2484,18 @@ function placeOf(node, copy, state) {
 function finishFrame(node, copy, index, state) {
   const common = {
     position: placeOf(node, copy, state),
-    rotation: copy.rotation + copy.flip[0] * copy.flip[1] * state.rotation,
-    scale: copy.scale * state.scale,
-    stretch: [state.stretch[0] * copy.flip[0], state.stretch[1] * copy.flip[1]],
-    opacity: clamp(copy.opacity * state.opacity),
+    rotation: (node.rotation ?? 0) + copy.rotation + copy.flip[0] * copy.flip[1] * state.rotation,
+    scale: (node.scale ?? 1) * copy.scale * state.scale,
+    stretch: [state.stretch[0] * copy.flip[0] * (node.stretch?.[0] ?? 1), state.stretch[1] * copy.flip[1] * (node.stretch?.[1] ?? 1)],
+    opacity: clamp((node.opacity ?? 1) * copy.opacity * state.opacity),
     color: state.color,
     filters: state.filters,
     copy: index,
     ...state.pieces ? { pieces: state.pieces } : {}
   };
   if (node.type === "text") return { ...node, ...common, lines: state.lines };
+  if (node.type === "group") return { ...node, ...common, children: [] };
+  if (node.type !== "path") return { ...node, ...common };
   const whole = state.trimStart <= 0 && state.trim >= 1;
   const visiblePoints = whole ? node.points.map((point2) => [...point2]) : slice(node.points, Boolean(node.closed), state.trimStart, state.trim);
   const layers = state.layers ?? [{ blend: "normal", filters: [], shapes: visiblePoints.length >= 2 ? [{ paths: [visiblePoints], closed: Boolean(node.closed) && whole, fill: Boolean(node.fill) && whole, strokeWidth: node.strokeWidth, opacity: 1 }] : [] }];
@@ -2035,6 +2545,8 @@ function compileScene(input) {
   }
   function evaluateNode(node, time, continuous) {
     const nodePlans = plans.get(node.id) ?? [];
+    const tracks = scene.animations?.filter((track) => track.target === node.id) ?? [];
+    const sourceAt = (at) => sampleNode(node, tracks, at);
     const context = contextFor(node, continuous);
     const copies = arrange(node, time, context);
     const curves = nodePlans.filter((plan) => plan.role === "timing").map((plan) => {
@@ -2044,14 +2556,16 @@ function compileScene(input) {
       } }));
       return { start: plan.clip.startFrame, end: plan.clip.startFrame + plan.clip.durationFrames, curve };
     });
-    const ease = (clip) => curves.find((entry) => clip.startFrame >= entry.start && clip.startFrame < entry.end)?.curve ?? smooth;
+    const ease2 = (clip) => curves.find((entry) => clip.startFrame >= entry.start && clip.startFrame < entry.end)?.curve ?? smooth;
     const stateAt = (copy, at, withFeel) => {
-      const state = freshState(node);
+      const source = sourceAt(at);
+      const state = freshState(source);
+      const sampleContext = contextFor(source, continuous);
       for (const plan of nodePlans) {
         if (plan.role !== "property" && plan.role !== "loop" && !(withFeel && plan.role === "feel")) continue;
         const started = plan.clip.startFrame <= at;
         if (plan.rivals.some((other) => started ? other.startFrame <= at && other.startFrame > plan.clip.startFrame : other.startFrame < plan.clip.startFrame)) continue;
-        plan.recipe(context(plan, at, state, copy, { ease: ease(plan.clip), pastPosition: (frames2) => placeOf(node, copy, stateAt(copy, at - frames2, false)) }));
+        plan.recipe(sampleContext(plan, at, state, copy, { ease: ease2(plan.clip), pastPosition: (frames2) => placeOf(sourceAt(at - frames2), copy, stateAt(copy, at - frames2, false)) }));
       }
       return state;
     };
@@ -2059,10 +2573,24 @@ function compileScene(input) {
     for (const plan of nodePlans) {
       if (plan.role !== "overlay") continue;
       const state = freshState(node);
-      plan.recipe(context(plan, time, state, single(), { history: (length, samples) => copies.filter((copy) => copy.ghost === 0).map((copy) => Array.from({ length: samples }, (_, i) => placeOf(node, copy, stateAt(copy, time - copy.delay - length * (samples > 1 ? 1 - i / (samples - 1) : 0), false)))) }));
-      frames.push({ type: "overlay", id: `${node.id}:${plan.clip.id}`, color: node.color, layers: state.layers ?? [] });
+      plan.recipe(context(plan, time, state, single(), { history: (length, samples) => copies.filter((copy) => copy.ghost === 0).map((copy) => Array.from({ length: samples }, (_, i) => {
+        const at = time - copy.delay - length * (samples > 1 ? 1 - i / (samples - 1) : 0);
+        return placeOf(sourceAt(at), copy, stateAt(copy, at, false));
+      })) }));
+      frames.push({ type: "overlay", id: `${node.id}:${plan.clip.id}`, color: sourceAt(time).color, layers: state.layers ?? [] });
     }
-    copies.forEach((copy, index) => frames.push(finishFrame(node, copy, index, stateAt(copy, time - copy.delay, true))));
+    copies.forEach((copy, index) => {
+      const rendered = finishFrame(sourceAt(time - copy.delay), copy, index, stateAt(copy, time - copy.delay, true));
+      if (rendered.type === "group") rendered.children = scene.nodes.filter((child) => child.parent === node.id).flatMap((child, i) => {
+        const [x, y] = layoutOffset(node, i);
+        return evaluateNode(child, time, continuous).map((frame) => {
+          if (frame.type !== "overlay") frame.position = [frame.position[0] + x, frame.position[1] + y];
+          else if (x || y) frame.offset = [x, y];
+          return frame;
+        });
+      });
+      frames.push(rendered);
+    });
     return frames;
   }
   return Object.freeze({
@@ -2072,7 +2600,7 @@ function compileScene(input) {
       const continuous = Boolean(options?.continuous);
       if (continuous && !canContinueScene(scene)) throw new RangeError("Continuous time requires a scene made only of ongoing and timeless recipes.");
       const sampled = continuous ? Math.max(0, frame) : clamp(frame, 0, scene.durationFrames);
-      return { frame: sampled, timeSeconds: sampled * scene.fps.denominator / scene.fps.numerator, nodes: scene.nodes.flatMap((node) => evaluateNode(node, sampled, continuous)) };
+      return { frame: sampled, timeSeconds: sampled * scene.fps.denominator / scene.fps.numerator, nodes: scene.nodes.filter((node) => !node.parent).flatMap((node) => evaluateNode(node, sampled, continuous)) };
     },
     copies(nodeId) {
       const node = scene.nodes.find((item) => item.id === nodeId);
@@ -2088,9 +2616,9 @@ function versionLock(scene) {
     schema: scene.specVersion,
     engine: ENGINE_VERSION,
     catalog: CATALOG_VERSION,
-    renderer: "canvas2d-v0.3.0",
+    renderer: "canvas2d-v0.5.0",
     algorithm: ALGORITHM_VERSION,
-    assets: Object.fromEntries(Object.entries(scene.assets).map(([id2, asset]) => [id2, { src: asset.src, sha256: asset.sha256 }])),
+    assets: Object.fromEntries(Object.entries(scene.assets).map(([id4, asset]) => [id4, { src: asset.src, sha256: asset.sha256 }])),
     ...scene.nodes.some((node) => node.type === "text" && node.font === "system") ? { systemFont: "device sans-serif; appearance varies by operating system" } : {}
   };
 }
@@ -2104,7 +2632,7 @@ function createStandaloneHtml(input, runtime, assets, license, playback = {}) {
 <title>MotionFlux \xB7 \u72EC\u7ACB\u573A\u666F</title>
 <style>body{margin:0;background:#101411;color:#edf2eb;font:15px system-ui;padding:24px}main{max-width:1100px;margin:auto}canvas{width:100%;height:auto;display:block;border:1px solid #38413b}nav{display:flex;align-items:center;gap:16px;padding:20px 0}input{flex:1}button{padding:9px 24px;cursor:pointer}pre{white-space:pre-wrap;font-size:12px;color:#a9b5aa}summary{cursor:pointer}h1{font-size:20px}</style>
 <main><h1>MotionFlux / \u72EC\u7ACB\u573A\u666F</h1><canvas aria-label="\u573A\u666F\u753B\u9762"></canvas><nav><button>\u64AD\u653E</button><input aria-label="\u5E27\u4F4D\u7F6E" type="range" min="0" value="0" step="1"><span id="status" role="status">\u51C6\u5907\u9884\u89C8\u2026</span></nav>
-<p>\u5DF2\u5185\u5D4C\u5F53\u524D\u53C2\u6570\u4E0E\u81EA\u6709\u8FD0\u884C\u4EE3\u7801\uFF0C\u53EF\u79BB\u7EBF\u6253\u5F00\u3002${Object.keys(input.assets).length ? "\u6240\u9700\u56FA\u5B9A\u5B57\u4F53\u5DF2\u5185\u5D4C\u3002" : "\u6587\u5B57\u4F7F\u7528\u8BBE\u5907\u7CFB\u7EDF\u5B57\u4F53\uFF0C\u65E0\u9700\u4E0B\u8F7D\u5B57\u5E93\u3002"}${playback.loop ? "\u64AD\u653E\u65F6\u8FDE\u7EED\u5FAA\u73AF\u3002" : ""}</p>
+<p>\u5DF2\u5185\u5D4C\u5F53\u524D\u53C2\u6570\u4E0E\u8FD0\u884C\u4EE3\u7801\uFF0C\u53EF\u79BB\u7EBF\u6253\u5F00\u3002${Object.keys(input.assets).length ? "\u6240\u9700\u8D44\u6E90\u5DF2\u5185\u5D4C\u3002" : "\u6587\u5B57\u4F7F\u7528\u8BBE\u5907\u7CFB\u7EDF\u5B57\u4F53\uFF0C\u65E0\u9700\u4E0B\u8F7D\u5B57\u5E93\u3002"}${playback.loop ? "\u64AD\u653E\u65F6\u8FDE\u7EED\u5FAA\u73AF\u3002" : ""}</p>
 ${safeLicense ? `<details><summary>\u5B57\u4F53\u8BB8\u53EF\u4E0E\u8D44\u6E90\u8BF4\u660E</summary><pre>${safeLicense}</pre></details>` : ""}</main>
 <script id="scene-data" type="application/json">${inlineJson(input)}</script>
 <script id="asset-data" type="application/json">${inlineJson(assets)}</script>
@@ -2188,8 +2716,8 @@ async function launch(browser) {
     });
     const pending = /* @__PURE__ */ new Map();
     let nextId = 0;
-    socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data));
+    socket.onmessage = (event2) => {
+      const message = JSON.parse(String(event2.data));
       const waiting = message.id === void 0 ? void 0 : pending.get(message.id);
       if (!waiting) return;
       pending.delete(message.id);
@@ -2202,9 +2730,9 @@ async function launch(browser) {
     };
     return {
       send: (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
-        const id2 = ++nextId;
-        pending.set(id2, { resolve: resolveCall, reject });
-        socket.send(JSON.stringify({ id: id2, method, params, ...sessionId ? { sessionId } : {} }));
+        const id4 = ++nextId;
+        pending.set(id4, { resolve: resolveCall, reject });
+        socket.send(JSON.stringify({ id: id4, method, params, ...sessionId ? { sessionId } : {} }));
       }),
       close: async () => {
         socket.onclose = null;
@@ -2223,7 +2751,7 @@ async function captureFrames(htmlPath, frames, browser, transparent, onFrame) {
     const { targetId } = await session.send("Target.createTarget", { url: pathToFileURL(htmlPath).href });
     const { sessionId } = await session.send("Target.attachToTarget", { targetId, flatten: true });
     const evaluate = async (expression) => {
-      const reply = await session.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId);
+      const reply = await session.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, sessionId);
       if (reply.exceptionDetails) throw new Error(`RENDER_FAILED: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
       return reply.result.value;
     };
@@ -2236,7 +2764,7 @@ async function captureFrames(htmlPath, frames, browser, transparent, onFrame) {
       await new Promise((wait) => setTimeout(wait, 50));
     }
     for (const frame of frames) {
-      const encoded = await evaluate(`(() => { window.motionFlux.renderFrame(${frame}, ${!transparent}); return document.querySelector('canvas').toDataURL('image/png').slice(22); })()`);
+      const encoded = await evaluate(`(async () => { await window.motionFlux.renderFrame(${frame}, ${!transparent}); return document.querySelector('canvas').toDataURL('image/png').slice(22); })()`);
       await onFrame(frame, Buffer.from(encoded, "base64"));
     }
   } finally {
@@ -2272,16 +2800,24 @@ async function encodeVideo(out, format, transparent, fps, feed) {
     child.once("error", (error) => reject(new Error(error.code === "ENOENT" ? "FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use the frames command for a PNG sequence instead." : `ENCODE_FAILED: ${error.message}`)));
     child.once("close", (code) => code === 0 ? done() : reject(new Error(`ENCODE_FAILED: ffmpeg exited with code ${code}. ${log.trim().split("\n").slice(-3).join(" ")}`)));
   });
+  let encoderError;
+  void finished.catch((error) => {
+    encoderError = error;
+  });
   child.stdin.on("error", () => {
   });
   try {
     await feed((png) => new Promise((written, reject) => {
-      child.stdin.write(png, (error) => error ? reject(new Error(`ENCODE_FAILED: ${error.message}`)) : written());
+      if (encoderError) {
+        reject(encoderError);
+        return;
+      }
+      child.stdin.write(png, (error) => error ? reject(encoderError ?? new Error(`ENCODE_FAILED: ${error.message}`)) : written());
     }));
   } catch (error) {
     child.kill();
     await finished.catch(() => void 0);
-    throw error;
+    throw encoderError ?? error;
   }
   child.stdin.end();
   await finished;
@@ -2313,30 +2849,30 @@ import { dirname, join as join2, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 var hash = (data) => createHash("sha256").update(data).digest("hex");
 var sceneHash = (scene) => hash(JSON.stringify(scene));
-var object2 = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+var object3 = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 function changesBetween(before, after) {
   const changes = [];
   function compare(a, b, location) {
     if (isDeepStrictEqual(a, b)) return;
-    if (object2(a) && object2(b)) {
+    if (object3(a) && object3(b)) {
       for (const key of [.../* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
         compare(a[key], b[key], { ...location, field: location.field ? `${location.field}.${key}` : key });
       }
     } else changes.push({ ...location, ...a !== void 0 ? { before: a } : {}, ...b !== void 0 ? { after: b } : {} });
   }
-  const { nodes: beforeNodes, clips: beforeClips, assets: beforeAssets, ...beforeSettings } = before;
-  const { nodes: afterNodes, clips: afterClips, assets: afterAssets, ...afterSettings } = after;
+  const { nodes: beforeNodes, clips: beforeClips, animations: beforeAnimations = [], assets: beforeAssets, ...beforeSettings } = before;
+  const { nodes: afterNodes, clips: afterClips, animations: afterAnimations = [], assets: afterAssets, ...afterSettings } = after;
   compare(beforeSettings, afterSettings, { collection: "scene", field: "" });
-  for (const [collection, a, b] of [["nodes", beforeNodes, afterNodes], ["clips", beforeClips, afterClips]]) {
+  for (const [collection, a, b] of [["nodes", beforeNodes, afterNodes], ["clips", beforeClips, afterClips], ["animations", beforeAnimations, afterAnimations]]) {
     compare(a.map((item) => item.id), b.map((item) => item.id), { collection: "scene", field: `${collection}Order` });
     const oldById = new Map(a.map((item) => [item.id, item]));
     const newById = new Map(b.map((item) => [item.id, item]));
-    for (const id2 of [.../* @__PURE__ */ new Set([...oldById.keys(), ...newById.keys()])].sort()) {
-      compare(oldById.get(id2), newById.get(id2), { collection, id: id2, field: "" });
+    for (const id4 of [.../* @__PURE__ */ new Set([...oldById.keys(), ...newById.keys()])].sort()) {
+      compare(oldById.get(id4), newById.get(id4), { collection, id: id4, field: "" });
     }
   }
-  for (const id2 of [.../* @__PURE__ */ new Set([...Object.keys(beforeAssets), ...Object.keys(afterAssets)])].sort()) {
-    compare(beforeAssets[id2], afterAssets[id2], { collection: "assets", id: id2, field: "" });
+  for (const id4 of [.../* @__PURE__ */ new Set([...Object.keys(beforeAssets), ...Object.keys(afterAssets)])].sort()) {
+    compare(beforeAssets[id4], afterAssets[id4], { collection: "assets", id: id4, field: "" });
   }
   return changes;
 }
@@ -2347,7 +2883,13 @@ function finite(value) {
 }
 function sampleChecks(scene) {
   const last = scene.durationFrames - 1;
-  const frames = [.../* @__PURE__ */ new Set([0, Math.floor(last / 2), last, ...scene.clips.flatMap((clip) => [clip.startFrame, clip.startFrame + clip.durationFrames - 1, clip.startFrame + clip.durationFrames].map((frame) => Math.min(last, frame)))])].sort((a, b) => a - b);
+  const frames = [.../* @__PURE__ */ new Set([
+    0,
+    Math.floor(last / 2),
+    last,
+    ...scene.clips.flatMap((clip) => [clip.startFrame, clip.startFrame + clip.durationFrames - 1, clip.startFrame + clip.durationFrames].map((frame) => Math.min(last, frame))),
+    ...(scene.animations ?? []).flatMap((track) => track.keyframes.map((key) => Math.min(last, key.frame)))
+  ])].sort((a, b) => a - b);
   const compiled = compileScene(scene);
   const states = frames.map((frame) => {
     const state = compiled.evaluate(frame);
@@ -2362,6 +2904,7 @@ function sampleChecks(scene) {
 async function writeDelivery(input) {
   const { scene, previous, assets, html } = input;
   const samples = sampleChecks(scene);
+  const authoring = input.authoring === void 0 ? void 0 : inspectControls(input.authoring, scene);
   const directory = resolve(input.out);
   const files = new Map([
     ["scene.json", Buffer.from(`${JSON.stringify(scene, null, 2)}
@@ -2369,6 +2912,16 @@ async function writeDelivery(input) {
     ["preview.html", Buffer.from(html)],
     ...Object.entries(assets).map(([path2, data]) => [path2, Buffer.from(data, "base64")])
   ]);
+  if (scene.study) {
+    files.set("study.json", Buffer.from(`${JSON.stringify(scene.study, null, 2)}
+`));
+    files.set("study-report.json", Buffer.from(`${JSON.stringify(studyReport(scene.study, scene), null, 2)}
+`));
+  }
+  if (authoring) {
+    files.set("authoring.json", Buffer.from(`${JSON.stringify(authoring.record, null, 2)}
+`));
+  }
   const report = {
     format: "motionflux-delivery/v1",
     sourceSceneHash: sceneHash(scene),
@@ -2376,10 +2929,13 @@ async function writeDelivery(input) {
     canvas: scene.canvas,
     fps: scene.fps,
     durationSeconds: scene.durationFrames * scene.fps.denominator / scene.fps.numerator,
-    atoms: [...new Set(scene.clips.map((clip) => clip.recipe))].map((id2) => {
-      const atom = getCapability(id2);
-      return { id: id2, version: atom.version, writes: atom.writes };
+    atoms: [...new Set(scene.clips.map((clip) => clip.recipe))].map((id4) => {
+      const atom = getCapability(id4);
+      return { id: id4, version: atom.version, writes: atom.writes };
     }),
+    objects: scene.nodes.map((node) => ({ id: node.id, type: node.type, parent: node.parent ?? null })),
+    animations: (scene.animations ?? []).map((track) => ({ id: track.id, target: track.target, property: track.property })),
+    ...authoring ? { authoring: { pattern: authoring.record.pattern, controls: authoring.controls.length, bindingsVerified: true } } : {},
     checks: {
       schema: "passed",
       assetsVerified: Object.keys(scene.assets).length,
@@ -2415,6 +2971,7 @@ async function writeDelivery(input) {
     directory,
     preview: join2(directory, "preview.html"),
     scene: join2(directory, "scene.json"),
+    ...authoring ? { authoring: join2(directory, "authoring.json") } : {},
     report: join2(directory, "delivery.json"),
     files: files.size + 1,
     changes: report.revision?.changes.length ?? 0,
@@ -2437,7 +2994,7 @@ var colors = {
   "prop.draw": "#ff9587",
   "prop.crop": "#95dfdd"
 };
-var colorOf = (id2) => colors[id2] ?? `hsl(${(order.indexOf(id2) * 137.508 % 360).toFixed(3)} 75% 72%)`;
+var colorOf = (id4) => colors[id4] ?? `hsl(${(order.indexOf(id4) * 137.508 % 360).toFixed(3)} 75% 72%)`;
 function actionTracks(actions) {
   const tracks = /* @__PURE__ */ new Map();
   for (const action of actions) {
@@ -2472,7 +3029,16 @@ function breakdownPlan(scene, options) {
     ...options.title ? { title: options.title } : {},
     durationFrames: scene.durationFrames,
     fps: scene.fps.numerator / scene.fps.denominator,
-    tracks: actionTracks(actions)
+    tracks: [...actionTracks(actions), ...(scene.animations ?? []).map((track) => ({
+      symbol: "KF",
+      name: `${track.target} \xB7 ${track.property}`,
+      color: "#a8d88b",
+      blocks: [{
+        name: track.id,
+        from: Math.min(scene.durationFrames - 1, track.keyframes[0].frame),
+        to: Math.min(scene.durationFrames, Math.max(track.keyframes[0].frame + 1, track.keyframes.at(-1).frame))
+      }]
+    }))]
   };
 }
 function readVideoBreakdown(value) {
@@ -2592,7 +3158,7 @@ function parseFrames(list, total2) {
   return frames;
 }
 var numeric = ["frame", "width", "height", "duration", "fps"];
-var textual = ["out", "previous", "backend", "frames", "browser", "text", "color", "background", "title"];
+var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "text", "color", "background", "title"];
 function parseArgs(args) {
   const command = args.shift() ?? "help";
   const positional = [];
@@ -2620,12 +3186,16 @@ function parseArgs(args) {
   const supported = {
     help: [],
     search: [],
+    patterns: [],
+    compose: ["out"],
+    controls: ["scene"],
     describe: [],
     validate: [],
+    study: ["scene", "out"],
     sample: ["frame"],
     preview: ["out"],
     "export-html": ["out"],
-    deliver: ["out", "previous"],
+    deliver: ["out", "previous", "authoring"],
     scaffold: ["out", "width", "height", "duration", "fps", "text", "color", "background"],
     frames: ["out", "frames", "browser", "transparent"],
     render: ["out", "browser", "transparent"],
@@ -2634,12 +3204,12 @@ function parseArgs(args) {
   };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command].includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (command !== "search" && positional.length > (["help", "doctor"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
+  if (!["search", "patterns"].includes(command) && positional.length > (["help", "doctor"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
   return { command, positional, ...options };
 }
-async function scaffold(id2, options) {
-  const capability = getCapability(id2 ?? "");
-  if (!capability) throw new Error(`UNKNOWN_CAPABILITY: ${id2 ?? "(missing id)"}. Use search.`);
+async function scaffold(id4, options) {
+  const capability = getCapability(id4 ?? "");
+  if (!capability) throw new Error(`UNKNOWN_CAPABILITY: ${id4 ?? "(missing id)"}. Use search.`);
   if (!options.out) throw new Error("USAGE: Supply --out <scene.json>.");
   if (options.text !== void 0 && previewKind(capability.id) !== "text") throw new Error(`USAGE: --text only applies to atoms whose example animates text; ${capability.id} does not.`);
   for (const key of ["color", "background"]) if (options[key] !== void 0 && !/^#[0-9a-fA-F]{6}$/u.test(options[key])) throw new Error(`USAGE: --${key} expects an opaque #RRGGBB colour.`);
@@ -2656,7 +3226,7 @@ async function scaffold(id2, options) {
     if (node.type === "path") {
       node.points = node.points.map(([x, y]) => [round(x * space), round(y * space)]);
       node.strokeWidth = Math.max(0.1, round(node.strokeWidth * space));
-    } else {
+    } else if (node.type === "text") {
       node.fontSize = round(node.fontSize * space);
       node.lineHeight = round(node.lineHeight * space);
       if (options.text !== void 0 && node.id === "subject") {
@@ -2708,10 +3278,10 @@ async function renderBreakdown(scene, html, plan, args) {
   if (!toolVersion(ffmpegPath())) throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH.");
   const browser = await findBrowser(args.browser);
   if (!browser) throw new Error("BROWSER_MISSING: breakdown draws in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-  const seconds = scene.durationFrames / sceneFps;
-  const count = Math.max(1, Math.floor(seconds * fps + 1e-9));
+  const seconds2 = scene.durationFrames / sceneFps;
+  const count = Math.max(1, Math.floor(seconds2 * fps + 1e-9));
   const frames = Array.from({ length: count }, (_, k) => k * sceneFps / fps);
-  const size = breakdownSize(plan, scene.canvas);
+  const size2 = breakdownSize(plan, scene.canvas);
   const work = await mkdtemp2(join3(tmpdir2(), "motionflux-breakdown-"));
   const page = join3(work, "breakdown.html");
   const out = resolve2(args.out);
@@ -2729,9 +3299,9 @@ async function renderBreakdown(scene, html, plan, args) {
     type: format === "gif" ? "image/gif" : `video/${format}`,
     bytes: (await stat(out)).size,
     fps,
-    expected: { frames: count, durationSeconds: expectedSeconds, width: size.width, height: size.height },
+    expected: { frames: count, durationSeconds: expectedSeconds, width: size2.width, height: size2.height },
     written: written ?? "ffprobe not available; the file was not read back",
-    verified: Boolean(written && written.frames === count && written.width === size.width && written.height === size.height && Math.abs(written.durationSeconds - expectedSeconds) <= 1 / fps + 0.01),
+    verified: Boolean(written && written.frames === count && written.width === size2.width && written.height === size2.height && Math.abs(written.durationSeconds - expectedSeconds) <= 1 / fps + 0.01),
     tracks: plan.tracks.map((track) => ({
       atom: track.symbol,
       name: track.name,
@@ -2769,8 +3339,8 @@ async function renderVideoBreakdown(file, args) {
   const width = even(args.width ?? Math.min(format === "gif" ? 640 : 960, source.width));
   if (width < 160 || width > 3840) throw new Error("USAGE: --width must be 160\u20133840 px.");
   const pictureHeight = even(source.height * width / source.width);
-  const seconds = breakdown.source.to - breakdown.source.from;
-  const count = Math.max(1, Math.floor(seconds * fps + 1e-9));
+  const seconds2 = breakdown.source.to - breakdown.source.from;
+  const count = Math.max(1, Math.floor(seconds2 * fps + 1e-9));
   const plan = videoBreakdownPlan(breakdown, { width, fps, frames: count });
   const panel = panelHeight(plan) + panelHeight(plan) % 2;
   const browser = await findBrowser(args.browser);
@@ -2794,7 +3364,7 @@ async function renderVideoBreakdown(file, args) {
         "-ss",
         String(breakdown.source.from),
         "-t",
-        String(seconds),
+        String(seconds2),
         "-i",
         video,
         "-framerate",
@@ -2846,12 +3416,16 @@ async function main() {
     case "help":
       return { version: ENGINE_VERSION, commands: [
         "search <query> --json",
+        "patterns [keywords] --json",
+        "compose <brief.json> --out <new-directory>",
+        "controls <authoring.json> --scene <scene.json>",
         "describe <id> --json",
         "scaffold <id> --out scene.json [--width --height --duration --fps --text --color --background]",
         "validate <scene.json>",
         "sample <scene.json> --frame 30",
         "preview <scene.json> --out preview.html",
-        "deliver <scene.json> --out <new-directory> [--previous <scene.json>]",
+        "deliver <scene.json> --out <new-directory> [--previous <scene.json>] [--authoring <authoring.json>]",
+        "study <study.json> [--scene scene.json] [--out report.json]  (validate source evidence and optional implementation bindings)",
         "export-html <scene.json> --out scene.html",
         "frames <scene.json> --out <dir> [--frames 0,30,60] [--transparent]",
         "render <scene.json> --out clip.mp4|.mov|.webm [--transparent]",
@@ -2860,6 +3434,39 @@ async function main() {
       ], delivery: "HTML preview, PNG frames, and video without audio: H.264 MP4 (opaque), ProRes 4444 MOV or VP9 WebM (either can carry alpha with --transparent). breakdown adds a timeline of the atoms under the picture and also writes GIF. frames, render and breakdown need a Chromium-family browser; render and breakdown also need ffmpeg." };
     case "search":
       return { capabilities: searchCapabilities(args.positional.join(" ")) };
+    case "patterns": {
+      const indexPath = join3(dirname2(resourceRoot), "../assets/patterns/index.json");
+      const index = JSON.parse(await readFile(indexPath, "utf8"));
+      const terms = args.positional.join(" ").normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
+      return { match: "all-keywords; suitability is decided by the agent", patterns: index.patterns.filter((pattern) => terms.every((term) => JSON.stringify(pattern).normalize("NFKC").toLowerCase().includes(term))) };
+    }
+    case "controls": {
+      if (!path2 || !args.scene) throw new Error("USAGE: controls <authoring.json> --scene <scene.json>");
+      const report = inspectControls(JSON.parse(await readFile(resolve2(path2), "utf8")), await readScene(args.scene));
+      return { ...report, savedValuesOnly: true };
+    }
+    case "compose": {
+      if (!path2 || !args.out) throw new Error("USAGE: compose <brief.json> --out <new-directory>");
+      const brief = readBrief(JSON.parse(await readFile(resolve2(path2), "utf8")));
+      const bytes = await readFile(resolve2(dirname2(resolve2(path2)), brief.product.src));
+      if (createHash2("sha256").update(bytes).digest("hex") !== brief.product.sha256) throw new Error("ASSET_HASH: Product image differs from the brief lock.");
+      const src = `assets/product${extname(brief.product.src).toLowerCase()}`;
+      const { scene, authoring } = composePattern(brief, { type: "image", src, sha256: brief.product.sha256 });
+      const assets = { [src]: bytes.toString("base64") };
+      const runtime = await readFile(join3(resourceRoot, "standalone.js"), "utf8");
+      const html = createStandaloneHtml(scene, runtime, assets, "");
+      return writeDelivery({ scene, assets, html, out: args.out, authoring });
+    }
+    case "study": {
+      if (!path2) throw new Error("USAGE: Supply a study JSON path.");
+      const input = JSON.parse(await readFile(resolve2(path2), "utf8"));
+      const scene = args.scene ? await readScene(args.scene) : void 0;
+      assertStudy(input, scene);
+      const report = studyReport(input, scene);
+      if (args.out) await save(args.out, `${JSON.stringify(report, null, 2)}
+`);
+      return report;
+    }
     case "scaffold":
       return scaffold(path2, args);
     case "describe": {
@@ -2903,17 +3510,18 @@ async function main() {
       const html = createStandaloneHtml(scene, runtime, assets, args.command === "deliver" ? "" : license, plan ? { breakdown: plan } : {});
       if (args.command === "deliver") {
         const previous = args.previous ? await readScene(args.previous) : void 0;
-        return writeDelivery({ scene, ...previous ? { previous } : {}, assets, html, out: args.out });
+        const authoring = args.authoring ? JSON.parse(await readFile(resolve2(args.authoring), "utf8")) : void 0;
+        return writeDelivery({ scene, ...previous ? { previous } : {}, ...authoring !== void 0 ? { authoring } : {}, assets, html, out: args.out });
       }
       if (args.command === "breakdown") return renderBreakdown(scene, html, plan, args);
       if (args.command === "frames" || args.command === "render") {
-        const size = { width: scene.canvas.width, height: scene.canvas.height };
+        const size2 = { width: scene.canvas.width, height: scene.canvas.height };
         const transparent = Boolean(args.transparent);
         const format = extname(args.out).slice(1).toLowerCase();
         if (args.command === "render") {
           if (!(format in videoFormats) || format === "gif") throw new Error("USAGE: render picks the format from --out: .mp4 (H.264), .mov (ProRes 4444) or .webm (VP9). GIF is written by breakdown.");
           if (transparent && !videoFormats[format].alpha) throw new Error("ALPHA_UNSUPPORTED: H.264 MP4 cannot carry transparency. Use .mov or .webm with --transparent, or the frames command for PNGs.");
-          if (videoFormats[format].evenSize && (size.width % 2 || size.height % 2)) throw new Error(`VIDEO_SIZE: .${format} needs even dimensions; the canvas is ${size.width}\xD7${size.height}.`);
+          if (videoFormats[format].evenSize && (size2.width % 2 || size2.height % 2)) throw new Error(`VIDEO_SIZE: .${format} needs even dimensions; the canvas is ${size2.width}\xD7${size2.height}.`);
           if (!toolVersion(ffmpegPath())) throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use the frames command for a PNG sequence instead.");
         }
         const browser = await findBrowser(args.browser);
@@ -2932,7 +3540,7 @@ async function main() {
               await writeFile2(file, png);
               files.push(file);
             });
-            return { directory: out, type: "png-sequence", pattern: "frame-%06d.png", frames: files.length, files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)], ...size, fps: scene.fps, alpha: transparent, videoDelivered: false, browser, lock: versionLock(scene) };
+            return { directory: out, type: "png-sequence", pattern: "frame-%06d.png", frames: files.length, files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)], ...size2, fps: scene.fps, alpha: transparent, videoDelivered: false, browser, lock: versionLock(scene) };
           }
           await mkdir2(dirname2(out), { recursive: true });
           const all = parseFrames(void 0, scene.durationFrames);
@@ -2943,9 +3551,9 @@ async function main() {
             path: out,
             type: `video/${format === "mov" ? "quicktime" : format}`,
             bytes: (await stat(out)).size,
-            expected: { frames: all.length, durationSeconds: expectedSeconds, ...size, alpha: transparent },
+            expected: { frames: all.length, durationSeconds: expectedSeconds, ...size2, alpha: transparent },
             written: written ?? "ffprobe not available; the file was not read back",
-            verified: Boolean(written && written.frames === all.length && written.width === size.width && written.height === size.height && Math.abs(written.durationSeconds - expectedSeconds) < 0.05 && written.alpha === transparent),
+            verified: Boolean(written && written.frames === all.length && written.width === size2.width && written.height === size2.height && Math.abs(written.durationSeconds - expectedSeconds) < 0.05 && written.alpha === transparent),
             audio: false,
             videoDelivered: true,
             browser,

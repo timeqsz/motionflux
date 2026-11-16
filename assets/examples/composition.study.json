@@ -1,0 +1,38 @@
+{
+  "studyVersion": "0.1",
+  "title": "原创示例的动效设计记录（待观看验证）",
+  "source": {
+    "video": "composition.mp4",
+    "from": 0,
+    "to": 4
+  },
+  "subjects": [
+    {
+      "id": "copy",
+      "description": "标题与副标题整体"
+    }
+  ],
+  "events": [
+    {
+      "id": "arrival",
+      "subject": "copy",
+      "from": 0,
+      "to": 0.9,
+      "status": "unknown",
+      "description": "设计意图：标题整体上移并淡入。尚未把设计意图标作已观察事实。",
+      "evidence": [],
+      "implementation": {
+        "targets": [
+          "hero"
+        ],
+        "clips": [],
+        "animations": [
+          "hero-arrive",
+          "hero-visibility"
+        ],
+        "method": "direct",
+        "note": "只借用整体入场的运动原则，所有图形与版式为原创。输出动作时间由绑定动画明确记录。"
+      }
+    }
+  ]
+}

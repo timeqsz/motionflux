@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeAtoms } from './atoms.mjs';
 import { archiveSkill } from './skill-archive.mjs';
+import { writeSceneExamples } from './scene-examples.mjs';
+import { writePatternExamples } from './pattern-examples.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
@@ -23,7 +25,10 @@ for (const name of ['catalog', 'core', 'renderer-browser']) {
 }
 await bundle('packages/catalog/src/examples.ts', 'dist/lib/examples.mjs');
 const { capabilities, families } = await import(pathToFileURL(resolve('packages/catalog/dist/index.js')).href);
-const { motionSchema } = await import(pathToFileURL(resolve('packages/core/dist/index.js')).href);
+const { motionSchema, composePattern, briefSchema, authoringSchema } = await import(pathToFileURL(resolve('packages/core/dist/index.js')).href);
+await bundle('packages/core/src/export.ts', 'dist/lib/export.mjs');
+const { createStandaloneHtml } = await import(pathToFileURL(resolve('dist/lib/export.mjs')).href);
+await writePatternExamples({ composePattern, createStandaloneHtml, briefSchema, authoringSchema });
 const { createExampleScene } = await import(pathToFileURL(resolve('dist/lib/examples.mjs')).href);
 // Only generated files are replaced. Hand-authored Skill and atom guidance stay at the root.
 for (const file of await readdir('atoms')) {
@@ -31,6 +36,7 @@ for (const file of await readdir('atoms')) {
 }
 await rm('assets/examples', { recursive: true, force: true });
 await cp('maintainer/examples', 'assets/examples', { recursive: true });
+await writeSceneExamples();
 for (const entry of capabilities) {
   await writeFile(`assets/examples/${entry.id}.scene.json`, JSON.stringify(createExampleScene(entry.id), null, 2));
 }

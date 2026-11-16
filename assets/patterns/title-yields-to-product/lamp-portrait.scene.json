@@ -1,0 +1,439 @@
+{
+  "specVersion": "0.2",
+  "seed": 17,
+  "canvas": {
+    "width": 720,
+    "height": 1080,
+    "background": "#212a28"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 360,
+  "assets": {
+    "product-image": {
+      "type": "image",
+      "src": "assets/lamp.png",
+      "sha256": "bfd602a140930405440540ae58e424cc2bedf02afabde2dc0a2191c9c908ee42"
+    }
+  },
+  "nodes": [
+    {
+      "id": "brand",
+      "type": "text",
+      "text": "弧光 ARC",
+      "position": [
+        46.800000000000004,
+        102.6
+      ],
+      "fontSize": 25.6824,
+      "lineHeight": 29.53476,
+      "color": "#f4ead7",
+      "font": "system"
+    },
+    {
+      "id": "headline-group",
+      "type": "group",
+      "position": [
+        46.800000000000004,
+        453.59999999999997
+      ],
+      "color": "#f4ead7"
+    },
+    {
+      "id": "headline",
+      "type": "text",
+      "text": "给每一次专注，\n留一束温柔的光。",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 72,
+      "lineHeight": 82.8,
+      "color": "#f4ead7",
+      "font": "system",
+      "parent": "headline-group"
+    },
+    {
+      "id": "product",
+      "type": "image",
+      "asset": "product-image",
+      "color": "#ffffff",
+      "position": [
+        360,
+        583.2
+      ],
+      "pivot": [
+        295.2,
+        232.2
+      ],
+      "width": 590.4,
+      "height": 464.4,
+      "fit": "contain"
+    },
+    {
+      "id": "detail-group",
+      "type": "group",
+      "color": "#f4ead7",
+      "position": [
+        46.800000000000004,
+        885.5999999999999
+      ]
+    },
+    {
+      "id": "detail-rule",
+      "type": "path",
+      "parent": "detail-group",
+      "position": [
+        0,
+        -41.091840000000005
+      ],
+      "color": "#dfae64",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          57.6,
+          0
+        ]
+      ],
+      "strokeWidth": 2.16
+    },
+    {
+      "id": "detail",
+      "type": "text",
+      "text": "让桌面安静下来。\n让想法慢慢展开。",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 25.6824,
+      "lineHeight": 29.53476,
+      "color": "#b8c4b6",
+      "font": "system",
+      "parent": "detail-group"
+    },
+    {
+      "id": "closing",
+      "type": "text",
+      "text": "弧光 ARC · 照亮此刻",
+      "position": [
+        46.800000000000004,
+        1015.1999999999999
+      ],
+      "fontSize": 21.83004,
+      "lineHeight": 25.104546,
+      "color": "#f4ead7",
+      "font": "system"
+    }
+  ],
+  "clips": [],
+  "animations": [
+    {
+      "id": "headline-opacity",
+      "target": "headline-group",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 21,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "headline-y",
+      "target": "headline-group",
+      "property": "position.y",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 540,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 21,
+          "value": 453.59999999999997,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 96,
+          "value": 453.59999999999997,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 120,
+          "value": 194.4,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "headline-scale",
+      "target": "headline-group",
+      "property": "scale",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 96,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 120,
+          "value": 0.7,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-opacity",
+      "target": "product",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 100,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 120,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-scale",
+      "target": "product",
+      "property": "scale",
+      "keyframes": [
+        {
+          "frame": 96,
+          "value": 0.78,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 120,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-y",
+      "target": "product",
+      "property": "position.y",
+      "keyframes": [
+        {
+          "frame": 96,
+          "value": 712.8000000000001,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 120,
+          "value": 583.2,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "detail-group-opacity",
+      "target": "detail-group",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 131,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 152,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "detail-group-arrive",
+      "target": "detail-group",
+      "property": "position.y",
+      "keyframes": [
+        {
+          "frame": 131,
+          "value": 923.3999999999999,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 152,
+          "value": 885.5999999999999,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing-opacity",
+      "target": "closing",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 232,
+          "value": 0,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        },
+        {
+          "frame": 252,
+          "value": 1,
+          "easing": [
+            0.22,
+            1,
+            0.36,
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

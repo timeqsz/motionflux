@@ -1,0 +1,40 @@
+{
+  "briefVersion": "0.1",
+  "pattern": "title-yields-to-product",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "fps": 30,
+  "durationSeconds": 9,
+  "copy": {
+    "headline": "Small form.\nFull sound.",
+    "detail": "A quieter object.\nA room full of music.",
+    "closing": "SONA — Sound, considered."
+  },
+  "brand": {
+    "name": "SONA",
+    "palette": {
+      "background": "#ede9df",
+      "ink": "#20251f",
+      "muted": "#56604f",
+      "accent": "#cd603e"
+    },
+    "typography": {
+      "headlineRatio": 0.105,
+      "bodyRatio": 0.022
+    },
+    "motion": {
+      "enterSeconds": 0.6,
+      "travelSeconds": 0.8,
+      "minReadSeconds": 1.3,
+      "readUnitsPerSecond": 8,
+      "endHoldSeconds": 1.2
+    }
+  },
+  "product": {
+    "src": "assets/speaker.png",
+    "sha256": "017b57286673f7c9c3b398e84f5e1255fc111d1a918fa116dd895a5c8f1fc59b",
+    "license": "Original fictional product illustration by MotionFlux; MIT. No real product claims."
+  }
+}

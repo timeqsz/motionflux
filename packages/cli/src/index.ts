@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { capabilities, getCapability, searchCapabilities } from '../../catalog/src/index.js';
 import { createExampleScene, previewKind } from '../../catalog/src/examples.js';
-import { compileScene, assertScene, SceneValidationError, ENGINE_VERSION, type MotionSpec } from '../../core/src/index.js';
+import { compileScene, assertScene, assertStudy, studyReport, readBrief, composePattern, inspectControls, SceneValidationError, ENGINE_VERSION, type MotionSpec } from '../../core/src/index.js';
 import { createStandaloneHtml, versionLock } from '../../core/src/export.js';
 import { captureFrames, encodeVideo, ffmpegPath, findBrowser, probeVideo, toolVersion, videoFormats, type VideoFormat } from './capture.js';
 import { writeDelivery } from './delivery.js';
@@ -48,10 +48,10 @@ function parseFrames(list: string | undefined, total: number): number[] {
   if (outside !== undefined) throw new Error(`USAGE: frame ${outside} is outside the scene; valid frames are 0–${total - 1}.`);
   return frames;
 }
-interface Options { out?: string; previous?: string; frame?: number; backend?: string; frames?: string; browser?: string; transparent?: boolean;
+interface Options { out?: string; previous?: string; scene?: string; authoring?: string; frame?: number; backend?: string; frames?: string; browser?: string; transparent?: boolean;
   width?: number; height?: number; duration?: number; fps?: number; text?: string; color?: string; background?: string; title?: string }
 const numeric = ['frame', 'width', 'height', 'duration', 'fps'] as const;
-const textual = ['out', 'previous', 'backend', 'frames', 'browser', 'text', 'color', 'background', 'title'] as const;
+const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'text', 'color', 'background', 'title'] as const;
 function parseArgs(args: string[]): { command: string; positional: string[] } & Options {
   const command = args.shift() ?? 'help';
   const positional: string[] = [];
@@ -69,11 +69,11 @@ function parseArgs(args: string[]): { command: string; positional: string[] } & 
     } else if (arg.startsWith('--')) throw new Error(`USAGE: Unknown option ${arg}.`);
     else positional.push(arg);
   }
-  const supported: Record<string, string[]> = { help: [], search: [], describe: [], validate: [], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous'],
+  const supported: Record<string, string[]> = { help: [], search: [], patterns: [], compose: ['out'], controls: ['scene'], describe: [], validate: [], study: ['scene', 'out'], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous', 'authoring'],
     scaffold: ['out', 'width', 'height', 'duration', 'fps', 'text', 'color', 'background'], frames: ['out', 'frames', 'browser', 'transparent'], render: ['out', 'browser', 'transparent'], breakdown: ['out', 'browser', 'title', 'width', 'fps'], doctor: ['backend', 'browser'] };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command]!.includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (command !== 'search' && positional.length > (['help', 'doctor'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
+  if (!['search', 'patterns'].includes(command) && positional.length > (['help', 'doctor'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
   return { command, positional, ...options };
 }
 /**
@@ -94,7 +94,7 @@ async function scaffold(id: string | undefined, options: Options): Promise<unkno
   for (const node of scene.nodes) {
     node.position = [round((node.position[0] - scene.canvas.width / 2) * space + width / 2), round((node.position[1] - scene.canvas.height / 2) * space + height / 2)];
     if (node.type === 'path') { node.points = node.points.map(([x, y]) => [round(x * space), round(y * space)]); node.strokeWidth = Math.max(0.1, round(node.strokeWidth * space)); }
-    else {
+    else if (node.type === 'text') {
       node.fontSize = round(node.fontSize * space); node.lineHeight = round(node.lineHeight * space);
       if (options.text !== undefined && node.id === 'subject') {
         // Centre the block: position is the first line's left baseline, and a CJK glyph is about one em wide.
@@ -219,13 +219,49 @@ async function main(): Promise<unknown> {
   const path = args.positional[0];
   switch (args.command) {
     case 'help': return { version: ENGINE_VERSION, commands: [
-      'search <query> --json', 'describe <id> --json', 'scaffold <id> --out scene.json [--width --height --duration --fps --text --color --background]', 'validate <scene.json>',
-      'sample <scene.json> --frame 30', 'preview <scene.json> --out preview.html', 'deliver <scene.json> --out <new-directory> [--previous <scene.json>]',
+      'search <query> --json', 'patterns [keywords] --json', 'compose <brief.json> --out <new-directory>',
+      'controls <authoring.json> --scene <scene.json>',
+      'describe <id> --json', 'scaffold <id> --out scene.json [--width --height --duration --fps --text --color --background]', 'validate <scene.json>',
+      'sample <scene.json> --frame 30', 'preview <scene.json> --out preview.html', 'deliver <scene.json> --out <new-directory> [--previous <scene.json>] [--authoring <authoring.json>]',
+      'study <study.json> [--scene scene.json] [--out report.json]  (validate source evidence and optional implementation bindings)',
       'export-html <scene.json> --out scene.html', 'frames <scene.json> --out <dir> [--frames 0,30,60] [--transparent]', 'render <scene.json> --out clip.mp4|.mov|.webm [--transparent]',
       'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "…"] [--width 960] [--fps 25]  (breakdown.json cuts a source video and adds the atom timeline)',
       'doctor --backend js|browser|ffmpeg',
     ], delivery: 'HTML preview, PNG frames, and video without audio: H.264 MP4 (opaque), ProRes 4444 MOV or VP9 WebM (either can carry alpha with --transparent). breakdown adds a timeline of the atoms under the picture and also writes GIF. frames, render and breakdown need a Chromium-family browser; render and breakdown also need ffmpeg.' };
     case 'search': return { capabilities: searchCapabilities(args.positional.join(' ')) };
+    case 'patterns': {
+      const indexPath = join(dirname(resourceRoot), '../assets/patterns/index.json');
+      const index = JSON.parse(await readFile(indexPath, 'utf8')) as { patterns: Record<string, unknown>[] };
+      const terms = args.positional.join(' ').normalize('NFKC').toLowerCase().split(/\s+/u).filter(Boolean);
+      return { match: 'all-keywords; suitability is decided by the agent', patterns: index.patterns.filter(pattern =>
+        terms.every(term => JSON.stringify(pattern).normalize('NFKC').toLowerCase().includes(term))) };
+    }
+    case 'controls': {
+      if (!path || !args.scene) throw new Error('USAGE: controls <authoring.json> --scene <scene.json>');
+      const report = inspectControls(JSON.parse(await readFile(resolve(path), 'utf8')), await readScene(args.scene));
+      return { ...report, savedValuesOnly: true };
+    }
+    case 'compose': {
+      if (!path || !args.out) throw new Error('USAGE: compose <brief.json> --out <new-directory>');
+      const brief = readBrief(JSON.parse(await readFile(resolve(path), 'utf8')));
+      const bytes = await readFile(resolve(dirname(resolve(path)), brief.product.src));
+      if (createHash('sha256').update(bytes).digest('hex') !== brief.product.sha256) throw new Error('ASSET_HASH: Product image differs from the brief lock.');
+      const src = `assets/product${extname(brief.product.src).toLowerCase()}`;
+      const { scene, authoring } = composePattern(brief, { type: 'image', src, sha256: brief.product.sha256 });
+      const assets = { [src]: bytes.toString('base64') };
+      const runtime = await readFile(join(resourceRoot, 'standalone.js'), 'utf8');
+      const html = createStandaloneHtml(scene, runtime, assets, '');
+      return writeDelivery({ scene, assets, html, out: args.out, authoring });
+    }
+    case 'study': {
+      if (!path) throw new Error('USAGE: Supply a study JSON path.');
+      const input: unknown = JSON.parse(await readFile(resolve(path), 'utf8'));
+      const scene = args.scene ? await readScene(args.scene) : undefined;
+      assertStudy(input, scene);
+      const report = studyReport(input, scene);
+      if (args.out) await save(args.out, `${JSON.stringify(report, null, 2)}\n`);
+      return report;
+    }
     case 'scaffold': return scaffold(path, args);
     case 'describe': {
       const capability = getCapability(path ?? '');
@@ -264,7 +300,8 @@ async function main(): Promise<unknown> {
       const html = createStandaloneHtml(scene, runtime, assets, args.command === 'deliver' ? '' : license, plan ? { breakdown: plan } : {});
       if (args.command === 'deliver') {
         const previous = args.previous ? await readScene(args.previous) : undefined;
-        return writeDelivery({ scene, ...(previous ? { previous } : {}), assets, html, out: args.out });
+        const authoring: unknown = args.authoring ? JSON.parse(await readFile(resolve(args.authoring), 'utf8')) : undefined;
+        return writeDelivery({ scene, ...(previous ? { previous } : {}), ...(authoring !== undefined ? { authoring } : {}), assets, html, out: args.out });
       }
       if (args.command === 'breakdown') return renderBreakdown(scene, html, plan!, args);
       if (args.command === 'frames' || args.command === 'render') {

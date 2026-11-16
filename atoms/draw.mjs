@@ -268,9 +268,12 @@ function drawSubject(context, subject, pixelScale = 1) {
   const stretch = subject.stretch ?? [1, 1];
   if (Math.abs(subject.scale * stretch[0] * stretch[1]) < 1e-9 || subject.opacity <= 0) return;
   const place = (target) => {
-    target.translate(...subject.position);
-    target.rotate(subject.rotation * Math.PI / 180);
-    target.scale(subject.scale * stretch[0], subject.scale * stretch[1]);
+    if (subject.matrix) target.transform(...subject.matrix);
+    else {
+      target.translate(...subject.position);
+      target.rotate(subject.rotation * Math.PI / 180);
+      target.scale(subject.scale * stretch[0], subject.scale * stretch[1]);
+    }
     target.lineCap = "round";
     target.lineJoin = "round";
     target.textBaseline = "alphabetic";

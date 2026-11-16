@@ -92,5 +92,7 @@
   canvas.height = panelHeight(plan) + panelHeight(plan) % 2;
   var context = canvas.getContext("2d");
   drawPanel(context, plan, 0);
-  window.motionFlux = { renderFrame: (frame) => drawPanel(context, plan, frame), scene: plan };
+  window.motionFlux = { renderFrame: async (frame) => {
+    drawPanel(context, plan, frame);
+  }, scene: plan };
 })();

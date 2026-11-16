@@ -1,5 +1,5 @@
 import { drawPanel, panelHeight, type BreakdownPlan } from './breakdown.js';
-declare global { interface Window { motionFlux?: { renderFrame(frame: number, background?: boolean): void; scene: unknown } } }
+declare global { interface Window { motionFlux?: { renderFrame(frame: number, background?: boolean): Promise<void>; scene: unknown } } }
 
 /**
  * The timeline panel on its own, for breakdowns of a source video: the CLI captures one panel per output frame
@@ -10,4 +10,4 @@ const canvas = document.querySelector('canvas')!;
 canvas.width = plan.width; canvas.height = panelHeight(plan) + (panelHeight(plan) % 2);
 const context = canvas.getContext('2d')!;
 drawPanel(context, plan, 0);
-window.motionFlux = { renderFrame: (frame) => drawPanel(context, plan, frame), scene: plan };
+window.motionFlux = { renderFrame: async (frame) => { drawPanel(context, plan, frame); }, scene: plan };

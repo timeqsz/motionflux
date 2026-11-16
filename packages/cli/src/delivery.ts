@@ -2,12 +2,12 @@ import { createHash } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { compileScene, type MotionSpec } from '../../core/src/index.js';
+import { compileScene, studyReport, inspectControls, type MotionSpec } from '../../core/src/index.js';
 import { versionLock } from '../../core/src/export.js';
 import { getCapability } from '../../catalog/src/index.js';
 
 interface Change {
-  collection: 'scene' | 'nodes' | 'clips' | 'assets';
+  collection: 'scene' | 'nodes' | 'clips' | 'animations' | 'assets';
   id?: string;
   /** Field within the entity; arrays such as position and points remain whole values. */
   field: string;
@@ -29,10 +29,10 @@ function changesBetween(before: MotionSpec, after: MotionSpec): Change[] {
       }
     } else changes.push({ ...location, ...(a !== undefined ? { before: a } : {}), ...(b !== undefined ? { after: b } : {}) });
   }
-  const { nodes: beforeNodes, clips: beforeClips, assets: beforeAssets, ...beforeSettings } = before;
-  const { nodes: afterNodes, clips: afterClips, assets: afterAssets, ...afterSettings } = after;
+  const { nodes: beforeNodes, clips: beforeClips, animations: beforeAnimations = [], assets: beforeAssets, ...beforeSettings } = before;
+  const { nodes: afterNodes, clips: afterClips, animations: afterAnimations = [], assets: afterAssets, ...afterSettings } = after;
   compare(beforeSettings, afterSettings, { collection: 'scene', field: '' });
-  for (const [collection, a, b] of [['nodes', beforeNodes, afterNodes], ['clips', beforeClips, afterClips]] as const) {
+  for (const [collection, a, b] of [['nodes', beforeNodes, afterNodes], ['clips', beforeClips, afterClips], ['animations', beforeAnimations, afterAnimations]] as const) {
     compare(a.map(item => item.id), b.map(item => item.id), { collection: 'scene', field: `${collection}Order` });
     const oldById = new Map<string, unknown>(a.map(item => [item.id, item]));
     const newById = new Map<string, unknown>(b.map(item => [item.id, item]));
@@ -56,7 +56,8 @@ function finite(value: unknown): boolean {
 function sampleChecks(scene: MotionSpec) {
   const last = scene.durationFrames - 1;
   const frames = [...new Set([0, Math.floor(last / 2), last, ...scene.clips.flatMap(clip =>
-    [clip.startFrame, clip.startFrame + clip.durationFrames - 1, clip.startFrame + clip.durationFrames].map(frame => Math.min(last, frame)))])].sort((a, b) => a - b);
+    [clip.startFrame, clip.startFrame + clip.durationFrames - 1, clip.startFrame + clip.durationFrames].map(frame => Math.min(last, frame))),
+    ...(scene.animations ?? []).flatMap(track => track.keyframes.map(key => Math.min(last, key.frame)))])].sort((a, b) => a - b);
   const compiled = compileScene(scene);
   const states = frames.map(frame => {
     const state = compiled.evaluate(frame);
@@ -72,15 +73,24 @@ function sampleChecks(scene: MotionSpec) {
 /** A self-contained, editable revision. Creating a new directory protects earlier deliveries. */
 export async function writeDelivery(input: {
   scene: MotionSpec; previous?: MotionSpec; assets: Record<string, string>; html: string; out: string;
+  authoring?: unknown;
 }) {
   const { scene, previous, assets, html } = input;
   const samples = sampleChecks(scene);
+  const authoring = input.authoring === undefined ? undefined : inspectControls(input.authoring, scene);
   const directory = resolve(input.out);
   const files = new Map<string, Buffer>([
     ['scene.json', Buffer.from(`${JSON.stringify(scene, null, 2)}\n`)],
     ['preview.html', Buffer.from(html)],
     ...Object.entries(assets).map(([path, data]): [string, Buffer] => [path, Buffer.from(data, 'base64')]),
   ]);
+  if (scene.study) {
+    files.set('study.json', Buffer.from(`${JSON.stringify(scene.study, null, 2)}\n`));
+    files.set('study-report.json', Buffer.from(`${JSON.stringify(studyReport(scene.study, scene), null, 2)}\n`));
+  }
+  if (authoring) {
+    files.set('authoring.json', Buffer.from(`${JSON.stringify(authoring.record, null, 2)}\n`));
+  }
   const report = {
     format: 'motionflux-delivery/v1',
     sourceSceneHash: sceneHash(scene),
@@ -92,6 +102,9 @@ export async function writeDelivery(input: {
       const atom = getCapability(id)!;
       return { id, version: atom.version, writes: atom.writes };
     }),
+    objects: scene.nodes.map(node => ({ id: node.id, type: node.type, parent: node.parent ?? null })),
+    animations: (scene.animations ?? []).map(track => ({ id: track.id, target: track.target, property: track.property })),
+    ...(authoring ? { authoring: { pattern: authoring.record.pattern, controls: authoring.controls.length, bindingsVerified: true } } : {}),
     checks: { schema: 'passed', assetsVerified: Object.keys(scene.assets).length, samples,
       visualReview: 'not-performed', browserPlayback: 'not-performed', assetLicenses: 'not-verified' },
     videoDelivered: false,
@@ -113,6 +126,7 @@ export async function writeDelivery(input: {
     await writeFile(join(directory, 'delivery.json'), `${JSON.stringify(report, null, 2)}\n`);
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
   return { directory, preview: join(directory, 'preview.html'), scene: join(directory, 'scene.json'),
+    ...(authoring ? { authoring: join(directory, 'authoring.json') } : {}),
     report: join(directory, 'delivery.json'), files: files.size + 1, changes: report.revision?.changes.length ?? 0,
     videoDelivered: false, visualReview: 'not-performed' };
 }

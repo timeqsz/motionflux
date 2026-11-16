@@ -1,0 +1,386 @@
+{
+  "specVersion": "0.2",
+  "seed": 17,
+  "canvas": {
+    "width": 960,
+    "height": 540,
+    "background": "#111a20"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 120,
+  "clips": [],
+  "assets": {
+    "orbit": {
+      "type": "module",
+      "src": "assets/three-orbit.mjs",
+      "sha256": "aee3bdfbaa23122fd82da8235e0ac4bf2d830c07b5a9872476e68e5dad0a741b"
+    }
+  },
+  "nodes": [
+    {
+      "id": "label",
+      "type": "text",
+      "text": "MOTIONFLUX / FIELD NOTES",
+      "position": [
+        58,
+        62
+      ],
+      "fontSize": 15,
+      "lineHeight": 17.25,
+      "color": "#a9c1a3",
+      "font": "system"
+    },
+    {
+      "id": "hero",
+      "type": "group",
+      "position": [
+        58,
+        155
+      ],
+      "color": "#ffffff"
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "Move through\na new dimension.",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 43,
+      "lineHeight": 66.69999999999999,
+      "color": "#f2f4ec",
+      "font": "system",
+      "parent": "hero"
+    },
+    {
+      "id": "subhead",
+      "type": "text",
+      "text": "Observe the motion. Shape your own.",
+      "position": [
+        2,
+        137
+      ],
+      "fontSize": 18,
+      "lineHeight": 20.7,
+      "color": "#a8b5b9",
+      "font": "system",
+      "parent": "hero"
+    },
+    {
+      "id": "art",
+      "type": "custom",
+      "module": "orbit",
+      "position": [
+        480,
+        70
+      ],
+      "width": 450,
+      "height": 370,
+      "color": "#ffffff",
+      "params": {
+        "turn": 0,
+        "tilt": 12,
+        "cameraDistance": 7
+      }
+    },
+    {
+      "id": "curve",
+      "type": "vector",
+      "position": [
+        60,
+        350
+      ],
+      "color": "#bce391",
+      "fill": false,
+      "strokeWidth": 3,
+      "commands": [
+        {
+          "op": "M",
+          "to": [
+            0,
+            45
+          ]
+        },
+        {
+          "op": "C",
+          "control1": [
+            80,
+            45
+          ],
+          "control2": [
+            85,
+            -20
+          ],
+          "to": [
+            170,
+            0
+          ]
+        },
+        {
+          "op": "Q",
+          "control": [
+            245,
+            30
+          ],
+          "to": [
+            300,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "steps",
+      "type": "group",
+      "position": [
+        58,
+        464
+      ],
+      "color": "#ffffff",
+      "layout": {
+        "type": "row",
+        "cell": [
+          210,
+          30
+        ],
+        "gap": [
+          22,
+          0
+        ],
+        "columns": 3
+      }
+    },
+    {
+      "id": "observe",
+      "type": "text",
+      "text": "01 / OBSERVE",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 16,
+      "lineHeight": 18.4,
+      "color": "#c4d6e0",
+      "font": "system",
+      "parent": "steps"
+    },
+    {
+      "id": "compose",
+      "type": "text",
+      "text": "02 / COMPOSE",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 16,
+      "lineHeight": 18.4,
+      "color": "#c4d6e0",
+      "font": "system",
+      "parent": "steps"
+    },
+    {
+      "id": "verify",
+      "type": "text",
+      "text": "03 / VERIFY",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 16,
+      "lineHeight": 18.4,
+      "color": "#c4d6e0",
+      "font": "system",
+      "parent": "steps"
+    }
+  ],
+  "animations": [
+    {
+      "id": "hero-arrive",
+      "target": "hero",
+      "property": "position.y",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 190,
+          "easing": "smooth"
+        },
+        {
+          "frame": 26,
+          "value": 155,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 155,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 135,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "hero-visibility",
+      "target": "hero",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 20,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "curve-show",
+      "target": "curve",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 28,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 46,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "steps-show",
+      "target": "steps",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 45,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 66,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "orbit-turn",
+      "target": "art",
+      "property": "params.turn",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": -40,
+          "easing": "linear"
+        },
+        {
+          "frame": 119,
+          "value": 220,
+          "easing": "linear"
+        }
+      ]
+    },
+    {
+      "id": "orbit-camera",
+      "target": "art",
+      "property": "params.cameraDistance",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 8,
+          "easing": "smooth"
+        },
+        {
+          "frame": 50,
+          "value": 6.5,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 7,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "orbit-fade",
+      "target": "art",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 24,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    }
+  ]
+}

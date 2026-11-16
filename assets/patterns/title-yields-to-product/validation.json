@@ -1,0 +1,75 @@
+{
+  "status": "validated-example",
+  "patternVersion": "0.1.0",
+  "date": "2026-11-13",
+  "engine": "0.6.0",
+  "environment": "macOS, local Google Chrome, system fonts, FFmpeg H.264; no audio",
+  "examples": [
+    {
+      "name": "speaker-landscape",
+      "sceneSha256": "45b199c02ba8f7c9070078f80868b49f0c668780e2ea509ff6a97986a3d4b742",
+      "deliveredSceneSha256": "54ebbf48339c3d3539208395f62b678d4b4989dcca374b2ccafff2e7578b7c03",
+      "video": {
+        "sha256": "afd143854d13e109922fd98b654186003cf2ff440ace38f341e75d822fa7f01f",
+        "width": 1280,
+        "height": 720,
+        "frames": 270,
+        "fps": "30/1",
+        "durationSeconds": 9,
+        "audio": false
+      },
+      "visualReview": {
+        "status": "sampled",
+        "decodedOutput": "one sample per second contact sheet plus last frame",
+        "browserObservations": "start, middle and end screenshots during normal-speed playback",
+        "findings": "No obvious clipping or unintended overlap in inspected views; headline yields space before product details appear."
+      },
+      "fullPlayback": {
+        "status": "played-to-end",
+        "rangeSeconds": [
+          0,
+          9
+        ],
+        "ended": true,
+        "mediaError": null,
+        "scope": "Complete playback with sampled visual observations; not an assertion that every frame was manually inspected."
+      }
+    },
+    {
+      "name": "lamp-portrait",
+      "sceneSha256": "6af5cf3126de3c496d79f580e46394453fa53f47f0d8ddbf1e8f0a4163f8e0a6",
+      "deliveredSceneSha256": "f19af93e264e374eb1e65103d8d4252d5fd683873cd291590d727054aa7447ce",
+      "video": {
+        "sha256": "d8efa32ad256e9ca598ba61271f3ab290dcd7ecc5dc676bc469d79cbce72d463",
+        "width": 720,
+        "height": 1080,
+        "frames": 360,
+        "fps": "30/1",
+        "durationSeconds": 12,
+        "audio": false
+      },
+      "visualReview": {
+        "status": "sampled",
+        "decodedOutput": "one sample per second contact sheet plus last frame",
+        "browserObservations": "start, middle and end screenshots during normal-speed playback",
+        "findings": "No obvious clipping or unintended overlap in inspected views; headline yields space before product details appear."
+      },
+      "fullPlayback": {
+        "status": "played-to-end",
+        "rangeSeconds": [
+          0,
+          12
+        ],
+        "ended": true,
+        "mediaError": null,
+        "scope": "Complete playback with sampled visual observations; not an assertion that every frame was manually inspected."
+      }
+    }
+  ],
+  "limits": [
+    "Validation applies only to these saved scenes and this environment.",
+    "New text and image inputs still require layout and playback review.",
+    "System font metrics can differ across devices.",
+    "No parameter UI or automatic video-to-pattern extraction is provided."
+  ]
+}

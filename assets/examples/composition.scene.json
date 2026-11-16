@@ -1,0 +1,461 @@
+{
+  "specVersion": "0.2",
+  "seed": 17,
+  "canvas": {
+    "width": 960,
+    "height": 540,
+    "background": "#111a20"
+  },
+  "fps": {
+    "numerator": 30,
+    "denominator": 1
+  },
+  "durationFrames": 120,
+  "clips": [],
+  "assets": {
+    "mark": {
+      "type": "image",
+      "src": "assets/orbit-mark.png",
+      "sha256": "58f832e500f9dfe2c1ed731c7b6abd45b4570ff6755209a8f899eb7881a22c11"
+    }
+  },
+  "nodes": [
+    {
+      "id": "label",
+      "type": "text",
+      "text": "MOTIONFLUX / FIELD NOTES",
+      "position": [
+        58,
+        62
+      ],
+      "fontSize": 15,
+      "lineHeight": 17.25,
+      "color": "#a9c1a3",
+      "font": "system"
+    },
+    {
+      "id": "hero",
+      "type": "group",
+      "position": [
+        58,
+        155
+      ],
+      "color": "#ffffff"
+    },
+    {
+      "id": "title",
+      "type": "text",
+      "text": "Give ideas\na direction.",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 58,
+      "lineHeight": 66.69999999999999,
+      "color": "#f2f4ec",
+      "font": "system",
+      "parent": "hero"
+    },
+    {
+      "id": "subhead",
+      "type": "text",
+      "text": "Observe the motion. Shape your own.",
+      "position": [
+        2,
+        137
+      ],
+      "fontSize": 18,
+      "lineHeight": 20.7,
+      "color": "#a8b5b9",
+      "font": "system",
+      "parent": "hero"
+    },
+    {
+      "id": "art",
+      "type": "image",
+      "asset": "mark",
+      "position": [
+        545,
+        100
+      ],
+      "width": 330,
+      "height": 330,
+      "fit": "contain",
+      "pivot": [
+        165,
+        165
+      ],
+      "color": "#ffffff"
+    },
+    {
+      "id": "curve",
+      "type": "vector",
+      "position": [
+        60,
+        350
+      ],
+      "color": "#bce391",
+      "fill": false,
+      "strokeWidth": 3,
+      "commands": [
+        {
+          "op": "M",
+          "to": [
+            0,
+            45
+          ]
+        },
+        {
+          "op": "C",
+          "control1": [
+            80,
+            45
+          ],
+          "control2": [
+            85,
+            -20
+          ],
+          "to": [
+            170,
+            0
+          ]
+        },
+        {
+          "op": "Q",
+          "control": [
+            245,
+            30
+          ],
+          "to": [
+            300,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "steps",
+      "type": "group",
+      "position": [
+        58,
+        464
+      ],
+      "color": "#ffffff",
+      "layout": {
+        "type": "row",
+        "cell": [
+          210,
+          30
+        ],
+        "gap": [
+          22,
+          0
+        ],
+        "columns": 3
+      }
+    },
+    {
+      "id": "observe",
+      "type": "text",
+      "text": "01 / OBSERVE",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 16,
+      "lineHeight": 18.4,
+      "color": "#c4d6e0",
+      "font": "system",
+      "parent": "steps"
+    },
+    {
+      "id": "compose",
+      "type": "text",
+      "text": "02 / COMPOSE",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 16,
+      "lineHeight": 18.4,
+      "color": "#c4d6e0",
+      "font": "system",
+      "parent": "steps"
+    },
+    {
+      "id": "verify",
+      "type": "text",
+      "text": "03 / VERIFY",
+      "position": [
+        0,
+        0
+      ],
+      "fontSize": 16,
+      "lineHeight": 18.4,
+      "color": "#c4d6e0",
+      "font": "system",
+      "parent": "steps"
+    }
+  ],
+  "animations": [
+    {
+      "id": "hero-arrive",
+      "target": "hero",
+      "property": "position.y",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 190,
+          "easing": "smooth"
+        },
+        {
+          "frame": 26,
+          "value": 155,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 155,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 135,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "hero-visibility",
+      "target": "hero",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 20,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "art-x",
+      "target": "art",
+      "property": "position.x",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 770,
+          "easing": "smooth"
+        },
+        {
+          "frame": 35,
+          "value": 710,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 710,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "art-y",
+      "target": "art",
+      "property": "position.y",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 285,
+          "easing": "smooth"
+        },
+        {
+          "frame": 35,
+          "value": 265,
+          "easing": "smooth"
+        },
+        {
+          "frame": 90,
+          "value": 265,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 248,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "art-turn",
+      "target": "art",
+      "property": "rotation",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": -35,
+          "easing": "smooth"
+        },
+        {
+          "frame": 35,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 90,
+          "value": 12,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 20,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "art-opacity",
+      "target": "art",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 30,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "curve-show",
+      "target": "curve",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 28,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 46,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    },
+    {
+      "id": "steps-show",
+      "target": "steps",
+      "property": "opacity",
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 45,
+          "value": 0,
+          "easing": "smooth"
+        },
+        {
+          "frame": 66,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 95,
+          "value": 1,
+          "easing": "smooth"
+        },
+        {
+          "frame": 119,
+          "value": 0,
+          "easing": "smooth"
+        }
+      ]
+    }
+  ],
+  "study": {
+    "studyVersion": "0.1",
+    "title": "原创示例的动效设计记录（待观看验证）",
+    "source": {
+      "video": "composition.mp4",
+      "from": 0,
+      "to": 4
+    },
+    "subjects": [
+      {
+        "id": "copy",
+        "description": "标题与副标题整体"
+      }
+    ],
+    "events": [
+      {
+        "id": "arrival",
+        "subject": "copy",
+        "from": 0,
+        "to": 0.9,
+        "status": "unknown",
+        "description": "设计意图：标题整体上移并淡入。尚未把设计意图标作已观察事实。",
+        "evidence": [],
+        "implementation": {
+          "targets": [
+            "hero"
+          ],
+          "clips": [],
+          "animations": [
+            "hero-arrive",
+            "hero-visibility"
+          ],
+          "method": "direct",
+          "note": "只借用整体入场的运动原则，所有图形与版式为原创。输出动作时间由绑定动画明确记录。"
+        }
+      }
+    ]
+  }
+}

@@ -1,8 +1,10 @@
 import { getCapability } from '../../catalog/src/index.js';
 import { motionSchema, type Schema } from './schema.js';
 import type { Issue, MotionSpec } from './types.js';
+import { animationIssues, supportsNode } from './animation.js';
+import { studyIssues, studySchema, type MotionStudy } from './study.js';
 
-function check(value: unknown, schema: Schema, path: string, issues: Issue[]): void {
+export function check(value: unknown, schema: Schema, path: string, issues: Issue[]): void {
   const issue = (message: string) => { issues.push({ path, code: 'SCHEMA', message }); };
   if (schema.oneOf) {
     const results = schema.oneOf.map((variant) => { const errors: Issue[] = []; check(value, variant, path, errors); return errors; });
@@ -45,6 +47,12 @@ function check(value: unknown, schema: Schema, path: string, issues: Issue[]): v
     if (schema.maximum !== undefined && value > schema.maximum) issue(`Maximum is ${schema.maximum}.`);
   }
 }
+export function validateData(value: unknown, schema: Schema): Issue[] {
+  const issues: Issue[] = [];
+  check(value, schema, '$', issues);
+  return issues;
+}
+
 export function validateScene(value: unknown): Issue[] {
   const issues: Issue[] = [];
   check(value, motionSchema, '$', issues);
@@ -58,17 +66,37 @@ export function validateScene(value: unknown): Issue[] {
     if (ids.has(node.id)) add(`$.nodes[${i}].id`, 'DUPLICATE_ID', 'Node ID must be unique.');
     ids.add(node.id);
     if (node.type === 'text') {
-      if (node.font !== 'system' && node.font !== 'mono' && !Object.hasOwn(scene.assets, node.font)) add(`$.nodes[${i}].font`, 'MISSING_FONT', 'Use system or mono, or declare this font asset and include the matching file.');
+      if (node.font !== 'system' && node.font !== 'mono' && scene.assets[node.font]?.type !== 'font') add(`$.nodes[${i}].font`, 'MISSING_FONT', 'Use system or mono, or declare this font asset and include the matching file.');
       if (node.text.includes('\r') || node.text.includes('\t')) add(`$.nodes[${i}].text`, 'TEXT_LAYOUT', 'Use explicit LF newlines and spaces, not CR or tabs.');
       if (node.text.split('\n').length > 20) add(`$.nodes[${i}].text`, 'TEXT_LAYOUT', 'At most 20 explicit lines are supported.');
+    }
+    if (node.type === 'image' && scene.assets[node.asset]?.type !== 'image') add(`$.nodes[${i}].asset`, 'MISSING_IMAGE', 'Reference a declared image asset.');
+    if (node.type === 'custom' && scene.assets[node.module]?.type !== 'module') add(`$.nodes[${i}].module`, 'MISSING_MODULE', 'Reference a declared module asset.');
+    if (node.type === 'custom' && Object.keys(node.params).some(key => !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) || ['__proto__', 'constructor', 'prototype'].includes(key)))
+      add(`$.nodes[${i}].params`, 'PARAMETER', 'Use stable parameter names, excluding JavaScript prototype keys.');
+    if (node.type === 'vector' && node.commands[0]?.op !== 'M') add(`$.nodes[${i}].commands`, 'VECTOR', 'A vector must start with M.');
+    const ancestors = new Set([node.id]); let parent = node.parent;
+    while (parent) {
+      if (ancestors.has(parent)) { add(`$.nodes[${i}].parent`, 'PARENT_CYCLE', 'Groups must not contain themselves, directly or indirectly.'); break; }
+      ancestors.add(parent);
+      const group = scene.nodes.find(item => item.id === parent);
+      if (group?.type !== 'group') { add(`$.nodes[${i}].parent`, 'MISSING_GROUP', 'Parent must reference a group.'); break; }
+      parent = group.parent;
     }
   });
   const assetFamilies = new Set<string>();
   for (const [id, asset] of Object.entries(scene.assets)) {
     if (id === 'system' || id === 'mono') add(`$.assets.${id}`, 'ASSET_ID', `${id} is reserved for a device font; choose another asset ID.`);
     if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id)) add(`$.assets.${id}`, 'ASSET_ID', 'Use a stable alphanumeric asset ID.');
-    if (assetFamilies.has(asset.family)) add(`$.assets.${id}.family`, 'FONT_FAMILY', 'Each font asset must have a unique family.');
-    assetFamilies.add(asset.family);
+    if (asset.type === 'font') {
+      if (assetFamilies.has(asset.family)) add(`$.assets.${id}.family`, 'FONT_FAMILY', 'Each font asset must have a unique family.');
+      assetFamilies.add(asset.family);
+    }
+  }
+  const assetPaths = new Set<string>();
+  for (const asset of Object.values(scene.assets)) {
+    if (assetPaths.has(asset.src)) add('$.assets', 'ASSET_PATH', 'Each asset must have a unique path. Reuse its ID for shared resources.');
+    assetPaths.add(asset.src);
   }
   const clipIds = new Set<string>();
   const writers = new Map<string, { start: number; end: number }[]>();
@@ -79,7 +107,7 @@ export function validateScene(value: unknown): Issue[] {
     const node = scene.nodes.find((node) => node.id === clip.target);
     const capability = getCapability(clip.recipe)!;
     if (!node) add(`${path}.target`, 'MISSING_TARGET', 'Reference an existing node ID.');
-    else if (!capability.targets.includes(node.type)) add(`${path}.target`, 'TARGET_TYPE', `${clip.recipe} cannot target ${node.type}.`);
+    else if (!supportsNode(clip.recipe, node)) add(`${path}.target`, 'TARGET_TYPE', `${clip.recipe} cannot target ${node.type}.`);
     if (clip.startFrame + clip.durationFrames > scene.durationFrames) add(`${path}.durationFrames`, 'CLIP_BOUNDS', 'Clip must fit inside the scene.');
     // Property clips may take turns; while they overlap there is no rule for which one wins. Loops, layouts,
     // timing curves and looks layer instead, so they never conflict.
@@ -94,7 +122,17 @@ export function validateScene(value: unknown): Issue[] {
     if (node?.type === 'text' && clip.recipe === 'text.chars' && ([...node.text].filter((character) => character.trim()).length - 1) * Number(clip.params.stepFrames) >= clip.durationFrames)
       add(`${path}.params.stepFrames`, 'STAGGER_BOUNDS', 'Leave positive animation time for every character within the clip.');
   });
+  issues.push(...animationIssues(scene));
+  if (scene.study) issues.push(...studyIssues(scene.study, scene).map(issue => ({ ...issue, path: issue.path.replace('$', '$.study') })));
   return issues;
+}
+export function validateStudy(value: unknown, scene?: MotionSpec): Issue[] {
+  const issues: Issue[] = []; check(value, studySchema, '$', issues);
+  return issues.length ? issues : studyIssues(value as MotionStudy, scene);
+}
+export function assertStudy(value: unknown, scene?: MotionSpec): asserts value is MotionStudy {
+  const issues = validateStudy(value, scene);
+  if (issues.length) throw new SceneValidationError(issues);
 }
 export class SceneValidationError extends Error {
   readonly code = 'INVALID_SCENE';

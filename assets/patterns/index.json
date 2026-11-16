@@ -1,0 +1,49 @@
+{
+  "indexVersion": "0.1",
+  "patterns": [
+    {
+      "id": "title-yields-to-product",
+      "version": "0.1.0",
+      "title": "标题让位于产品",
+      "purpose": "先建立信息，再把注意力移交给产品，最后引入细节与落定",
+      "tags": [
+        "产品",
+        "标题",
+        "让位",
+        "发布",
+        "介绍",
+        "product",
+        "headline",
+        "reveal",
+        "launch"
+      ],
+      "subjects": [
+        "text",
+        "image",
+        "group"
+      ],
+      "aspectRatio": [
+        0.5,
+        2
+      ],
+      "durationSeconds": [
+        4,
+        30
+      ],
+      "timing": "内容与品牌阅读规则决定最短时长；4 秒不是所有文案都可用",
+      "requires": [
+        "MotionSpec 0.2",
+        "static image",
+        "keyframes"
+      ],
+      "origin": "original",
+      "status": "validated-example",
+      "guide": "assets/patterns/title-yields-to-product/PATTERN.md",
+      "examples": [
+        "speaker-landscape",
+        "lamp-portrait"
+      ],
+      "scope": "原创双布局模式，尚不代表普适审美结论；字体、图片边缘与实际播放需逐项目检查"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ import type { MotionSpec } from './types.js';
  */
 export function canContinueScene(scene: MotionSpec): boolean {
   const kinds = scene.clips.map((clip) => getCapability(clip.recipe)!.time);
-  return kinds.includes('ongoing') && !kinds.includes('finite');
+  return !scene.animations?.length && !scene.nodes.some(node => node.type === 'custom') && kinds.includes('ongoing') && !kinds.includes('finite');
 }
 
 export interface LoopTiming {
@@ -22,7 +22,8 @@ export interface LoopTiming {
 
 /** Presentation-only timing; raw frame evaluation and authored clips keep their original semantics. */
 export function loopTiming(scene: MotionSpec): LoopTiming {
-  const start = scene.clips.length ? Math.min(...scene.clips.map((clip) => clip.startFrame)) : 0;
+  const starts = [...scene.clips.map(clip => clip.startFrame), ...(scene.animations ?? []).map(track => track.keyframes[0]!.frame)];
+  const start = scene.nodes.some(node => node.type === 'custom') ? 0 : starts.length ? Math.min(scene.durationFrames - 1, ...starts) : 0;
   // Delayed copies finish after their clips do, so a finite scene plays to its own end, not just its last clip's.
   const end = scene.durationFrames;
   const mode = canContinueScene(scene) ? 'continuous' : 'restart';
