@@ -33,7 +33,7 @@
     }
   },
   "product": {
-    "src": "assets/speaker.png",
+    "src": "speaker.png",
     "sha256": "017b57286673f7c9c3b398e84f5e1255fc111d1a918fa116dd895a5c8f1fc59b",
     "license": "Original fictional product illustration by MotionFlux; MIT. No real product claims."
   }

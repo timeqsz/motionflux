@@ -29,11 +29,4 @@
 - 换品牌：把配色、字号、阶段偏好应用到场景，后续以场景保存值为准。
 - 改节奏：修改关联轨道并检查衔接，时长不足时缩减内容或增加时长。
 
-## 可运行示例
-
-| 内容 | 输入 | 场景 | 参数绑定 | 离线预览 |
-|---|---|---|---|---|
-| SONA 音箱 · 横屏 · 9 秒 | [brief](speaker-landscape.brief.json) | [scene](speaker-landscape.scene.json) | [authoring](speaker-landscape.authoring.json) | [preview](speaker-landscape.html) |
-| 弧光台灯 · 竖屏 · 12 秒 | [brief](lamp-portrait.brief.json) | [scene](lamp-portrait.scene.json) | [authoring](lamp-portrait.authoring.json) | [preview](lamp-portrait.html) |
-
-两例更换了主体、语言、文本长度、画幅、配色和节奏。系统字体因设备变化；字号估算不是像素验收。[验证范围](validation.json) 记录具体场景版本和实际检查范围。
+制作时使用当前项目的素材和文案；在实际设备检查字号、裁切和播放节奏。

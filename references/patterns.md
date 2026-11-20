@@ -1,6 +1,6 @@
 # 编排模式：检索、改编与沉淀
 
-模式记录用途、动作承接和改编方法；原子负责局部执行。当前包含一个原创产品介绍模式和横／竖两份独立内容示例，不是外部品牌视频的复刻库。
+模式记录用途、动作承接和改编方法；原子负责局部执行。当前包含一个原创产品介绍模式，不附产品 brief。
 
 ## 制作时按需读取
 
@@ -8,18 +8,18 @@
 node scripts/motion.mjs patterns 产品 标题
 ```
 
-按 [索引](../assets/patterns/index.json) 的用途、主体、画幅和能力要求筛选，再读取相关 PATTERN.md 和示例。命令是全部短关键词匹配，不是语义搜索或自动审美判断；避免直接输入整句需求。实际文案可能需要比索引下限更长的时长。
+按 [索引](../assets/patterns/index.json) 的用途、主体、画幅和能力要求筛选，再读取对应的模式说明。命令是全部短关键词匹配，不是语义搜索或自动审美判断；避免直接输入整句需求。实际文案可能需要比索引下限更长的时长。
 
 已有模式：[标题让位于产品](../assets/patterns/title-yields-to-product/PATTERN.md)。判断适用后说明焦点、转移原因、阅读阶段和结尾状态。按当前素材重新安排，不为套模式补造卖点。无适用模式时继续自主编排；单个动作、局部修订和仅分析任务不必检索。
 
 ## 可运行起点
 
-复制并修改 brief：产品图片路径与 SHA-256、文案显式换行、尺寸、时长和品牌规则。图片路径相对 brief。
+按 [brief schema](../assets/patterns/brief.schema.json) 将当前项目的输入写入 `work/product.brief.json`：产品图片路径与 SHA-256、文案显式换行、尺寸、时长和品牌规则。图片路径相对 brief。
 
 ```sh
-node scripts/motion.mjs compose assets/patterns/title-yields-to-product/speaker-landscape.brief.json --out work/speaker-v1
-node scripts/motion.mjs controls work/speaker-v1/authoring.json --scene work/speaker-v1/scene.json
-node scripts/motion.mjs render work/speaker-v1/scene.json --out work/speaker-v1/video.mp4
+node scripts/motion.mjs compose work/product.brief.json --out work/product-v1
+node scripts/motion.mjs controls work/product-v1/authoring.json --scene work/product-v1/scene.json
+node scripts/motion.mjs render work/product-v1/scene.json --out work/product-v1/video.mp4
 ```
 
 `compose` 是当前模式的确定性初稿生成器，不调用模型、不识别图片、不执行任意模板代码。它在新目录交付场景、图片、离线预览、编排上下文和检查报告；已有目录会拒绝覆盖。当前仅此模式提供生成器，其他编排由 Agent 写场景。

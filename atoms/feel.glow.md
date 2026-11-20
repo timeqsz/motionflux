@@ -30,7 +30,7 @@ const out = feelGlow({
   startFrame: 0,               // 这个原子从第几帧开始
   durationFrames: 80,          // 持续多少帧
   fps: 30,
-  subject: { points: /* 10 个点，见 assets/examples/feel.glow.scene.json */, closed: true, strokeWidth: 6 },
+  subject: { points: [[-40, -30], [40, -30], [40, 30], [-40, 30]], closed: true, strokeWidth: 6 },
   params: {radiusPx: 12, strength: 1.4},
 });
 
@@ -45,19 +45,3 @@ drawAtom(ctx, out, { x: 320, y: 200, color: '#7a5bc7' });
 `draw.mjs` 会按这个结构画；也可以自己读它，画到 SVG、WebGL 或别的地方。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"feel.glow","startFrame":0,"durationFrames":80,"fillAfter":"hold","params":{"radiusPx":12,"strength":1.4}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`prop.draw`。
-完整的最小场景：`assets/examples/feel.glow.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold feel.glow --out work/feel.glow.scene.json --width 1920 --height 1080 --duration 80
-node scripts/motion.mjs render work/feel.glow.scene.json --out work/feel.glow.mov --transparent
-```

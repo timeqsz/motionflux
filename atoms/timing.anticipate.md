@@ -44,19 +44,3 @@ const moved = move({ frame, durationFrames: 30, params: { fromPx: -100, toPx: 10
 - `out.value`：曲线在这一帧的值，开始为 0，结束正好为 1。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"timing.anticipate","startFrame":0,"durationFrames":84,"fillAfter":"hold","params":{"amount":0.3}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`prop.move`。
-完整的最小场景：`assets/examples/timing.anticipate.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold timing.anticipate --out work/timing.anticipate.scene.json --width 1920 --height 1080 --duration 84
-node scripts/motion.mjs render work/timing.anticipate.scene.json --out work/timing.anticipate.mov --transparent
-```

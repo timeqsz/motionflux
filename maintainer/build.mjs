@@ -5,7 +5,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeAtoms } from './atoms.mjs';
 import { archiveSkill } from './skill-archive.mjs';
 import { writeSceneExamples } from './scene-examples.mjs';
-import { writePatternExamples } from './pattern-examples.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
@@ -17,18 +16,20 @@ const bundle = (entry, outfile, platform = 'browser', format = 'esm') => build({
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/lib', { recursive: true });
 await mkdir('scripts/resources', { recursive: true });
+await mkdir('stage', { recursive: true });
+await bundle('packages/stage/src/runtime.ts', 'stage/runtime.mjs', 'browser', 'esm');
 await bundle('packages/renderer-browser/src/standalone.ts', 'scripts/resources/standalone.js', 'browser', 'iife');
 await bundle('packages/renderer-browser/src/panel-page.ts', 'scripts/resources/breakdown-panel.js', 'browser', 'iife');
 await bundle('packages/cli/src/index.ts', 'scripts/motion.mjs', 'node');
 for (const name of ['catalog', 'core', 'renderer-browser']) {
   await bundle(`packages/${name}/src/index.ts`, `packages/${name}/dist/index.js`);
 }
+await bundle('packages/stage/src/index.ts', 'packages/stage/dist/index.js', 'node');
 await bundle('packages/catalog/src/examples.ts', 'dist/lib/examples.mjs');
 const { capabilities, families } = await import(pathToFileURL(resolve('packages/catalog/dist/index.js')).href);
-const { motionSchema, composePattern, briefSchema, authoringSchema } = await import(pathToFileURL(resolve('packages/core/dist/index.js')).href);
-await bundle('packages/core/src/export.ts', 'dist/lib/export.mjs');
-const { createStandaloneHtml } = await import(pathToFileURL(resolve('dist/lib/export.mjs')).href);
-await writePatternExamples({ composePattern, createStandaloneHtml, briefSchema, authoringSchema });
+const { motionSchema, briefSchema, authoringSchema } = await import(pathToFileURL(resolve('packages/core/dist/index.js')).href);
+await writeFile('assets/patterns/brief.schema.json', JSON.stringify(briefSchema, null, 2) + '\n');
+await writeFile('assets/patterns/authoring.schema.json', JSON.stringify(authoringSchema, null, 2) + '\n');
 const { createExampleScene } = await import(pathToFileURL(resolve('dist/lib/examples.mjs')).href);
 // Only generated files are replaced. Hand-authored Skill and atom guidance stay at the root.
 for (const file of await readdir('atoms')) {
@@ -50,9 +51,9 @@ await writeFile('assets/catalog-index.json', JSON.stringify(capabilities, null, 
 
 由构建从目录生成，共 ${capabilities.length} 个原子、${Object.keys(families).length} 族。每行：ID、名称、可用节点、角色、写入、作用、参数及默认值。点 ID 打开该原子的用法说明；它的脚本是同名的 \`atoms/<ID>.mjs\`。
 
-一个完整的动作通常从几族里各取一个：**变什么（属性）× 怎么变（节奏）× 谁先谁后（编排）＋ 质感**。
+按用户要改变的属性查找原子；用一个就够时，不必组合其他族。
 
-- **角色**决定叠加方式：同一节点上写同一属性的**属性动画**不能在时间上重叠，但可以一个接一个；时间曲线、持续循环、复制排布、先后延迟、画面质感和场景连线都是叠加的。详见 [场景编排](../references/composition.md)。
+- **角色**区分属性值、曲线、副本和滤镜。每个函数独立求值，由宿主决定如何应用。详见 [原子接口](../atoms/README.md)。
 - 写入 \`geometry\` 或 \`trim\` 的原子会重画节点的轮廓，只能用于 path 节点。
 - 标 ◆ 的原子要做逐像素处理，画面大、同时用得多时渲染会变慢。
 
@@ -71,9 +72,11 @@ await writeFile('VERSION.json', JSON.stringify({ ...provenance, version, atoms2d
 // A small installable ZIP excludes development sources, dependency folders and build caches.
 const stage = 'dist/skill';
 await mkdir(stage, { recursive: true });
-for (const name of ['SKILL.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'VERSION.json', 'references', 'atoms', 'scripts', 'assets']) {
-  await cp(name, `${stage}/${name}`, { recursive: true });
-}
+const releaseFiles = ['SKILL.md', 'LICENSE', 'VERSION.json', 'assets/catalog.md', 'assets/catalog-index.json',
+  'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs',
+  'atoms/README.md', 'atoms/index.mjs', 'atoms/draw.mjs',
+  ...capabilities.flatMap(({ id }) => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
+for (const name of releaseFiles) await cp(name, `${stage}/${name}`);
 const archive = await archiveSkill(stage, 'dist/downloads', { name: 'motionflux', version, atoms2d: capabilities.length });
 await cp(`${stage}/manifest.json`, 'manifest.json');
 await cp(`dist/downloads/${archive}`, 'dist/downloads/motionflux.zip');

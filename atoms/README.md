@@ -1,6 +1,6 @@
 # 动效原子脚本
 
-这个目录里是动效本身：每个原子一份独立脚本，加一份用法说明。它们不依赖本 Skill 的命令行工具，也不依赖场景 JSON——把文件拷到任何 JavaScript 工程里就能用，由你的代码决定画什么、什么时候画、画到哪里。
+这个目录里是动效本身：每个原子一份独立脚本，加一份用法说明。它们不依赖命令行工具，也不依赖场景 JSON——把文件拷到任何 JavaScript 工程里就能用，由你的代码决定画什么、什么时候画、画到哪里。
 
 | 文件 | 内容 |
 |---|---|
@@ -8,7 +8,6 @@
 | `<原子 ID>.md` | 这个原子的参数表、调用示例、返回值说明。 |
 | `draw.mjs` | 把任意原子的返回值画到 Canvas 2D 上，像素滤镜也在这里。独立文件，无依赖。 |
 | `index.mjs` | 一次导入全部原子：`import { atoms, drawAtom } from './index.mjs'`，再用 `atoms['prop.move']` 取。 |
-| `example.html` | 能直接跑的最小例子：阵列 × 错开 × 位移 × 弹簧，四个原子拼成一组依次弹入；可播放、暂停和拖帧。 |
 
 要哪个原子，先看 [../assets/catalog.md](../assets/catalog.md) 的清单，再读对应的 `<ID>.md`。
 
@@ -96,7 +95,7 @@ drawAtom(ctx, out, { x: 640, y: 360, color: '#ffd166' });
 
 ## 把原子拼起来
 
-脚本彼此独立，组合由你的代码决定。场景 JSON 和命令行工具按同样的规则组合，见 [场景编排](../references/composition.md)。
+脚本彼此独立，组合由你的代码决定。需要几个原子就导入几个。
 
 **节奏交给属性**：节奏原子不画东西，只给曲线。把它包成函数传给属性原子的 `ease`：
 
@@ -108,7 +107,7 @@ const curve = (t) => spring({ frame: t, durationFrames: 1 }).value;
 const out = move({ frame, durationFrames: 30, params: { fromPx: -200, toPx: 0 }, ease: curve });
 ```
 
-**编排给出副本**：布局原子（阵列、环形、网格、镜像、跟随、拖影）返回 `copies`；先后原子（错开、扩散、乱序）给每个位置一个延迟。对每个副本用 `frame - copy.delay` 去求其他原子，再平移 `copy.offset`、旋转 `copy.rotation`、缩放 `copy.scale`、乘 `copy.opacity`；`copy.flip` 为 -1 的方向位移取反、图形镜像。`ghost > 0` 的是残影或跟随者，先画。完整例子见 [example.html](example.html)。
+**编排给出副本**：布局原子（阵列、环形、网格、镜像、跟随、拖影）返回 `copies`；先后原子（错开、扩散、乱序）给每个位置一个延迟。对每个副本用 `frame - copy.delay` 去求其他原子，再平移 `copy.offset`、旋转 `copy.rotation`、缩放 `copy.scale`、乘 `copy.opacity`；`copy.flip` 为 -1 的方向位移取反、图形镜像。`ghost > 0` 的是残影或跟随者，先画。
 
 **同时生效**（改的是不同属性，或者是循环、质感）：分别调用，把结果合起来——`position` 相加，`rotation` 相加，`scale`、`opacity` 和 `stretch` 相乘，`filters` 依次拼接。
 
@@ -140,8 +139,8 @@ const out = current.atom({ frame, ...current });
 
 - 脚本是标准 ES 模块。算属性和图形的部分在浏览器和 Node.js 里都能跑；`draw.mjs` 需要 Canvas 2D（浏览器，或提供 `OffscreenCanvas` 的环境）。
 - 浏览器不允许从 `file://` 直接加载模块：用本地服务器打开页面，或者把脚本打包、内联进页面。
-- 这些脚本由 MotionFlux 的同一份源码生成，和本 Skill 的命令行工具、场景 JSON 用的是同一套实现，结果一致。优先调参数；需要扩展实现时保留原包并在宿主项目修改。
+- 需要扩展实现时，保留原包并在宿主项目里修改。
 
 ## 组合画面检查
 
-对齐、蒙版与前后层级属于宿主构图，原子不会自动修正。开始组合前读 [时间与画面检查](../references/quality.md)，尤其检查基线、共享枢轴、绘制顺序与首尾接缝。
+对齐、蒙版与绘制顺序由宿主决定。按实际尺寸检查对象原点、文字基线和首尾状态。

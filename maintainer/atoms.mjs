@@ -16,7 +16,6 @@ const randomAtoms = /float|flicker|random|dissolve|decode|grain|glitch|particles
 /** Usage notes for one atom, written from its catalog entry and its example scene. */
 function usage(entry, family, example) {
   const subject = example.nodes.find((node) => node.id === 'subject'); const clip = example.clips[0]; const isText = subject.type === 'text';
-  const carriers = example.clips.slice(1);
   const draws = ['property', 'feel'].includes(entry.role) && (isText || entry.writes.some((property) => ['geometry', 'trim', 'mask', 'stretch', 'chars', 'lines', 'text', 'blur', 'dissolve', 'glow', 'grain', 'glitch', 'chroma'].includes(property)));
   const generator = entry.writes.includes('geometry') && subject.type === 'path' && subject.points.length === 2 && subject.points[0][0] === -1 && subject.points[1][0] === 1;
   const name = entry.id.replace(/[.-](\w)/gu, (_, letter) => letter.toUpperCase());
@@ -24,7 +23,7 @@ function usage(entry, family, example) {
     ? `| \`${key}\` | ${parameter.title} | ${unitLabel[parameter.unit] ?? parameter.unit}${parameter.integer ? '，整数' : ''} | ${parameter.minimum} – ${parameter.maximum} | ${parameter.default} |`
     : parameter.type === 'color' ? `| \`${key}\` | ${parameter.title} | 颜色 | #RRGGBB | \`${parameter.default}\` |`
     : `| \`${key}\` | ${parameter.title} | 选项 | ${parameter.enum.map((value, i) => `\`${value}\`${parameter.labels ? `（${parameter.labels[i]}）` : ''}`).join('、')} | \`${parameter.default}\` |`);
-  const points = subject.points && subject.points.length <= 8 ? short(subject.points) : `/* ${subject.points?.length} 个点，见 assets/examples/${entry.id}.scene.json */`;
+  const points = subject.points && short(subject.points.length <= 8 ? subject.points : [[-40, -30], [40, -30], [40, 30], [-40, 30]]);
   const subjectCode = isText ? `{ text: ${JSON.stringify(subject.text)}, lineHeight: ${subject.lineHeight} }`
     : generator ? `{ strokeWidth: ${subject.strokeWidth} }` : `{ points: ${points}${subject.closed ? ', closed: true' : ''}${subject.fill ? ', fill: true' : ''}, strokeWidth: ${subject.strokeWidth} }`;
   const extra = entry.role === 'order' ? '\n  items: [[-100, 0], [0, 0], [100, 0]],   // 要排先后的几个对象的位置'
@@ -83,22 +82,6 @@ ${code}
 ${returns}
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-\`\`\`json
-${JSON.stringify({ id: 'my-clip', target: '节点 ID', recipe: entry.id, startFrame: clip.startFrame, durationFrames: clip.durationFrames, fillAfter: 'hold', params: clip.params })}
-\`\`\`
-${carriers.length ? `
-示例场景里它和这些原子一起用在同一对象上：${carriers.map((item) => `\`${item.recipe}\``).join('、')}。` : ''}
-完整的最小场景：\`assets/examples/${entry.id}.scene.json\`。
-
-## 直接出一条素材
-
-\`\`\`sh
-node scripts/motion.mjs scaffold ${entry.id} --out work/${entry.id}.scene.json --width 1920 --height 1080 --duration ${example.durationFrames}${isText ? ' --text "你的文字"' : ''}
-node scripts/motion.mjs render work/${entry.id}.scene.json --out work/${entry.id}.mov --transparent
-\`\`\`
 `;
 }
 

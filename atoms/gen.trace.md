@@ -45,19 +45,3 @@ drawAtom(ctx, out, { color: '#1d201d' });
 `draw.mjs` 会按这个结构画；也可以自己读它，画到 SVG、WebGL 或别的地方。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"gen.trace","startFrame":0,"durationFrames":240,"fillAfter":"hold","params":{"lengthFrames":36,"widthPx":3}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`loop.swing`、`loop.swing`。
-完整的最小场景：`assets/examples/gen.trace.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold gen.trace --out work/gen.trace.scene.json --width 1920 --height 1080 --duration 240
-node scripts/motion.mjs render work/gen.trace.scene.json --out work/gen.trace.mov --transparent
-```

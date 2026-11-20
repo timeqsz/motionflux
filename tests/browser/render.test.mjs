@@ -31,7 +31,8 @@ for(const name of ['composition','three-orbit']) test(`standalone ${name}: offli
   assert.ok(frames[0].length>5000,'rendered output is not an empty canvas');
 });
 for(const name of ['speaker-landscape','lamp-portrait']) test(`pattern ${name}: portable composition renders and unordered seeks agree`,async()=>{
-  const delivery=JSON.parse(execFileSync(process.execPath,['scripts/motion.mjs','compose',`assets/patterns/title-yields-to-product/${name}.brief.json`,'--out',join(dir,name)],{encoding:'utf8'})).result;
+  const brief=`tests/fixtures/products/${name}.brief.json`;
+  const delivery=JSON.parse(execFileSync(process.execPath,['scripts/motion.mjs','compose',brief,'--out',join(dir,name)],{encoding:'utf8'})).result;
   const scene=JSON.parse(await readFile(delivery.scene,'utf8'));
   const last=scene.durationFrames-1;
   const frames=[];

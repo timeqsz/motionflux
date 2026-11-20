@@ -49,18 +49,3 @@ drawAtom(ctx, out, { x: 320, y: 200, color: '#1d201d' });
 `draw.mjs` 会按这个结构画；也可以自己读它，画到 SVG、WebGL 或别的地方。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"gen.shatter","startFrame":0,"durationFrames":60,"fillAfter":"hold","params":{"pieces":6,"forcePx":180,"spinDeg":240,"gravityPx":120,"delayRatio":0.3}}
-```
-
-完整的最小场景：`assets/examples/gen.shatter.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold gen.shatter --out work/gen.shatter.scene.json --width 1920 --height 1080 --duration 84
-node scripts/motion.mjs render work/gen.shatter.scene.json --out work/gen.shatter.mov --transparent
-```

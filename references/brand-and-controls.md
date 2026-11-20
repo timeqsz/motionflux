@@ -4,7 +4,7 @@
 
 ## 品牌输入
 
-见 [横屏 brief](../assets/patterns/title-yields-to-product/speaker-landscape.brief.json) 和 [brief schema](../assets/patterns/brief.schema.json)。以下字段由生成器实际读取：
+按 [brief schema](../assets/patterns/brief.schema.json) 填写当前项目的输入。以下字段由生成器实际读取：
 
 | 字段 | 含义 |
 |---|---|

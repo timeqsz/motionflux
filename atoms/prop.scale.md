@@ -42,18 +42,3 @@ const out = propScale({
 - `out.scale` 随时间变化；其余属性保持初值（position [0, 0]、rotation 0、scale 1、opacity 1）。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"prop.scale","startFrame":0,"durationFrames":54,"fillAfter":"hold","params":{"from":0.4,"to":1.2}}
-```
-
-完整的最小场景：`assets/examples/prop.scale.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold prop.scale --out work/prop.scale.scene.json --width 1920 --height 1080 --duration 76
-node scripts/motion.mjs render work/prop.scale.scene.json --out work/prop.scale.mov --transparent
-```

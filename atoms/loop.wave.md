@@ -43,19 +43,3 @@ const out = loopWave({
 - `out.position` 随时间变化；其余属性保持初值（position [0, 0]、rotation 0、scale 1、opacity 1）。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"loop.wave","startFrame":0,"durationFrames":240,"fillAfter":"hold","params":{"amplitudePx":24,"periodS":1.4,"phaseDeg":45}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`choreo.array`。
-完整的最小场景：`assets/examples/loop.wave.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold loop.wave --out work/loop.wave.scene.json --width 1920 --height 1080 --duration 240
-node scripts/motion.mjs render work/loop.wave.scene.json --out work/loop.wave.mov --transparent
-```

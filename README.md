@@ -1,91 +1,32 @@
 # MotionFlux
 
-让 Agent 按描述组合动效，也能拆解视频里的动作、节奏和转场。
+MotionFlux 是一套零依赖、确定性的 **HTML/CSS/SVG/WebGL 动效与视频底座 + 53 个二维动效原子 + 参考视频拆解 Skill**。
 
-开源动效 Skill：**53 个二维动效原子、8 个分类**，附参数、独立 JavaScript、组合约定和渲染工具。可以交给支持本地 Skill 的 Agent，也可以直接在自己的代码中使用。
+- **Stage 底座**（[stage/README.md](stage/README.md)）：用完整浏览器渲染能力（现代排版、CSS/SVG/backdrop-filter、图片/视频、WebGL/Three.js）编写动效，支持确定性逐帧捕获（CDP 全页截图）、交互式预览条、**自动 DOM 几何防穿帮审计（裁切/溢出/重叠/坏资源检测）**，以及**零外部 API Key 的程序化音效与多轨音频混音**。
+- **53 个独立原子**（[atoms/README.md](atoms/README.md) · [原子清单](assets/catalog.md)）：零依赖纯函数 `.mjs`，可在 Stage 中直接 `import`，也可单独拷进任何宿主工程。
+- **参考视频拆解**：结合宿主看片工具与 `breakdown` 命令，输出「原片＋同步原子分轨」拆解动图/视频。
 
-[浏览动效周期表](https://sylvanlv.com/motion/) · [下载 Skill](https://github.com/timeqsz/motionflux/releases/latest/download/motionflux.zip) · [使用说明](SKILL.md)
+## 快速使用
 
-## 安装
-
-下载 Release 中的 `motionflux.zip`，解压后将整个 `motionflux/` 放进客户端支持的 skills 目录。项目内可使用 `.agents/skills/motionflux/`；已有同名版本时先备份，再整体替换。完整安装包不需要 `npm install`。
-
-也可以克隆此仓库，将根目录作为 Skill 目录使用：
+需要 Node.js 22+（渲染与审计使用本机已有 Chrome/Chromium/Edge，视频封装需要 FFmpeg）：
 
 ```sh
-git clone https://github.com/timeqsz/motionflux.git
-cd motionflux
-node scripts/motion.mjs doctor --backend js
+node scripts/motion.mjs init work/demo --width 1920 --height 1080 --fps 30 --duration 150
+node scripts/motion.mjs audit work/demo/index.html --contact work/demo/contact.png
+node scripts/motion.mjs render work/demo/index.html --out work/demo/demo.mp4 --audit
+node scripts/motion.mjs serve work/demo/index.html --port 4178
 ```
 
-CLI 需要 Node.js 22+。导出 PNG 帧需要本机 Chromium 系浏览器；导出视频或拆解动图另需 FFmpeg / ffprobe。浏览器、字体、FFmpeg 和参考视频不随包分发。详见[安装说明](references/install.md)。
-
-## 可以这样用
-
-对 Agent 说：
-
-> 使用 motionflux，让这三行文字依次弹入，带一点过冲，最后一起淡出。交付可编辑场景和 HTML 预览。
-
-> 使用 motionflux，分析这个视频 00:03–00:08 的动效。逐段说明主体、动作、层级、节奏和转场，标出观察与推断，并生成原片加动效时间轴的拆解动图。
-
-视频拆解由 Agent 实际观看、分析并填写时间段；包内 `breakdown` 命令负责原片截取、时间轴绘制和编码，不会自动识别视频。详见[视频拆解](references/video-breakdown.md)。
-
-直接试用工具：
-
-```sh
-node scripts/motion.mjs describe text.lines
-node scripts/motion.mjs validate assets/examples/showcase.scene.json
-node scripts/motion.mjs preview assets/examples/showcase.scene.json --out work/showcase.html
-```
-
-需要单个原子时，导入 `atoms/<ID>.mjs`，用自己的时间线逐帧求值；每个脚本都能独立使用，不需要动效运行库。Canvas 绘制与组合示例见 [`atoms/example.html`](atoms/example.html) 和[原子约定](atoms/README.md)。
-
-## 能力范围
-
-属性、节奏、循环、文字、质感、转场、编排、生成，共 8 族。常用组合：**位移 × 弹簧 × 错开 ＋ 拖影**。参数、作用对象和组合限制见[原子清单](assets/catalog.md)。
-
-可生成离线 HTML、MotionSpec JSON、PNG 帧、MP4，以及带透明通道的 MOV / WebM。0.5.0 新增图片、贝塞尔路径、父子分组、基本布局、可编辑关键帧和独立渲染模块；Three.js 示例能与二维内容共用时间轴并导出。Motion Study 记录拉片证据并关联制作对象，保留观察、推断与未知。渲染出的素材视频没有音轨。
-
-先看 [二维场景](references/scene-02.md)、[拉片记录](references/motion-study.md) 和 [Three.js / 模块接口](references/render-modules.md)。原生三维对象、glTF、视频帧节点、音轨与时间轴编辑器仍是后续工作。
-
-```sh
-node scripts/motion.mjs preview assets/examples/composition.scene.json --out work/composition.html
-node scripts/motion.mjs preview assets/examples/three-orbit.scene.json --out work/orbit.html
-node scripts/motion.mjs study assets/examples/composition.study.json --scene assets/examples/composition.scene.json
-```
-
-## 编排模式与品牌改编
-
-0.6.0 加入原创编排模式检索、品牌规则输入和参数绑定。首个模式是标题让位于产品，附横屏英文音箱和竖屏中文台灯两种改编。
-
-```sh
-node scripts/motion.mjs patterns 产品 标题
-node scripts/motion.mjs compose assets/patterns/title-yields-to-product/speaker-landscape.brief.json --out work/speaker-v1
-node scripts/motion.mjs controls work/speaker-v1/authoring.json --scene work/speaker-v1/scene.json
-```
-
-详见 [模式流程](references/patterns.md) 和 [品牌与编辑约定](references/brand-and-controls.md)。生成后修改保存的场景，deliver --authoring 保留上下文；没有参数面板，视觉和播放仍需实际检查。
-
-## 开发
-
-仓库含可直接安装的发行文件，也包含完整 TypeScript 源码，构建不依赖 MotionFlux 的网站仓库。
+## 开发与验证
 
 ```sh
 npm ci
 npm run typecheck
 npm test
-npm run test:browser
 npm run verify
+npm run test:browser
 ```
 
-`packages/` 维护内核、目录、渲染器和 CLI；`SKILL.md`、`references/`、`atoms/README.md`、`atoms/example.html` 直接维护。`atoms/*.mjs`、各原子的用法说明、目录索引和 CLI 由 `npm run build` 生成，请修改对应源码后重新构建。额外场景源文件在 `maintainer/examples/`。
+`npm run build` 构建 Stage 运行时（`stage/runtime.mjs`）、CLI（`scripts/motion.mjs`）、53 个独立原子和可安装的 Skill ZIP（`dist/downloads/motionflux.zip`）。
 
-`npm run build` 同时生成带文件校验清单的 `dist/downloads/motionflux.zip`。`npm run verify` 在临时目录中校验安装包文件并运行 CLI 与所有示例。发布前一起提交源码和更新后的发行文件。版本在 `package.json`；`VERSION.json` 记录初始分离时的 MotionFlux 来源提交。
-
-## 参考与致谢
-
-MotionFlux 的早期动效索引构思参考了 Kazuki Akamine（赤嶺一希）的 [Motion Periodic Table](https://selected.musabi.ac.jp/y2015/di/s01)。感谢其对基础动效整理与展示的启发。MotionFlux 是独立项目。
-
-## 许可
-
-[MIT](LICENSE)，可免费商用、修改和分发，保留许可证。外部字体、浏览器、编码器及用户提供的视频素材遵守各自许可，详见[第三方说明](THIRD_PARTY_NOTICES.md)。
+早期动效周期表索引构思参考了 Kazuki Akamine 的 [Motion Periodic Table](https://selected.musabi.ac.jp/y2015/di/s01)。按 [MIT](LICENSE) 分发；第三方说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

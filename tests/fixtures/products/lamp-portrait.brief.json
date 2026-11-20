@@ -33,7 +33,7 @@
     }
   },
   "product": {
-    "src": "assets/lamp.png",
+    "src": "lamp.png",
     "sha256": "bfd602a140930405440540ae58e424cc2bedf02afabde2dc0a2191c9c908ee42",
     "license": "Original fictional product illustration by MotionFlux; MIT. No real product claims."
   }

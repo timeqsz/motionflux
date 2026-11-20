@@ -47,18 +47,3 @@ drawAtom(ctx, out, { x: 180, y: 240, color: '#1d201d', font: '120px "你的字�
 `draw.mjs` 会按这个结构画；也可以自己读它，画到 SVG、WebGL 或别的地方。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"text.count","startFrame":0,"durationFrames":54,"fillAfter":"hold","params":{"from":0,"to":2026,"decimals":0,"grouping":"none"}}
-```
-
-完整的最小场景：`assets/examples/text.count.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold text.count --out work/text.count.scene.json --width 1920 --height 1080 --duration 78 --text "你的文字"
-node scripts/motion.mjs render work/text.count.scene.json --out work/text.count.mov --transparent
-```

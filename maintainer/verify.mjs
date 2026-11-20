@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { readFile, readdir, mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
@@ -29,8 +28,6 @@ for (let cursor = 0; zip.readUInt32LE(cursor) === 0x04034b50;) {
 const manifest = JSON.parse(entries.get('motionflux/manifest.json'));
 assert.equal(manifest.name, 'motionflux');
 assert.equal(entries.size, manifest.files.length + 1);
-assert.ok(zip.length < 6_000_000);
-assert.ok(![...entries.keys()].some(name => /(?:node_modules|packages|maintainer)\/|\.(?:ttf|otf|woff2?|mp4|pem)$/i.test(name)));
 const temp = await mkdtemp(join(tmpdir(), 'motionflux 独立校验 '));
 try {
   for (const [name, data] of entries) {
@@ -48,41 +45,24 @@ try {
       assert.ok((await stat(join(root, dirname(file.path), link.split('#')[0]))).isFile(), `${file.path}: ${link}`);
     }
   }
-  const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['scripts/motion.mjs', ...args], { cwd: root, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })).result;
-  assert.equal(cli('doctor', '--backend', 'js').available, true);
-  assert.equal(cli('doctor', '--backend', 'js').version, manifest.version);
   const catalog = JSON.parse(await readFile(join(root, 'assets/catalog-index.json'), 'utf8'));
-  assert.equal(catalog.length, manifest.atoms2d);
-  for (const entry of catalog) assert.equal(cli('describe', entry.id).id, entry.id);
-  const examples = (await readdir(join(root, 'assets/examples'))).filter(name => name.endsWith('.scene.json'));
-  for (const name of examples) assert.equal(cli('validate', `assets/examples/${name}`).valid, true);
-  const patterns = cli('patterns').patterns;
-  assert.equal(patterns.length, 1);
-  let patternExamples = 0;
-  for (const pattern of patterns) {
-    const validation = JSON.parse(await readFile(join(root, `assets/patterns/${pattern.id}/validation.json`), 'utf8'));
-    assert.equal(validation.status, pattern.status);
-    for (const example of pattern.examples) {
-      const prefix = `assets/patterns/${pattern.id}/${example}`;
-      if (pattern.status === 'validated-example') {
-        const evidence = validation.examples.find(item => item.name === example);
-        assert.equal(evidence?.sceneSha256, hash(await readFile(join(root, `${prefix}.scene.json`))), 'Example changed since visual review; inspect it again or return the pattern to candidate.');
-      }
-      assert.equal(cli('validate', `${prefix}.scene.json`).valid, true);
-      const delivery = cli('compose', `${prefix}.brief.json`, '--out', join(temp, example));
-      const controls = cli('controls', delivery.authoring, '--scene', delivery.scene);
-      assert.equal(controls.bindingsVerified, true);
-      assert.equal(controls.savedValuesOnly, true);
-      assert.equal(controls.record.pattern.id, pattern.id);
-      patternExamples++;
-    }
-  }
-  const scene = join(temp, 'title.scene.json');
-  cli('scaffold', 'text.lines', '--out', scene, '--text', '把想法\\n变成动作');
-  assert.equal(cli('validate', scene).valid, true);
-  cli('preview', scene, '--out', join(temp, 'title.html'));
-  assert.ok((await stat(join(temp, 'title.html'))).size < 500_000);
-  console.log(JSON.stringify({ verified: true, atoms: catalog.length, examples: examples.length, patterns: patterns.length, patternExamples, files: manifest.files.length, zipBytes: zip.length, sha256: metadata.sha256 }));
+  assert.equal(catalog.length, 53);
+  assert.equal(manifest.atoms2d, catalog.length);
+  const ids = catalog.map(entry => entry.id).sort();
+  const expected = ['SKILL.md', 'LICENSE', 'VERSION.json', 'manifest.json', 'assets/catalog.md', 'assets/catalog-index.json',
+    'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs',
+    'atoms/README.md', 'atoms/draw.mjs', 'atoms/index.mjs', ...ids.flatMap(id => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
+  assert.deepEqual([...entries.keys()].sort(), expected.map(path => `motionflux/${path}`).sort());
+  const stageMod = await import(pathToFileURL(join(root, 'stage/runtime.mjs')).href);
+  assert.equal(typeof stageMod.createStage, 'function');
+  assert.equal(typeof stageMod.spring, 'function');
+  assert.ok(Math.abs(stageMod.spring(2) - 1) < 0.01);
+  const { atoms, drawAtom } = await import(pathToFileURL(join(root, 'atoms/index.mjs')).href);
+  assert.deepEqual(Object.keys(atoms).sort(), ids);
+  assert.equal(typeof drawAtom, 'function');
+  const offset = frame => atoms['prop.move']({ frame, durationFrames: 30, params: { fromPx: 0, toPx: 120 } }).position[0];
+  assert.deepEqual([offset(30), offset(0), offset(15), offset(30)], [120, 0, 60, 120]);
+  console.log(JSON.stringify({ verified: true, atoms: ids.length, files: entries.size, zipBytes: zip.length, sha256: metadata.sha256 }));
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

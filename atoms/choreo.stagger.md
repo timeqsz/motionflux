@@ -44,19 +44,3 @@ const out = choreoStagger({
 - `out.copies`：每个副本的 `offset`、`rotation`、`scale`、`flip`、`delay`（帧）、`opacity`、`slot`（排布序号）和 `ghost`（0 为本体，残影从 1 起）。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"choreo.stagger","startFrame":0,"durationFrames":80,"fillAfter":"hold","params":{"stepFrames":5,"order":"forward"}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`choreo.array`、`timing.overshoot`、`prop.move`、`prop.opacity`。
-完整的最小场景：`assets/examples/choreo.stagger.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold choreo.stagger --out work/choreo.stagger.scene.json --width 1920 --height 1080 --duration 80
-node scripts/motion.mjs render work/choreo.stagger.scene.json --out work/choreo.stagger.mov --transparent
-```

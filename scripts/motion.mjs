@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // packages/cli/src/index.ts
-import { readFile, writeFile as writeFile2, mkdir as mkdir2, mkdtemp as mkdtemp2, rm as rm3, stat } from "node:fs/promises";
-import { tmpdir as tmpdir2 } from "node:os";
-import { dirname as dirname2, resolve as resolve2, join as join3, extname } from "node:path";
+import { readFile, writeFile as writeFile4, mkdir as mkdir4, mkdtemp as mkdtemp3, rm as rm4, stat as stat4 } from "node:fs/promises";
+import { tmpdir as tmpdir3 } from "node:os";
+import { dirname as dirname4, resolve as resolve6, join as join6, extname as extname3 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -3121,31 +3121,1168 @@ function breakdownSize(plan, scene) {
   return { width: plan.width + plan.width % 2, height: height + height % 2, sceneHeight };
 }
 
-// packages/cli/src/index.ts
+// packages/stage/src/audio.ts
+import { resolve as resolve2, dirname as dirname2 } from "node:path";
+import { access as access2 } from "node:fs/promises";
+var SFX_KINDS = [
+  "whoosh",
+  "whoosh-soft",
+  "pop",
+  "pop-soft",
+  "tick",
+  "click",
+  "sub-hit",
+  "riser",
+  "chime",
+  "shutter"
+];
+function isProceduralCue(cue) {
+  return "sfx" in cue && typeof cue.sfx === "string";
+}
+function isFileAudioCue(cue) {
+  return "src" in cue && typeof cue.src === "string";
+}
+function cueStartSeconds(cue, fps) {
+  if (typeof cue.atSec === "number" && Number.isFinite(cue.atSec)) return Math.max(0, cue.atSec);
+  if (typeof cue.atFrame === "number" && Number.isFinite(cue.atFrame)) return Math.max(0, cue.atFrame / fps);
+  return 0;
+}
+function createNoise(seed) {
+  let state = seed | 0 || 305419896;
+  return () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 2147483648 - 1;
+  };
+}
+function renderProceduralCue(cue, sampleRate) {
+  const pitch = Math.max(0.25, Math.min(4, cue.pitch ?? 1));
+  const noise2 = createNoise(cue.seed ?? (SFX_KINDS.indexOf(cue.sfx) + 1) * 9973);
+  const defaultDur = {
+    whoosh: 0.42,
+    "whoosh-soft": 0.52,
+    pop: 0.14,
+    "pop-soft": 0.16,
+    tick: 0.045,
+    click: 0.06,
+    "sub-hit": 0.55,
+    riser: 0.9,
+    chime: 0.95,
+    shutter: 0.15
+  };
+  const durationSec = Math.max(0.02, Math.min(6, cue.durationSec ?? defaultDur[cue.sfx]));
+  const length = Math.max(1, Math.round(durationSec * sampleRate));
+  const out = new Float32Array(length);
+  if (cue.sfx === "whoosh" || cue.sfx === "whoosh-soft") {
+    const soft = cue.sfx === "whoosh-soft";
+    let lp2 = 0;
+    let bp2 = 0;
+    let pink = 0;
+    for (let i = 0; i < length; i++) {
+      const u = i / length;
+      const white = noise2();
+      pink = 0.86 * pink + 0.14 * white;
+      const src = soft ? pink * 1.8 : white * 0.55 + pink * 1.1;
+      const sweep = Math.sin(Math.PI * Math.pow(u, 0.78));
+      const freq = (soft ? 220 + 1300 * sweep : 280 + 2600 * sweep) * pitch;
+      const f = Math.min(0.85, 2 * Math.sin(Math.PI * Math.min(freq, sampleRate * 0.42) / sampleRate));
+      const q = soft ? 0.55 : 0.42;
+      const hp = src - lp2 - q * bp2;
+      bp2 += f * hp;
+      lp2 += f * bp2;
+      const env = Math.pow(Math.sin(Math.PI * u), soft ? 1.5 : 1.15);
+      const body = Math.sin(2 * Math.PI * (85 + 60 * sweep) * pitch * (i / sampleRate)) * 0.16 * env;
+      out[i] = (bp2 * (soft ? 0.65 : 0.85) + body) * env;
+    }
+    return out;
+  }
+  if (cue.sfx === "pop" || cue.sfx === "pop-soft") {
+    const soft = cue.sfx === "pop-soft";
+    let phase = 0;
+    const fStart = (soft ? 240 : 320) * pitch;
+    const fPeak = (soft ? 540 : 880) * pitch;
+    const fEnd = (soft ? 180 : 210) * pitch;
+    for (let i = 0; i < length; i++) {
+      const t = i / sampleRate;
+      const u = i / length;
+      const freq = u < 0.18 ? fStart + (fPeak - fStart) * (u / 0.18) : fEnd + (fPeak - fEnd) * Math.exp(-(u - 0.18) * 9);
+      phase += 2 * Math.PI * freq / sampleRate;
+      const attack = Math.min(1, t / 4e-3);
+      const decay = Math.exp(-t * (soft ? 26 : 34));
+      const tone = Math.sin(phase) * 0.85 + Math.sin(phase * 2) * (soft ? 0.08 : 0.16);
+      const air = noise2() * Math.exp(-t * 140) * (soft ? 0.06 : 0.12);
+      out[i] = (tone + air) * attack * decay;
+    }
+    return out;
+  }
+  if (cue.sfx === "tick" || cue.sfx === "click") {
+    const isClick = cue.sfx === "click";
+    let phase = 0;
+    let lp2 = 0;
+    let bp2 = 0;
+    for (let i = 0; i < length; i++) {
+      const t = i / sampleRate;
+      const freq = (isClick ? 1800 : 2900) * pitch * Math.exp(-t * 45) + 420 * pitch;
+      phase += 2 * Math.PI * freq / sampleRate;
+      const raw = noise2();
+      const f = Math.min(0.85, 2 * Math.sin(Math.PI * Math.min((isClick ? 2400 : 3800) * pitch, sampleRate * 0.42) / sampleRate));
+      const hp = raw - lp2 - 0.4 * bp2;
+      bp2 += f * hp;
+      lp2 += f * bp2;
+      const env = Math.min(1, t / 12e-4) * Math.exp(-t * (isClick ? 95 : 140));
+      out[i] = (Math.sin(phase) * 0.55 + bp2 * 0.7) * env;
+    }
+    return out;
+  }
+  if (cue.sfx === "sub-hit") {
+    let phase = 0;
+    let lp2 = 0;
+    for (let i = 0; i < length; i++) {
+      const t = i / sampleRate;
+      const freq = (36 + 98 * Math.exp(-t * 16)) * pitch;
+      phase += 2 * Math.PI * freq / sampleRate;
+      const attack = Math.min(1, t / 6e-3);
+      const subEnv = Math.exp(-t * 5.2);
+      const punch = Math.sin(phase) * 0.92 + Math.sin(phase * 2) * 0.14 * Math.exp(-t * 18);
+      lp2 = 0.72 * lp2 + 0.28 * noise2();
+      const thumpNoise = lp2 * Math.exp(-t * 36) * 0.35;
+      out[i] = Math.tanh((punch * subEnv + thumpNoise) * 1.15) * attack;
+    }
+    return out;
+  }
+  if (cue.sfx === "riser") {
+    let phase1 = 0;
+    let phase2 = 0;
+    let lp2 = 0;
+    let bp2 = 0;
+    for (let i = 0; i < length; i++) {
+      const u = i / length;
+      const curve = u * u;
+      const f1 = (110 + 440 * curve) * pitch;
+      phase1 += 2 * Math.PI * f1 / sampleRate;
+      phase2 += 2 * Math.PI * f1 * 1.5 / sampleRate;
+      const cut = Math.min(sampleRate * 0.42, (240 + 4200 * curve) * pitch);
+      const f = Math.min(0.85, 2 * Math.sin(Math.PI * cut / sampleRate));
+      const hp = noise2() - lp2 - 0.35 * bp2;
+      bp2 += f * hp;
+      lp2 += f * bp2;
+      const tailOut = u > 0.96 ? (1 - u) / 0.04 : 1;
+      const env = Math.pow(u, 1.8) * tailOut;
+      out[i] = (bp2 * 0.65 + (Math.sin(phase1) * 0.32 + Math.sin(phase2) * 0.18)) * env;
+    }
+    return out;
+  }
+  if (cue.sfx === "chime") {
+    const freqs = [523.25, 783.99, 987.77, 1174.66].map((f) => f * pitch);
+    const weights = [0.46, 0.28, 0.16, 0.12];
+    const decays = [3.6, 4.8, 6, 7.2];
+    for (let i = 0; i < length; i++) {
+      const t = i / sampleRate;
+      const attack = Math.min(1, t / 8e-3);
+      let sample2 = 0;
+      for (let k = 0; k < freqs.length; k++) {
+        sample2 += Math.sin(2 * Math.PI * freqs[k] * t) * weights[k] * Math.exp(-t * decays[k]);
+      }
+      out[i] = sample2 * attack;
+    }
+    return out;
+  }
+  let lp = 0;
+  let bp = 0;
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    const raw = noise2();
+    const f = Math.min(0.85, 2 * Math.sin(Math.PI * Math.min(3400 * pitch, sampleRate * 0.42) / sampleRate));
+    const hp = raw - lp - 0.35 * bp;
+    bp += f * hp;
+    lp += f * bp;
+    const click1 = Math.exp(-t * 145) * Math.min(1, t / 1e-3);
+    const t2 = t - 0.042;
+    const click2 = t2 >= 0 ? Math.exp(-t2 * 130) * Math.min(1, t2 / 1e-3) * 0.72 : 0;
+    const body = Math.sin(2 * Math.PI * 190 * pitch * t) * (click1 + click2) * 0.35;
+    out[i] = (bp * 0.85 + body) * (click1 + click2);
+  }
+  return out;
+}
+function encodeWavStereo(left, right, sampleRate = 48e3) {
+  const numSamples = Math.min(left.length, right.length);
+  const dataBytes = numSamples * 4;
+  const buffer = Buffer.alloc(44 + dataBytes);
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataBytes, 4);
+  buffer.write("WAVE", 8, "ascii");
+  buffer.write("fmt ", 12, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(2, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 4, 28);
+  buffer.writeUInt16LE(4, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataBytes, 40);
+  let offset = 44;
+  for (let i = 0; i < numSamples; i++) {
+    const l = Math.max(-1, Math.min(1, Math.tanh(left[i])));
+    const r = Math.max(-1, Math.min(1, Math.tanh(right[i])));
+    buffer.writeInt16LE(Math.round(l * 32767), offset);
+    buffer.writeInt16LE(Math.round(r * 32767), offset + 2);
+    offset += 4;
+  }
+  return buffer;
+}
+function synthesizeSfxTrack(cues, durationSec, fps, sampleRate = 48e3) {
+  const procedural = cues.filter(isProceduralCue);
+  const totalSamples = Math.max(1, Math.ceil(durationSec * sampleRate));
+  const left = new Float32Array(totalSamples);
+  const right = new Float32Array(totalSamples);
+  for (const cue of procedural) {
+    if (!SFX_KINDS.includes(cue.sfx)) {
+      throw new Error(`AUDIO_SFX_UNKNOWN: Unknown procedural SFX "${String(cue.sfx)}". Supported: ${SFX_KINDS.join(", ")}.`);
+    }
+    const startSample = Math.round(cueStartSeconds(cue, fps) * sampleRate);
+    if (startSample >= totalSamples) continue;
+    const mono = renderProceduralCue(cue, sampleRate);
+    const gain = Math.max(0, Math.min(2, cue.gain ?? 0.65));
+    const pan = Math.max(-1, Math.min(1, cue.pan ?? 0));
+    const angle = (pan + 1) * Math.PI / 4;
+    const gainL = Math.cos(angle) * gain;
+    const gainR = Math.sin(angle) * gain;
+    const end = Math.min(totalSamples, startSample + mono.length);
+    for (let i = startSample; i < end; i++) {
+      const s = mono[i - startSample];
+      left[i] = left[i] + s * gainL;
+      right[i] = right[i] + s * gainR;
+    }
+  }
+  return { wav: encodeWavStereo(left, right, sampleRate), proceduralCount: procedural.length };
+}
+async function buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, fps) {
+  const fileCues = cues.filter(isFileAudioCue);
+  const inputArgs = [];
+  const filters = [];
+  const labels = [];
+  let nextInput = 1;
+  if (sfxWavPath) {
+    inputArgs.push("-i", sfxWavPath);
+    filters.push(`[${nextInput}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${durationSec.toFixed(4)}[a_sfx]`);
+    labels.push("[a_sfx]");
+    nextInput++;
+  }
+  const baseDir = dirname2(resolve2(entryHtmlPath));
+  for (let i = 0; i < fileCues.length; i++) {
+    const cue = fileCues[i];
+    const filePath = resolve2(baseDir, cue.src);
+    await access2(filePath).catch(() => {
+      throw new Error(`AUDIO_MISSING: Audio file "${cue.src}" not found at ${filePath}.`);
+    });
+    if (cue.loop) inputArgs.push("-stream_loop", "-1");
+    inputArgs.push("-i", filePath);
+    const startSec = cueStartSeconds(cue, fps);
+    const delayMs = Math.round(startSec * 1e3);
+    const gain = Math.max(0, Math.min(4, cue.gain ?? 1));
+    const offsetSec = Math.max(0, cue.offsetSec ?? 0);
+    const maxRemaining = Math.max(0.01, durationSec - startSec);
+    const clipDuration = cue.durationSec !== void 0 ? Math.max(0.01, Math.min(cue.durationSec, maxRemaining)) : maxRemaining;
+    const chain = [
+      "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo",
+      `atrim=start=${offsetSec.toFixed(4)}:duration=${clipDuration.toFixed(4)}`,
+      "asetpts=PTS-STARTPTS"
+    ];
+    if (cue.fadeInSec && cue.fadeInSec > 0) {
+      chain.push(`afade=t=in:st=0:d=${Math.min(cue.fadeInSec, clipDuration).toFixed(4)}`);
+    }
+    if (cue.fadeOutSec && cue.fadeOutSec > 0) {
+      const fadeOut = Math.min(cue.fadeOutSec, clipDuration);
+      const st = Math.max(0, clipDuration - fadeOut);
+      chain.push(`afade=t=out:st=${st.toFixed(4)}:d=${fadeOut.toFixed(4)}`);
+    }
+    if (gain !== 1) chain.push(`volume=${gain.toFixed(4)}`);
+    if (delayMs > 0) chain.push(`adelay=${delayMs}|${delayMs}`);
+    const label = `[a_file_${i}]`;
+    filters.push(`[${nextInput}:a]${chain.join(",")}${label}`);
+    labels.push(label);
+    nextInput++;
+  }
+  if (labels.length === 0) return void 0;
+  if (labels.length === 1) {
+    filters.push(`${labels[0]}apad=whole_dur=${durationSec.toFixed(4)},atrim=0:${durationSec.toFixed(4)},alimiter=limit=0.95[a_out]`);
+  } else {
+    filters.push(`${labels.join("")}amix=inputs=${labels.length}:duration=longest:normalize=0,apad=whole_dur=${durationSec.toFixed(4)},atrim=0:${durationSec.toFixed(4)},alimiter=limit=0.95[a_out]`);
+  }
+  return {
+    inputArgs,
+    filterComplex: filters.join(";"),
+    audioMap: "[a_out]",
+    sourceCount: labels.length
+  };
+}
+
+// packages/stage/src/server.ts
+import { createServer } from "node:http";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { extname, join as join3, normalize, resolve as resolve3, sep } from "node:path";
+var MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".cjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".ogg": "audio/ogg",
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".wasm": "application/wasm"
+};
+function safeJoin(root, relPath) {
+  const clean = normalize(relPath).replace(/^(\.\.[/\\])+/u, "");
+  const full = resolve3(root, clean);
+  const absRoot = resolve3(root);
+  if (full !== absRoot && !full.startsWith(`${absRoot}${sep}`)) return void 0;
+  return full;
+}
+async function startStageServer(projectDir, options = {}) {
+  const absProject = resolve3(projectDir);
+  const absMfRoot = options.motionfluxRoot ? resolve3(options.motionfluxRoot) : void 0;
+  const handler = async (req, res) => {
+    try {
+      const rawUrl = req.url ?? "/";
+      const pathname = decodeURIComponent(rawUrl.split("?")[0] ?? "/");
+      let filePath;
+      if (absMfRoot && pathname.startsWith("/__motionflux/")) {
+        const sub = pathname.slice("/__motionflux/".length);
+        if (sub.startsWith("stage/") || sub.startsWith("atoms/")) {
+          filePath = safeJoin(absMfRoot, sub);
+        }
+      } else {
+        const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/u, "");
+        filePath = safeJoin(absProject, rel);
+      }
+      if (!filePath) {
+        res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+        res.end("Forbidden");
+        return;
+      }
+      let info = await stat(filePath).catch(() => void 0);
+      if (info?.isDirectory()) {
+        filePath = join3(filePath, "index.html");
+        info = await stat(filePath).catch(() => void 0);
+      }
+      if (!info || !info.isFile()) {
+        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        res.end(`Not found: ${pathname}`);
+        return;
+      }
+      const contentType = MIME[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+      const rangeHeader = req.headers.range;
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("cache-control", "no-store");
+      res.setHeader("accept-ranges", "bytes");
+      if (rangeHeader && /^bytes=\d*-\d*$/u.test(rangeHeader)) {
+        const [startStr, endStr] = rangeHeader.replace(/^bytes=/u, "").split("-");
+        const start = startStr ? Number(startStr) : 0;
+        const end = endStr ? Math.min(Number(endStr), info.size - 1) : info.size - 1;
+        if (start > end || start >= info.size) {
+          res.writeHead(416, { "content-range": `bytes */${info.size}` });
+          res.end();
+          return;
+        }
+        res.writeHead(206, {
+          "content-type": contentType,
+          "content-length": String(end - start + 1),
+          "content-range": `bytes ${start}-${end}/${info.size}`
+        });
+        createReadStream(filePath, { start, end }).pipe(res);
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": contentType,
+        "content-length": String(info.size)
+      });
+      createReadStream(filePath).pipe(res);
+    } catch (error) {
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      res.end(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const server = createServer((req, res) => {
+    void handler(req, res);
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(options.port ?? 0, "127.0.0.1", () => {
+      server.off("error", rejectListen);
+      resolveListen();
+    });
+  });
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : options.port ?? 0;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    port,
+    close: () => new Promise((done) => server.close(() => done()))
+  };
+}
+
+// packages/stage/src/capture.ts
 import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
-var resourceRoot = join3(dirname2(fileURLToPath(import.meta.url)), "resources");
+import { mkdir as mkdir2, mkdtemp as mkdtemp2, rm as rm3, stat as stat2, writeFile as writeFile2 } from "node:fs/promises";
+import { tmpdir as tmpdir2 } from "node:os";
+import { basename, dirname as dirname3, extname as extname2, join as join4, resolve as resolve4 } from "node:path";
+async function launchChrome(browser) {
+  const profile = await mkdtemp2(join4(tmpdir2(), "motionflux-stage-browser-"));
+  const child = spawn2(
+    browser,
+    [
+      "--headless=new",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-extensions",
+      "--hide-scrollbars",
+      "--mute-audio",
+      "--autoplay-policy=no-user-gesture-required",
+      "--font-render-hinting=none",
+      "about:blank"
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] }
+  );
+  const cleanup = async () => {
+    child.kill();
+    await rm3(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  };
+  try {
+    const endpoint = await new Promise((resolveEndpoint, reject) => {
+      let log = "";
+      const timer = setTimeout(
+        () => reject(new Error(`BROWSER_START: ${browser} did not open a DevTools endpoint within 20 s.`)),
+        2e4
+      );
+      child.stderr.on("data", (chunk) => {
+        log += chunk;
+        const match = log.match(/DevTools listening on (ws:\/\/\S+)/u);
+        if (match) {
+          clearTimeout(timer);
+          resolveEndpoint(match[1]);
+        }
+      });
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        reject(new Error(`BROWSER_START: ${error.message}`));
+      });
+      child.once("exit", (code) => {
+        clearTimeout(timer);
+        reject(new Error(`BROWSER_START: ${browser} exited with code ${code} before it was ready.`));
+      });
+    });
+    const socket = new WebSocket(endpoint);
+    await new Promise((opened, reject) => {
+      socket.onopen = () => opened();
+      socket.onerror = () => reject(new Error("BROWSER_START: Could not connect to the DevTools endpoint."));
+    });
+    const pending = /* @__PURE__ */ new Map();
+    let nextId = 0;
+    socket.onmessage = (event2) => {
+      const message = JSON.parse(String(event2.data));
+      const waiting = message.id === void 0 ? void 0 : pending.get(message.id);
+      if (!waiting) return;
+      pending.delete(message.id);
+      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`));
+      else waiting.resolve(message.result ?? {});
+    };
+    socket.onclose = () => {
+      for (const waiting of pending.values()) {
+        waiting.reject(new Error("BROWSER_PROTOCOL: The browser closed the connection."));
+      }
+      pending.clear();
+    };
+    return {
+      send: (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
+        const id4 = ++nextId;
+        pending.set(id4, { resolve: resolveCall, reject });
+        socket.send(JSON.stringify({ id: id4, method, params, ...sessionId ? { sessionId } : {} }));
+      }),
+      close: async () => {
+        socket.onclose = null;
+        socket.close();
+        await cleanup();
+      }
+    };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+function selectDefaultAuditFrames(meta) {
+  const maxFrame = Math.max(0, meta.durationFrames - 1);
+  const picked = /* @__PURE__ */ new Set();
+  if (meta.scenes.length > 0) {
+    for (const scene of meta.scenes) {
+      const start = Math.max(0, Math.min(maxFrame, Math.round(scene.startFrame)));
+      const end = Math.max(start, Math.min(maxFrame, Math.round(scene.endFrame) - 1));
+      const span = end - start;
+      picked.add(Math.min(maxFrame, start + Math.round(span * 0.25)));
+      picked.add(Math.min(maxFrame, start + Math.round(span * 0.6)));
+      picked.add(Math.max(start, end - 1));
+    }
+  } else {
+    const count = Math.min(6, meta.durationFrames);
+    for (let i = 0; i < count; i++) {
+      picked.add(count === 1 ? 0 : Math.round(i / (count - 1) * maxFrame));
+    }
+  }
+  return [...picked].sort((a, b) => a - b);
+}
+async function openStagePage(entryHtmlPath, options) {
+  const absEntry = resolve4(entryHtmlPath);
+  const projectDir = dirname3(absEntry);
+  const entryName = basename(absEntry);
+  const server = await startStageServer(projectDir, {
+    ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}
+  });
+  const cdp = await launchChrome(options.browser);
+  const scale = options.scale ?? 1;
+  try {
+    const targetUrl = `${server.url}/${encodeURIComponent(entryName)}?capture=1`;
+    const { targetId } = await cdp.send("Target.createTarget", { url: targetUrl });
+    const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+    const evaluate = async (expression) => {
+      const reply = await cdp.send(
+        "Runtime.evaluate",
+        { expression, returnByValue: true, awaitPromise: true },
+        sessionId
+      );
+      if (reply.exceptionDetails) {
+        throw new Error(`STAGE_EVAL_FAILED: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
+      }
+      return reply.result.value;
+    };
+    const deadline = Date.now() + 6e4;
+    for (; ; ) {
+      const present = await evaluate(`Boolean(window.__motionflux && window.__motionflux.version === 'stage-1')`);
+      if (present) break;
+      if (Date.now() > deadline) {
+        throw new Error("STAGE_NOT_READY: Page did not expose window.__motionflux (stage-1) within 60 s.");
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await evaluate("window.__motionflux.ready");
+    const meta = await evaluate("window.__motionflux.meta");
+    await cdp.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: meta.width,
+        height: meta.height,
+        deviceScaleFactor: scale,
+        mobile: false
+      },
+      sessionId
+    );
+    if (options.transparent) {
+      await cdp.send(
+        "Emulation.setDefaultBackgroundColorOverride",
+        { color: { r: 0, g: 0, b: 0, a: 0 } },
+        sessionId
+      );
+    }
+    const seek = async (frame, transparent) => {
+      await evaluate(`window.__motionflux.seek(${frame}, { transparent: ${transparent ? "true" : "false"} })`);
+    };
+    const screenshot = async (transparent) => {
+      const res = await cdp.send(
+        "Page.captureScreenshot",
+        {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: false,
+          ...transparent ? { omitBackground: true } : {}
+        },
+        sessionId
+      );
+      return Buffer.from(res.data, "base64");
+    };
+    const auditFrame = async (frame) => {
+      return await evaluate(`window.__motionflux.audit(${frame})`);
+    };
+    return {
+      meta,
+      evaluate,
+      seek,
+      screenshot,
+      auditFrame,
+      close: async () => {
+        await cdp.close();
+        await server.close();
+      }
+    };
+  } catch (error) {
+    await cdp.close().catch(() => void 0);
+    await server.close().catch(() => void 0);
+    throw error;
+  }
+}
+async function renderContactSheetPng(browser, tiles, meta) {
+  if (tiles.length === 0) throw new Error("CONTACT_SHEET_EMPTY: No frames to render.");
+  const cols = Math.min(3, tiles.length);
+  const rows = Math.ceil(tiles.length / cols);
+  const tileW = 420;
+  const tileH = Math.round(tileW * meta.height / meta.width);
+  const headerH = 34;
+  const pad = 16;
+  const gap = 14;
+  const sheetW = pad * 2 + cols * tileW + (cols - 1) * gap;
+  const sheetH = pad * 2 + rows * (tileH + headerH) + (rows - 1) * gap;
+  const cardsHtml = tiles.map((tile) => {
+    const badgeBg = tile.errors > 0 ? "#dc2626" : tile.warnings > 0 ? "#d97706" : "#059669";
+    const badgeText = tile.errors > 0 ? `${tile.errors} err` : tile.warnings > 0 ? `${tile.warnings} warn` : "OK";
+    const sceneTag = tile.sceneId ? ` \xB7 ${tile.sceneId}` : "";
+    return `<div class="tile">
+        <div class="head">
+          <span>f${tile.frame} (${tile.timeSec.toFixed(2)}s)${sceneTag}</span>
+          <span class="badge" style="background:${badgeBg}">${badgeText}</span>
+        </div>
+        <img src="data:image/png;base64,${tile.png.toString("base64")}" width="${tileW}" height="${tileH}" />
+      </div>`;
+  }).join("");
+  const html = `<!doctype html><meta charset="utf-8"><style>
+    html,body{margin:0;padding:0;background:#0b0d12;color:#e5e7eb;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .grid{display:grid;grid-template-columns:repeat(${cols},${tileW}px);gap:${gap}px;padding:${pad}px;box-sizing:border-box}
+    .tile{background:#141821;border:1px solid rgba(255,255,255,0.12);border-radius:6px;overflow:hidden}
+    .head{height:${headerH}px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:12px;box-sizing:border-box}
+    .badge{color:#fff;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:600}
+    img{display:block;object-fit:contain;background:#000}
+  </style><div class="grid">${cardsHtml}</div>`;
+  const cdp = await launchChrome(browser);
+  const work = await mkdtemp2(join4(tmpdir2(), "motionflux-contact-"));
+  try {
+    const file = join4(work, "sheet.html");
+    await writeFile2(file, html);
+    const server = await startStageServer(work);
+    try {
+      const { targetId } = await cdp.send("Target.createTarget", { url: `${server.url}/sheet.html` });
+      const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+      await cdp.send(
+        "Emulation.setDeviceMetricsOverride",
+        { width: sheetW, height: sheetH, deviceScaleFactor: 1, mobile: false },
+        sessionId
+      );
+      await cdp.send(
+        "Runtime.evaluate",
+        {
+          expression: `Promise.all(Array.from(document.images).map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = r; i.onerror = r; })))`,
+          awaitPromise: true
+        },
+        sessionId
+      );
+      const res = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true }, sessionId);
+      return Buffer.from(res.data, "base64");
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await cdp.close();
+    await rm3(work, { recursive: true, force: true });
+  }
+}
+async function auditStage(entryHtmlPath, options = {}) {
+  const browser = await findBrowser(options.browser);
+  if (!browser) {
+    throw new Error("BROWSER_MISSING: audit requires Chrome, Chromium or Edge. Pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
+  }
+  const page = await openStagePage(entryHtmlPath, {
+    browser,
+    ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}
+  });
+  try {
+    const frames = options.frames && options.frames.length > 0 ? options.frames : selectDefaultAuditFrames(page.meta);
+    const results = [];
+    const tiles = [];
+    for (const frame of frames) {
+      const res = await page.auditFrame(frame);
+      results.push(res);
+      if (options.contactSheetOut) {
+        const png = await page.screenshot(false);
+        tiles.push({
+          frame: res.frame,
+          timeSec: res.timeSec,
+          ...res.sceneId ? { sceneId: res.sceneId } : {},
+          errors: res.issues.filter((i) => i.severity === "error").length,
+          warnings: res.issues.filter((i) => i.severity === "warning").length,
+          png
+        });
+      }
+    }
+    let contactSheetPath;
+    if (options.contactSheetOut && tiles.length > 0) {
+      const sheetPng = await renderContactSheetPng(browser, tiles, page.meta);
+      contactSheetPath = resolve4(options.contactSheetOut);
+      await mkdir2(dirname3(contactSheetPath), { recursive: true });
+      await writeFile2(contactSheetPath, sheetPng);
+    }
+    const allIssues = results.flatMap((r) => r.issues);
+    const errors = allIssues.filter((i) => i.severity === "error").length;
+    const warnings = allIssues.filter((i) => i.severity === "warning").length;
+    return {
+      entry: resolve4(entryHtmlPath),
+      meta: page.meta,
+      passed: errors === 0,
+      summary: {
+        auditedFrames: results.length,
+        errors,
+        warnings
+      },
+      frames: results,
+      issues: allIssues,
+      ...contactSheetPath ? { contactSheet: contactSheetPath } : {},
+      browser
+    };
+  } finally {
+    await page.close();
+  }
+}
+async function captureStageFrames(entryHtmlPath, options) {
+  const browser = await findBrowser(options.browser);
+  if (!browser) {
+    throw new Error("BROWSER_MISSING: frames requires Chrome, Chromium or Edge. Pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
+  }
+  const transparent = Boolean(options.transparent);
+  const scale = options.scale ?? 1;
+  const page = await openStagePage(entryHtmlPath, {
+    browser,
+    ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {},
+    transparent,
+    scale
+  });
+  try {
+    const targetFrames = options.frames && options.frames.length > 0 ? options.frames : Array.from({ length: page.meta.durationFrames }, (_, i) => i);
+    const outDir = resolve4(options.outDir);
+    await mkdir2(outDir, { recursive: true });
+    const files = [];
+    for (const frame of targetFrames) {
+      await page.seek(frame, transparent);
+      const png = await page.screenshot(transparent);
+      const file = join4(outDir, `frame-${String(frame).padStart(6, "0")}.png`);
+      await writeFile2(file, png);
+      files.push(file);
+    }
+    return {
+      directory: outDir,
+      type: "png-sequence",
+      pattern: "frame-%06d.png",
+      frames: files.length,
+      files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)],
+      width: Math.round(page.meta.width * scale),
+      height: Math.round(page.meta.height * scale),
+      fps: page.meta.fps,
+      alpha: transparent,
+      browser
+    };
+  } finally {
+    await page.close();
+  }
+}
+function probeStageVideo(path2) {
+  const probe = (process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg").replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
+  const result = spawnSync2(
+    probe,
+    [
+      "-v",
+      "error",
+      "-count_frames",
+      "-show_entries",
+      "stream=codec_type,codec_name,pix_fmt,width,height,nb_read_frames,r_frame_rate:stream_tags=alpha_mode:format=duration",
+      "-of",
+      "json",
+      path2
+    ],
+    { encoding: "utf8" }
+  );
+  if (result.status !== 0) return void 0;
+  const data = JSON.parse(result.stdout);
+  const video = data.streams.find((s) => s.codec_type === "video");
+  const audio = data.streams.find((s) => s.codec_type === "audio");
+  if (!video) return void 0;
+  const pixFmt = video.pix_fmt ?? "";
+  return {
+    codec: video.codec_name,
+    pixelFormat: pixFmt,
+    alpha: /^(yuva|rgba|bgra|argb|abgr|gbrap|ya)/u.test(pixFmt) || (video.tags?.alpha_mode ?? video.tags?.ALPHA_MODE) === "1",
+    width: video.width ?? 0,
+    height: video.height ?? 0,
+    frames: Number(video.nb_read_frames ?? 0),
+    durationSeconds: Number(data.format.duration ?? 0),
+    frameRate: video.r_frame_rate ?? "",
+    hasAudio: Boolean(audio),
+    ...audio ? { audioCodec: audio.codec_name } : {}
+  };
+}
+async function renderStageVideo(entryHtmlPath, options) {
+  const format = extname2(options.outPath).slice(1).toLowerCase();
+  if (!(format in videoFormats) || format === "gif") {
+    throw new Error("USAGE: render picks the format from --out: .mp4 (H.264), .mov (ProRes 4444) or .webm (VP9).");
+  }
+  const transparent = Boolean(options.transparent);
+  if (transparent && !videoFormats[format].alpha) {
+    throw new Error("ALPHA_UNSUPPORTED: H.264 MP4 cannot carry transparency. Use .mov or .webm with --transparent, or frames for PNGs.");
+  }
+  if (!toolVersion(ffmpegPath())) {
+    throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use frames or audit without it.");
+  }
+  const browser = await findBrowser(options.browser);
+  if (!browser) {
+    throw new Error("BROWSER_MISSING: render requires Chrome, Chromium or Edge. Pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
+  }
+  const scale = options.scale ?? 1;
+  const page = await openStagePage(entryHtmlPath, {
+    browser,
+    ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {},
+    transparent,
+    scale
+  });
+  const work = await mkdtemp2(join4(tmpdir2(), "motionflux-stage-audio-"));
+  try {
+    const width = Math.round(page.meta.width * scale);
+    const height = Math.round(page.meta.height * scale);
+    if (videoFormats[format].evenSize && (width % 2 || height % 2)) {
+      throw new Error(`VIDEO_SIZE: .${format} needs even dimensions; output size is ${width}\xD7${height}.`);
+    }
+    let auditSummary;
+    if (options.runAudit) {
+      const auditFrames = selectDefaultAuditFrames(page.meta);
+      let errors = 0;
+      let warnings = 0;
+      for (const f of auditFrames) {
+        const res = await page.auditFrame(f);
+        errors += res.issues.filter((i) => i.severity === "error").length;
+        warnings += res.issues.filter((i) => i.severity === "warning").length;
+      }
+      auditSummary = { passed: errors === 0, errors, warnings };
+    }
+    const durationSec = page.meta.durationFrames / page.meta.fps;
+    let sfxWavPath;
+    const cues = options.noAudio ? [] : page.meta.audio;
+    if (cues.some(isProceduralCue)) {
+      const { wav } = synthesizeSfxTrack(cues, durationSec, page.meta.fps);
+      sfxWavPath = join4(work, "sfx.wav");
+      await writeFile2(sfxWavPath, wav);
+    }
+    const audioPlan = cues.length > 0 ? await buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, page.meta.fps) : void 0;
+    const out = resolve4(options.outPath);
+    await mkdir2(dirname3(out), { recursive: true });
+    const audioCodecArgs = !audioPlan ? ["-an"] : format === "webm" ? ["-c:a", "libopus", "-b:a", "160k"] : format === "mov" ? ["-c:a", "pcm_s16le"] : ["-c:a", "aac", "-b:a", "192k"];
+    const ffmpegArgs = [
+      "-y",
+      "-loglevel",
+      "error",
+      "-f",
+      "image2pipe",
+      "-framerate",
+      String(page.meta.fps),
+      "-i",
+      "-",
+      ...audioPlan ? audioPlan.inputArgs : [],
+      ...audioPlan ? ["-filter_complex", audioPlan.filterComplex, "-map", "0:v:0", "-map", audioPlan.audioMap] : [],
+      ...videoFormats[format].encoder(transparent),
+      ...audioCodecArgs,
+      "-shortest",
+      out
+    ];
+    const child = spawn2(ffmpegPath(), ffmpegArgs, { stdio: ["pipe", "ignore", "pipe"] });
+    let log = "";
+    child.stderr.on("data", (chunk) => {
+      log += chunk;
+    });
+    const finished = new Promise((done, reject) => {
+      child.once(
+        "error",
+        (error) => reject(new Error(error.code === "ENOENT" ? "FFMPEG_MISSING: ffmpeg was not found." : `ENCODE_FAILED: ${error.message}`))
+      );
+      child.once(
+        "close",
+        (code) => code === 0 ? done() : reject(new Error(`ENCODE_FAILED: ffmpeg exited with code ${code}. ${log.trim().split("\n").slice(-3).join(" ")}`))
+      );
+    });
+    let encoderError;
+    void finished.catch((err) => {
+      encoderError = err;
+    });
+    child.stdin.on("error", () => {
+    });
+    try {
+      for (let frame = 0; frame < page.meta.durationFrames; frame++) {
+        await page.seek(frame, transparent);
+        const png = await page.screenshot(transparent);
+        await new Promise((written2, reject) => {
+          if (encoderError) {
+            reject(encoderError);
+            return;
+          }
+          child.stdin.write(png, (err) => err ? reject(encoderError ?? new Error(`ENCODE_FAILED: ${err.message}`)) : written2());
+        });
+      }
+    } catch (error) {
+      child.kill();
+      await finished.catch(() => void 0);
+      throw encoderError ?? error;
+    }
+    child.stdin.end();
+    await finished;
+    const written = probeStageVideo(out);
+    const hasExpectedAudio = Boolean(audioPlan);
+    return {
+      path: out,
+      type: `video/${format === "mov" ? "quicktime" : format}`,
+      bytes: (await stat2(out)).size,
+      expected: {
+        frames: page.meta.durationFrames,
+        durationSeconds: durationSec,
+        width,
+        height,
+        alpha: transparent,
+        audio: hasExpectedAudio
+      },
+      written: written ?? "ffprobe not available; the file was not read back",
+      verified: Boolean(
+        written && written.frames === page.meta.durationFrames && written.width === width && written.height === height && Math.abs(written.durationSeconds - durationSec) < 0.1 && written.alpha === transparent && written.hasAudio === hasExpectedAudio
+      ),
+      audioSources: audioPlan?.sourceCount ?? 0,
+      ...auditSummary ? { audit: auditSummary } : {},
+      browser
+    };
+  } finally {
+    await page.close();
+    await rm3(work, { recursive: true, force: true });
+  }
+}
+
+// packages/stage/src/scaffold.ts
+import { cp, mkdir as mkdir3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
+import { join as join5, resolve as resolve5 } from "node:path";
+async function initStageProject(options) {
+  const width = Math.round(options.width ?? 1920);
+  const height = Math.round(options.height ?? 1080);
+  const fps = Math.round(options.fps ?? 30);
+  const durationFrames = Math.round(options.durationFrames ?? 150);
+  const title = options.title ?? "MotionFlux Stage";
+  if (!(width >= 160 && width <= 3840 && height >= 160 && height <= 3840)) {
+    throw new Error("USAGE: --width and --height must be 160\u20133840 px.");
+  }
+  if (!(fps >= 1 && fps <= 120)) {
+    throw new Error("USAGE: --fps must be 1\u2013120.");
+  }
+  if (!(durationFrames >= 1 && durationFrames <= 36e3)) {
+    throw new Error("USAGE: --duration must be 1\u201336000 frames.");
+  }
+  const outDir = resolve5(options.outDir);
+  const existing = await stat3(join5(outDir, "index.html")).catch(() => void 0);
+  if (existing) {
+    throw new Error(`TARGET_EXISTS: ${join5(outDir, "index.html")} already exists. Choose a new directory.`);
+  }
+  await mkdir3(outDir, { recursive: true });
+  const runtimeTarget = join5(outDir, "runtime.mjs");
+  if (options.runtimeSourcePath) {
+    await cp(options.runtimeSourcePath, runtimeTarget);
+  }
+  const mid = Math.round(durationFrames * 0.55);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title.replace(/</gu, "&lt;")}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
+    #stage {
+      background: radial-gradient(120% 100% at 50% 0%, #161b26 0%, #090b10 100%);
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 80%);
+    }
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8%;
+      gap: 24px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .scene[data-mf-active="true"] {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .eyebrow {
+      font-size: 20px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #60a5fa;
+      font-weight: 600;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(56px, 5vw, 96px);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      text-align: center;
+      font-weight: 700;
+    }
+    .sub {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.45;
+      color: #94a3b8;
+      max-width: 780px;
+      text-align: center;
+    }
+    .card {
+      width: min(820px, 82%);
+      padding: 40px 44px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card-title { margin: 0; font-size: 40px; font-weight: 650; }
+    .card-body { margin: 0; font-size: 24px; color: #cbd5e1; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div id="stage" data-mf-stage>
+    <div class="grid-bg" data-mf-allow-bleed data-mf-role="background"></div>
+
+    <section class="scene" data-mf-scene="intro">
+      <div class="eyebrow" data-mf-id="eyebrow">MOTIONFLUX STAGE</div>
+      <h1 id="hero-title" data-mf-id="hero-title">${title.replace(/</gu, "&lt;")}</h1>
+      <p id="hero-sub" class="sub" data-mf-id="hero-sub">HTML / CSS / SVG / WebGL \u786E\u5B9A\u6027\u89C6\u9891\u5E95\u5EA7</p>
+    </section>
+
+    <section class="scene" data-mf-scene="detail">
+      <div id="detail-card" class="card" data-mf-id="detail-card" data-mf-no-overlap>
+        <h2 class="card-title">\u73B0\u4EE3\u6392\u7248 \xB7 \u7269\u7406\u66F2\u7EBF \xB7 \u81EA\u52A8\u9632\u7A7F\u5E2E</h2>
+        <p class="card-body">\u5728\u6D4F\u89C8\u5668\u91CC\u76F4\u63A5\u9884\u89C8\u3001\u9010\u5E27\u62D6\u52A8\u3001\u6267\u884C DOM \u51E0\u4F55\u5BA1\u8BA1\uFF0C\u5E76\u5BFC\u51FA\u5E26\u7A0B\u5E8F\u5316\u97F3\u6548\u7684 MP4\u3002</p>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { createStage, clamp, lerp, remap, spring } from '${options.runtimeSourcePath ? "./runtime.mjs" : "/__motionflux/stage/runtime.mjs"}';
+
+    const heroTitle = document.getElementById('hero-title');
+    const heroSub = document.getElementById('hero-sub');
+    const detailCard = document.getElementById('detail-card');
+
+    createStage({
+      width: ${width},
+      height: ${height},
+      fps: ${fps},
+      durationFrames: ${durationFrames},
+      scenes: [
+        { id: 'intro', label: '\u5F00\u573A', startFrame: 0, endFrame: ${mid} },
+        { id: 'detail', label: '\u5185\u5BB9', startFrame: ${mid}, endFrame: ${durationFrames} },
+      ],
+      audio: [
+        { atFrame: 4, sfx: 'whoosh-soft', gain: 0.45 },
+        { atFrame: 12, sfx: 'pop-soft', gain: 0.5 },
+        { atFrame: ${mid}, sfx: 'whoosh', gain: 0.55 },
+        { atFrame: ${mid + 8}, sfx: 'chime', gain: 0.4 },
+      ],
+      onFrame({ frame, fps, scene, localTime }) {
+        if (scene?.id === 'intro') {
+          const s1 = spring(localTime, { stiffness: 170, damping: 18 });
+          const s2 = spring(Math.max(0, localTime - 0.14), { stiffness: 160, damping: 19 });
+          heroTitle.style.opacity = String(clamp(s1 * 1.4));
+          heroTitle.style.transform = \`translate3d(0, \${lerp(42, 0, s1).toFixed(2)}px, 0) scale(\${lerp(0.96, 1, s1).toFixed(4)})\`;
+          heroSub.style.opacity = String(clamp(s2 * 1.4));
+          heroSub.style.transform = \`translate3d(0, \${lerp(28, 0, s2).toFixed(2)}px, 0)\`;
+        } else if (scene?.id === 'detail') {
+          const s = spring(localTime, { stiffness: 190, damping: 20 });
+          const fadeOut = remap(frame, ${durationFrames - 12}, ${durationFrames - 1}, 1, 0.92);
+          detailCard.style.opacity = String(clamp(s * 1.35) * fadeOut);
+          detailCard.style.transform = \`translate3d(0, \${lerp(48, 0, s).toFixed(2)}px, 0) scale(\${lerp(0.94, 1, s).toFixed(4)})\`;
+        }
+      },
+    });
+  </script>
+</body>
+</html>
+`;
+  const entry = join5(outDir, "index.html");
+  await writeFile3(entry, html);
+  return {
+    directory: outDir,
+    entry,
+    runtime: options.runtimeSourcePath ? runtimeTarget : "/__motionflux/stage/runtime.mjs",
+    width,
+    height,
+    fps,
+    durationFrames
+  };
+}
+
+// packages/cli/src/index.ts
+import { spawn as spawn3, spawnSync as spawnSync3 } from "node:child_process";
+var resourceRoot = join6(dirname4(fileURLToPath(import.meta.url)), "resources");
+var motionfluxRoot = resolve6(dirname4(fileURLToPath(import.meta.url)), "..");
+var isHtmlInput = (path2) => Boolean(path2 && /\.html?$/iu.test(path2));
 async function readScene(path2) {
   if (!path2) throw new Error("USAGE: Supply a scene JSON path.");
-  const scene = JSON.parse(await readFile(resolve2(path2), "utf8"));
+  const scene = JSON.parse(await readFile(resolve6(path2), "utf8"));
   assertScene(scene);
   return scene;
 }
 async function assetBytes(scene, scenePath) {
   const encoded = {};
   for (const asset of Object.values(scene.assets)) {
-    const data = await readFile(resolve2(dirname2(scenePath), asset.src));
+    const data = await readFile(resolve6(dirname4(scenePath), asset.src));
     if (createHash2("sha256").update(data).digest("hex") !== asset.sha256) throw new Error(`ASSET_HASH: ${asset.src} differs from the scene lock.`);
     encoded[asset.src] = data.toString("base64");
   }
   return encoded;
 }
 async function save(path2, data) {
-  await mkdir2(dirname2(resolve2(path2)), { recursive: true });
-  await writeFile2(resolve2(path2), data);
+  await mkdir4(dirname4(resolve6(path2)), { recursive: true });
+  await writeFile4(resolve6(path2), data);
 }
-function parseFrames(list, total2) {
-  if (list === void 0) return Array.from({ length: total2 }, (_, i) => i);
-  const frames = list.split(",").flatMap((part) => {
+function parseFrameList(list) {
+  return list.split(",").flatMap((part) => {
     const range = part.trim().match(/^(\d+)(?:-(\d+))?$/u);
     if (!range) throw new Error(`USAGE: --frames expects whole frame numbers such as 0,30,60 or 0-90; got "${part}".`);
     const from = Number(range[1]);
@@ -3153,12 +4290,16 @@ function parseFrames(list, total2) {
     if (to < from) throw new Error(`USAGE: --frames range ${part} runs backwards.`);
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   });
+}
+function parseFrames(list, total2) {
+  if (list === void 0) return Array.from({ length: total2 }, (_, i) => i);
+  const frames = parseFrameList(list);
   const outside = frames.find((frame) => frame >= total2);
   if (outside !== void 0) throw new Error(`USAGE: frame ${outside} is outside the scene; valid frames are 0\u2013${total2 - 1}.`);
   return frames;
 }
-var numeric = ["frame", "width", "height", "duration", "fps"];
-var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "text", "color", "background", "title"];
+var numeric = ["frame", "width", "height", "duration", "fps", "scale", "port"];
+var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "text", "color", "background", "title", "contact"];
 function parseArgs(args) {
   const command = args.shift() ?? "help";
   const positional = [];
@@ -3169,6 +4310,14 @@ function parseArgs(args) {
     if (arg === "--json") continue;
     if (arg === "--transparent") {
       options.transparent = true;
+      continue;
+    }
+    if (arg === "--no-audio") {
+      options.noAudio = true;
+      continue;
+    }
+    if (arg === "--audit") {
+      options.runAudit = true;
       continue;
     }
     const isNumber = numeric.includes(key);
@@ -3196,9 +4345,13 @@ function parseArgs(args) {
     preview: ["out"],
     "export-html": ["out"],
     deliver: ["out", "previous", "authoring"],
+    init: ["width", "height", "duration", "fps", "title"],
+    audit: ["frames", "out", "contact", "browser"],
+    sfx: ["out", "duration", "fps"],
+    serve: ["port"],
     scaffold: ["out", "width", "height", "duration", "fps", "text", "color", "background"],
-    frames: ["out", "frames", "browser", "transparent"],
-    render: ["out", "browser", "transparent"],
+    frames: ["out", "frames", "browser", "transparent", "scale"],
+    render: ["out", "browser", "transparent", "scale", "noAudio", "runAudit"],
     breakdown: ["out", "browser", "title", "width", "fps"],
     doctor: ["backend", "browser"]
   };
@@ -3252,7 +4405,7 @@ async function scaffold(id4, options) {
   scene.fps = { numerator: fps, denominator: 1 };
   scene.durationFrames = duration;
   assertScene(scene);
-  const out = resolve2(options.out);
+  const out = resolve6(options.out);
   await save(out, `${JSON.stringify(scene, null, 2)}
 `);
   return {
@@ -3269,7 +4422,7 @@ async function scaffold(id4, options) {
   };
 }
 async function renderBreakdown(scene, html, plan, args) {
-  const format = extname(args.out).slice(1).toLowerCase();
+  const format = extname3(args.out).slice(1).toLowerCase();
   if (!["gif", "mp4", "webm"].includes(format)) throw new Error("USAGE: breakdown writes .gif, .mp4 or .webm.");
   const sceneFps = scene.fps.numerator / scene.fps.denominator;
   const fps = args.fps ?? (format === "gif" ? 25 : sceneFps);
@@ -3282,22 +4435,22 @@ async function renderBreakdown(scene, html, plan, args) {
   const count = Math.max(1, Math.floor(seconds2 * fps + 1e-9));
   const frames = Array.from({ length: count }, (_, k) => k * sceneFps / fps);
   const size2 = breakdownSize(plan, scene.canvas);
-  const work = await mkdtemp2(join3(tmpdir2(), "motionflux-breakdown-"));
-  const page = join3(work, "breakdown.html");
-  const out = resolve2(args.out);
+  const work = await mkdtemp3(join6(tmpdir3(), "motionflux-breakdown-"));
+  const page = join6(work, "breakdown.html");
+  const out = resolve6(args.out);
   try {
-    await writeFile2(page, html);
-    await mkdir2(dirname2(out), { recursive: true });
+    await writeFile4(page, html);
+    await mkdir4(dirname4(out), { recursive: true });
     await encodeVideo(out, format, false, { numerator: fps, denominator: 1 }, (write) => captureFrames(page, frames, browser, false, (_frame, png) => write(png)));
   } finally {
-    await rm3(work, { recursive: true, force: true });
+    await rm4(work, { recursive: true, force: true });
   }
   const written = probeVideo(out);
   const expectedSeconds = count / fps;
   return {
     path: out,
     type: format === "gif" ? "image/gif" : `video/${format}`,
-    bytes: (await stat(out)).size,
+    bytes: (await stat4(out)).size,
     fps,
     expected: { frames: count, durationSeconds: expectedSeconds, width: size2.width, height: size2.height },
     written: written ?? "ffprobe not available; the file was not read back",
@@ -3317,18 +4470,18 @@ async function renderBreakdown(scene, html, plan, args) {
 async function renderVideoBreakdown(file, args) {
   const breakdown = readVideoBreakdown(JSON.parse(await readFile(file, "utf8")));
   if (args.title) breakdown.title = args.title;
-  const format = extname(args.out ?? "").slice(1).toLowerCase();
+  const format = extname3(args.out ?? "").slice(1).toLowerCase();
   if (!args.out || !["gif", "mp4", "webm"].includes(format)) throw new Error("USAGE: breakdown writes --out <file>.gif, .mp4 or .webm.");
   const fps = args.fps ?? (format === "gif" ? 25 : 30);
   if (!(fps >= 1 && fps <= 60)) throw new Error("USAGE: --fps must be 1\u201360.");
   if (format === "gif" && !Number.isInteger(100 / fps)) throw new Error("USAGE: GIF frame delays are whole hundredths of a second; use --fps 10, 20, 25 or 50.");
   if (!toolVersion(ffmpegPath())) throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH.");
-  const video = resolve2(dirname2(file), breakdown.source.video);
-  await stat(video).catch(() => {
+  const video = resolve6(dirname4(file), breakdown.source.video);
+  await stat4(video).catch(() => {
     throw new Error(`SOURCE_MISSING: ${video} does not exist. source.video is relative to the breakdown file.`);
   });
   const probe = ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
-  const probed = spawnSync2(probe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", video], { encoding: "utf8" });
+  const probed = spawnSync3(probe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", video], { encoding: "utf8" });
   if (probed.status !== 0) throw new Error(`SOURCE_UNREADABLE: ffprobe could not read ${video}.`);
   const meta = JSON.parse(probed.stdout);
   const source = meta.streams[0];
@@ -3345,19 +4498,19 @@ async function renderVideoBreakdown(file, args) {
   const panel = panelHeight(plan) + panelHeight(plan) % 2;
   const browser = await findBrowser(args.browser);
   if (!browser) throw new Error("BROWSER_MISSING: breakdown draws the timeline in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-  const work = await mkdtemp2(join3(tmpdir2(), "motionflux-breakdown-"));
-  const out = resolve2(args.out);
+  const work = await mkdtemp3(join6(tmpdir3(), "motionflux-breakdown-"));
+  const out = resolve6(args.out);
   try {
-    const script = await readFile(join3(resourceRoot, "breakdown-panel.js"), "utf8");
-    const page = join3(work, "panel.html");
-    await writeFile2(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
-    await mkdir2(join3(work, "panel"));
-    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile2(join3(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
-    await mkdir2(dirname2(out), { recursive: true });
+    const script = await readFile(join6(resourceRoot, "breakdown-panel.js"), "utf8");
+    const page = join6(work, "panel.html");
+    await writeFile4(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
+    await mkdir4(join6(work, "panel"));
+    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile4(join6(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
+    await mkdir4(dirname4(out), { recursive: true });
     const stack = `[0:v]fps=${fps},scale=${width}:${pictureHeight}:flags=lanczos,setsar=1[clip];[clip][1:v]vstack=inputs=2`;
     const encode = format === "gif" ? ["-filter_complex", `${stack},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle`, "-loop", "0"] : format === "mp4" ? ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart"] : ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "28"];
     const result = await new Promise((done) => {
-      const child = spawn2(ffmpegPath(), [
+      const child = spawn3(ffmpegPath(), [
         "-y",
         "-v",
         "error",
@@ -3370,7 +4523,7 @@ async function renderVideoBreakdown(file, args) {
         "-framerate",
         String(fps),
         "-i",
-        join3(work, "panel", "%06d.png"),
+        join6(work, "panel", "%06d.png"),
         ...encode,
         "-an",
         "-frames:v",
@@ -3385,14 +4538,14 @@ async function renderVideoBreakdown(file, args) {
     });
     if (result.code !== 0) throw new Error(`ENCODE_FAILED: ffmpeg exited with code ${result.code}. ${result.log.trim().split("\n").slice(-3).join(" ")}`);
   } finally {
-    await rm3(work, { recursive: true, force: true });
+    await rm4(work, { recursive: true, force: true });
   }
   const written = probeVideo(out);
   const height = pictureHeight + panel;
   return {
     path: out,
     type: format === "gif" ? "image/gif" : `video/${format}`,
-    bytes: (await stat(out)).size,
+    bytes: (await stat4(out)).size,
     fps,
     source: { video, from: breakdown.source.from, to: breakdown.source.to, width: source.width, height: source.height },
     expected: { frames: count, durationSeconds: count / fps, width, height },
@@ -3414,52 +4567,103 @@ async function main() {
   const path2 = args.positional[0];
   switch (args.command) {
     case "help":
-      return { version: ENGINE_VERSION, commands: [
+      return { version: ENGINE_VERSION, stageVersion: "stage-1", commands: [
+        'init <dir> [--width 1920] [--height 1080] [--fps 30] [--duration 150] [--title "\u2026"]  (create HTML/CSS/SVG/WebGL stage project)',
+        "audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/asset audit)",
+        "frames <stage.html | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]",
+        "render <stage.html | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--no-audio] [--audit]",
+        "sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: " + SFX_KINDS.join(", ") + ")",
+        "serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/ mounts)",
         "search <query> --json",
-        "patterns [keywords] --json",
-        "compose <brief.json> --out <new-directory>",
-        "controls <authoring.json> --scene <scene.json>",
         "describe <id> --json",
-        "scaffold <id> --out scene.json [--width --height --duration --fps --text --color --background]",
-        "validate <scene.json>",
-        "sample <scene.json> --frame 30",
-        "preview <scene.json> --out preview.html",
-        "deliver <scene.json> --out <new-directory> [--previous <scene.json>] [--authoring <authoring.json>]",
-        "study <study.json> [--scene scene.json] [--out report.json]  (validate source evidence and optional implementation bindings)",
-        "export-html <scene.json> --out scene.html",
-        "frames <scene.json> --out <dir> [--frames 0,30,60] [--transparent]",
-        "render <scene.json> --out clip.mp4|.mov|.webm [--transparent]",
-        'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "\u2026"] [--width 960] [--fps 25]  (breakdown.json cuts a source video and adds the atom timeline)',
+        'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "\u2026"] [--width 960] [--fps 25]',
         "doctor --backend js|browser|ffmpeg"
-      ], delivery: "HTML preview, PNG frames, and video without audio: H.264 MP4 (opaque), ProRes 4444 MOV or VP9 WebM (either can carry alpha with --transparent). breakdown adds a timeline of the atoms under the picture and also writes GIF. frames, render and breakdown need a Chromium-family browser; render and breakdown also need ffmpeg." };
+      ], delivery: "HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) with deterministic CSS/WAAPI/video/atom seeking, DOM geometry audit, procedural SFX + audio muxing, and full-page Chrome capture to MP4/MOV/WebM/PNG. Legacy MotionSpec JSON commands remain supported." };
+    case "init": {
+      if (!path2) throw new Error("USAGE: init <new-directory> [--width 1920] [--height 1080] [--fps 30] [--duration 150]");
+      const runtimeSource = join6(motionfluxRoot, "stage", "runtime.mjs");
+      const hasRuntime = await stat4(runtimeSource).then(() => true, () => false);
+      return initStageProject({
+        outDir: path2,
+        ...args.width !== void 0 ? { width: args.width } : {},
+        ...args.height !== void 0 ? { height: args.height } : {},
+        ...args.fps !== void 0 ? { fps: args.fps } : {},
+        ...args.duration !== void 0 ? { durationFrames: args.duration } : {},
+        ...args.title !== void 0 ? { title: args.title } : {},
+        ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
+      });
+    }
+    case "audit": {
+      if (!path2) throw new Error("USAGE: audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png]");
+      const report = await auditStage(path2, {
+        ...args.browser ? { browser: args.browser } : {},
+        motionfluxRoot,
+        ...args.frames ? { frames: parseFrameList(args.frames) } : {},
+        ...args.contact ? { contactSheetOut: args.contact } : {}
+      });
+      if (args.out) await save(args.out, `${JSON.stringify(report, null, 2)}
+`);
+      return report;
+    }
+    case "sfx": {
+      if (!path2 || !args.out) throw new Error("USAGE: sfx <audio.json> --out <track.wav> [--duration 5] [--fps 30]");
+      const raw = JSON.parse(await readFile(resolve6(path2), "utf8"));
+      const cues = Array.isArray(raw) ? raw : raw.cues ?? raw.audio ?? [];
+      const fps = args.fps ?? (Array.isArray(raw) ? 30 : raw.fps ?? 30);
+      const durationSec = args.duration ?? (Array.isArray(raw) ? 5 : raw.durationSec ?? 5);
+      if (!(durationSec > 0 && fps > 0)) throw new Error("USAGE: --duration and --fps must be positive numbers.");
+      const { wav, proceduralCount } = synthesizeSfxTrack(cues, durationSec, fps);
+      const out = resolve6(args.out);
+      await mkdir4(dirname4(out), { recursive: true });
+      await writeFile4(out, wav);
+      return { path: out, bytes: wav.length, durationSeconds: durationSec, sampleRate: 48e3, channels: 2, proceduralCount };
+    }
+    case "serve": {
+      const target = resolve6(path2 ?? ".");
+      const info = await stat4(target).catch(() => void 0);
+      if (!info) throw new Error(`PATH_MISSING: ${target} does not exist.`);
+      const dir = info.isDirectory() ? target : dirname4(target);
+      const entry = info.isDirectory() ? "index.html" : target.slice(dir.length + 1);
+      const server = await startStageServer(dir, { motionfluxRoot, port: args.port ?? 4178 });
+      process.stdout.write(`${JSON.stringify({ ok: true, result: { url: `${server.url}/${entry}`, root: dir, port: server.port } }, null, 2)}
+`);
+      await new Promise((done) => {
+        const stop = () => {
+          void server.close().then(done);
+        };
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
+      });
+      return { closed: true };
+    }
     case "search":
       return { capabilities: searchCapabilities(args.positional.join(" ")) };
     case "patterns": {
-      const indexPath = join3(dirname2(resourceRoot), "../assets/patterns/index.json");
+      const indexPath = join6(dirname4(resourceRoot), "../assets/patterns/index.json");
       const index = JSON.parse(await readFile(indexPath, "utf8"));
       const terms = args.positional.join(" ").normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
       return { match: "all-keywords; suitability is decided by the agent", patterns: index.patterns.filter((pattern) => terms.every((term) => JSON.stringify(pattern).normalize("NFKC").toLowerCase().includes(term))) };
     }
     case "controls": {
       if (!path2 || !args.scene) throw new Error("USAGE: controls <authoring.json> --scene <scene.json>");
-      const report = inspectControls(JSON.parse(await readFile(resolve2(path2), "utf8")), await readScene(args.scene));
+      const report = inspectControls(JSON.parse(await readFile(resolve6(path2), "utf8")), await readScene(args.scene));
       return { ...report, savedValuesOnly: true };
     }
     case "compose": {
       if (!path2 || !args.out) throw new Error("USAGE: compose <brief.json> --out <new-directory>");
-      const brief = readBrief(JSON.parse(await readFile(resolve2(path2), "utf8")));
-      const bytes = await readFile(resolve2(dirname2(resolve2(path2)), brief.product.src));
+      const brief = readBrief(JSON.parse(await readFile(resolve6(path2), "utf8")));
+      const bytes = await readFile(resolve6(dirname4(resolve6(path2)), brief.product.src));
       if (createHash2("sha256").update(bytes).digest("hex") !== brief.product.sha256) throw new Error("ASSET_HASH: Product image differs from the brief lock.");
-      const src = `assets/product${extname(brief.product.src).toLowerCase()}`;
+      const src = `assets/product${extname3(brief.product.src).toLowerCase()}`;
       const { scene, authoring } = composePattern(brief, { type: "image", src, sha256: brief.product.sha256 });
       const assets = { [src]: bytes.toString("base64") };
-      const runtime = await readFile(join3(resourceRoot, "standalone.js"), "utf8");
+      const runtime = await readFile(join6(resourceRoot, "standalone.js"), "utf8");
       const html = createStandaloneHtml(scene, runtime, assets, "");
       return writeDelivery({ scene, assets, html, out: args.out, authoring });
     }
     case "study": {
       if (!path2) throw new Error("USAGE: Supply a study JSON path.");
-      const input = JSON.parse(await readFile(resolve2(path2), "utf8"));
+      const input = JSON.parse(await readFile(resolve6(path2), "utf8"));
       const scene = args.scene ? await readScene(args.scene) : void 0;
       assertStudy(input, scene);
       const report = studyReport(input, scene);
@@ -3495,29 +4699,54 @@ async function main() {
       };
     }
     default: {
+      if ((args.command === "frames" || args.command === "render") && isHtmlInput(path2)) {
+        if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
+        if (args.scale !== void 0 && !(args.scale > 0 && args.scale <= 4)) {
+          throw new Error("USAGE: --scale must be between 0 and 4 (e.g. 1 or 2).");
+        }
+        if (args.command === "frames") {
+          return captureStageFrames(path2, {
+            outDir: args.out,
+            ...args.frames ? { frames: parseFrameList(args.frames) } : {},
+            ...args.browser ? { browser: args.browser } : {},
+            motionfluxRoot,
+            transparent: Boolean(args.transparent),
+            ...args.scale !== void 0 ? { scale: args.scale } : {}
+          });
+        }
+        return renderStageVideo(path2, {
+          outPath: args.out,
+          ...args.browser ? { browser: args.browser } : {},
+          motionfluxRoot,
+          transparent: Boolean(args.transparent),
+          ...args.scale !== void 0 ? { scale: args.scale } : {},
+          noAudio: Boolean(args.noAudio),
+          runAudit: Boolean(args.runAudit)
+        });
+      }
       if (args.command === "breakdown" && path2) {
-        const raw = JSON.parse(await readFile(resolve2(path2), "utf8"));
-        if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve2(path2), args);
+        const raw = JSON.parse(await readFile(resolve6(path2), "utf8"));
+        if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve6(path2), args);
       }
       const scene = await readScene(path2);
       if (args.command === "sample") return { state: compileScene(scene).evaluate(args.frame ?? 0), lock: versionLock(scene) };
-      const assets = await assetBytes(scene, resolve2(path2));
+      const assets = await assetBytes(scene, resolve6(path2));
       if (args.command === "validate") return { valid: true, assetsVerified: Object.keys(assets).length, lock: versionLock(scene) };
       if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
-      const [runtime, license] = await Promise.all([readFile(join3(resourceRoot, "standalone.js"), "utf8"), readFile(join3(resourceRoot, "OFL.txt"), "utf8")]);
+      const [runtime, license] = await Promise.all([readFile(join6(resourceRoot, "standalone.js"), "utf8"), readFile(join6(resourceRoot, "OFL.txt"), "utf8")]);
       const plan = args.command === "breakdown" ? breakdownPlan(scene, { width: Math.round(args.width ?? Math.min(960, scene.canvas.width)), ...args.title ? { title: args.title } : {} }) : void 0;
       if (plan && (plan.width < 160 || plan.width > 3840)) throw new Error("USAGE: --width must be 160\u20133840 px.");
       const html = createStandaloneHtml(scene, runtime, assets, args.command === "deliver" ? "" : license, plan ? { breakdown: plan } : {});
       if (args.command === "deliver") {
         const previous = args.previous ? await readScene(args.previous) : void 0;
-        const authoring = args.authoring ? JSON.parse(await readFile(resolve2(args.authoring), "utf8")) : void 0;
+        const authoring = args.authoring ? JSON.parse(await readFile(resolve6(args.authoring), "utf8")) : void 0;
         return writeDelivery({ scene, ...previous ? { previous } : {}, ...authoring !== void 0 ? { authoring } : {}, assets, html, out: args.out });
       }
       if (args.command === "breakdown") return renderBreakdown(scene, html, plan, args);
       if (args.command === "frames" || args.command === "render") {
         const size2 = { width: scene.canvas.width, height: scene.canvas.height };
         const transparent = Boolean(args.transparent);
-        const format = extname(args.out).slice(1).toLowerCase();
+        const format = extname3(args.out).slice(1).toLowerCase();
         if (args.command === "render") {
           if (!(format in videoFormats) || format === "gif") throw new Error("USAGE: render picks the format from --out: .mp4 (H.264), .mov (ProRes 4444) or .webm (VP9). GIF is written by breakdown.");
           if (transparent && !videoFormats[format].alpha) throw new Error("ALPHA_UNSUPPORTED: H.264 MP4 cannot carry transparency. Use .mov or .webm with --transparent, or the frames command for PNGs.");
@@ -3526,23 +4755,23 @@ async function main() {
         }
         const browser = await findBrowser(args.browser);
         if (!browser) throw new Error("BROWSER_MISSING: frames and render draw in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-        const work = await mkdtemp2(join3(tmpdir2(), "motionflux-render-"));
-        const page = join3(work, "scene.html");
+        const work = await mkdtemp3(join6(tmpdir3(), "motionflux-render-"));
+        const page = join6(work, "scene.html");
         try {
-          await writeFile2(page, html);
-          const out = resolve2(args.out);
+          await writeFile4(page, html);
+          const out = resolve6(args.out);
           if (args.command === "frames") {
             const frames = parseFrames(args.frames, scene.durationFrames);
             const files = [];
-            await mkdir2(out, { recursive: true });
+            await mkdir4(out, { recursive: true });
             await captureFrames(page, frames, browser, transparent, async (frame, png) => {
-              const file = join3(out, `frame-${String(frame).padStart(6, "0")}.png`);
-              await writeFile2(file, png);
+              const file = join6(out, `frame-${String(frame).padStart(6, "0")}.png`);
+              await writeFile4(file, png);
               files.push(file);
             });
             return { directory: out, type: "png-sequence", pattern: "frame-%06d.png", frames: files.length, files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)], ...size2, fps: scene.fps, alpha: transparent, videoDelivered: false, browser, lock: versionLock(scene) };
           }
-          await mkdir2(dirname2(out), { recursive: true });
+          await mkdir4(dirname4(out), { recursive: true });
           const all = parseFrames(void 0, scene.durationFrames);
           await encodeVideo(out, format, transparent, scene.fps, (write) => captureFrames(page, all, browser, transparent, (_frame, png) => write(png)));
           const written = probeVideo(out);
@@ -3550,7 +4779,7 @@ async function main() {
           return {
             path: out,
             type: `video/${format === "mov" ? "quicktime" : format}`,
-            bytes: (await stat(out)).size,
+            bytes: (await stat4(out)).size,
             expected: { frames: all.length, durationSeconds: expectedSeconds, ...size2, alpha: transparent },
             written: written ?? "ffprobe not available; the file was not read back",
             verified: Boolean(written && written.frames === all.length && written.width === size2.width && written.height === size2.height && Math.abs(written.durationSeconds - expectedSeconds) < 0.05 && written.alpha === transparent),
@@ -3560,11 +4789,11 @@ async function main() {
             lock: versionLock(scene)
           };
         } finally {
-          await rm3(work, { recursive: true, force: true });
+          await rm4(work, { recursive: true, force: true });
         }
       }
       await save(args.out, html);
-      return { path: resolve2(args.out), type: "standalone-html", embeddedAssets: Object.keys(assets).length, videoDelivered: false, lock: versionLock(scene) };
+      return { path: resolve6(args.out), type: "standalone-html", embeddedAssets: Object.keys(assets).length, videoDelivered: false, lock: versionLock(scene) };
     }
   }
 }

@@ -37,12 +37,9 @@
         "keyframes"
       ],
       "origin": "original",
-      "status": "validated-example",
+      "status": "candidate",
       "guide": "assets/patterns/title-yields-to-product/PATTERN.md",
-      "examples": [
-        "speaker-landscape",
-        "lamp-portrait"
-      ],
+      "examples": [],
       "scope": "原创双布局模式，尚不代表普适审美结论；字体、图片边缘与实际播放需逐项目检查"
     }
   ]

@@ -12,9 +12,12 @@ import { captureFrames, encodeVideo, ffmpegPath, findBrowser, probeVideo, toolVe
 import { writeDelivery } from './delivery.js';
 import { breakdownPlan, readVideoBreakdown, videoBreakdownPlan } from './breakdown.js';
 import { breakdownSize, panelHeight } from '../../renderer-browser/src/breakdown.js';
+import { auditStage, captureStageFrames, initStageProject, renderStageVideo, startStageServer, synthesizeSfxTrack, SFX_KINDS, type AudioCue } from '../../stage/src/index.js';
 import { spawn, spawnSync } from 'node:child_process';
 
 const resourceRoot = join(dirname(fileURLToPath(import.meta.url)), 'resources');
+const motionfluxRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const isHtmlInput = (path: string | undefined): boolean => Boolean(path && /\.html?$/iu.test(path));
 async function readScene(path: string | undefined): Promise<MotionSpec> {
   if (!path) throw new Error('USAGE: Supply a scene JSON path.');
   const scene: unknown = JSON.parse(await readFile(resolve(path), 'utf8'));
@@ -34,24 +37,28 @@ async function save(path: string, data: string): Promise<void> {
   await mkdir(dirname(resolve(path)), { recursive: true });
   await writeFile(resolve(path), data);
 }
-/** "0,30,60" or "0-90" or a mix; whole frames inside the scene, in the order given. */
-function parseFrames(list: string | undefined, total: number): number[] {
-  if (list === undefined) return Array.from({ length: total }, (_, i) => i);
-  const frames = list.split(',').flatMap((part) => {
+function parseFrameList(list: string): number[] {
+  return list.split(',').flatMap((part) => {
     const range = part.trim().match(/^(\d+)(?:-(\d+))?$/u);
     if (!range) throw new Error(`USAGE: --frames expects whole frame numbers such as 0,30,60 or 0-90; got "${part}".`);
     const from = Number(range[1]); const to = Number(range[2] ?? range[1]);
     if (to < from) throw new Error(`USAGE: --frames range ${part} runs backwards.`);
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   });
+}
+/** "0,30,60" or "0-90" or a mix; whole frames inside the scene, in the order given. */
+function parseFrames(list: string | undefined, total: number): number[] {
+  if (list === undefined) return Array.from({ length: total }, (_, i) => i);
+  const frames = parseFrameList(list);
   const outside = frames.find((frame) => frame >= total);
   if (outside !== undefined) throw new Error(`USAGE: frame ${outside} is outside the scene; valid frames are 0–${total - 1}.`);
   return frames;
 }
 interface Options { out?: string; previous?: string; scene?: string; authoring?: string; frame?: number; backend?: string; frames?: string; browser?: string; transparent?: boolean;
-  width?: number; height?: number; duration?: number; fps?: number; text?: string; color?: string; background?: string; title?: string }
-const numeric = ['frame', 'width', 'height', 'duration', 'fps'] as const;
-const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'text', 'color', 'background', 'title'] as const;
+  width?: number; height?: number; duration?: number; fps?: number; text?: string; color?: string; background?: string; title?: string;
+  scale?: number; contact?: string; port?: number; noAudio?: boolean; runAudit?: boolean }
+const numeric = ['frame', 'width', 'height', 'duration', 'fps', 'scale', 'port'] as const;
+const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'text', 'color', 'background', 'title', 'contact'] as const;
 function parseArgs(args: string[]): { command: string; positional: string[] } & Options {
   const command = args.shift() ?? 'help';
   const positional: string[] = [];
@@ -60,6 +67,8 @@ function parseArgs(args: string[]): { command: string; positional: string[] } & 
     const arg = args[i]!; const key = arg.slice(2);
     if (arg === '--json') continue;
     if (arg === '--transparent') { options.transparent = true; continue; }
+    if (arg === '--no-audio') { options.noAudio = true; continue; }
+    if (arg === '--audit') { options.runAudit = true; continue; }
     const isNumber = (numeric as readonly string[]).includes(key);
     if (arg.startsWith('--') && (isNumber || (textual as readonly string[]).includes(key))) {
       const value = args[++i];
@@ -70,7 +79,15 @@ function parseArgs(args: string[]): { command: string; positional: string[] } & 
     else positional.push(arg);
   }
   const supported: Record<string, string[]> = { help: [], search: [], patterns: [], compose: ['out'], controls: ['scene'], describe: [], validate: [], study: ['scene', 'out'], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous', 'authoring'],
-    scaffold: ['out', 'width', 'height', 'duration', 'fps', 'text', 'color', 'background'], frames: ['out', 'frames', 'browser', 'transparent'], render: ['out', 'browser', 'transparent'], breakdown: ['out', 'browser', 'title', 'width', 'fps'], doctor: ['backend', 'browser'] };
+    init: ['width', 'height', 'duration', 'fps', 'title'],
+    audit: ['frames', 'out', 'contact', 'browser'],
+    sfx: ['out', 'duration', 'fps'],
+    serve: ['port'],
+    scaffold: ['out', 'width', 'height', 'duration', 'fps', 'text', 'color', 'background'],
+    frames: ['out', 'frames', 'browser', 'transparent', 'scale'],
+    render: ['out', 'browser', 'transparent', 'scale', 'noAudio', 'runAudit'],
+    breakdown: ['out', 'browser', 'title', 'width', 'fps'],
+    doctor: ['backend', 'browser'] };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command]!.includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
   if (!['search', 'patterns'].includes(command) && positional.length > (['help', 'doctor'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
@@ -218,16 +235,70 @@ async function main(): Promise<unknown> {
   const args = parseArgs(process.argv.slice(2));
   const path = args.positional[0];
   switch (args.command) {
-    case 'help': return { version: ENGINE_VERSION, commands: [
-      'search <query> --json', 'patterns [keywords] --json', 'compose <brief.json> --out <new-directory>',
-      'controls <authoring.json> --scene <scene.json>',
-      'describe <id> --json', 'scaffold <id> --out scene.json [--width --height --duration --fps --text --color --background]', 'validate <scene.json>',
-      'sample <scene.json> --frame 30', 'preview <scene.json> --out preview.html', 'deliver <scene.json> --out <new-directory> [--previous <scene.json>] [--authoring <authoring.json>]',
-      'study <study.json> [--scene scene.json] [--out report.json]  (validate source evidence and optional implementation bindings)',
-      'export-html <scene.json> --out scene.html', 'frames <scene.json> --out <dir> [--frames 0,30,60] [--transparent]', 'render <scene.json> --out clip.mp4|.mov|.webm [--transparent]',
-      'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "…"] [--width 960] [--fps 25]  (breakdown.json cuts a source video and adds the atom timeline)',
+    case 'help': return { version: ENGINE_VERSION, stageVersion: 'stage-1', commands: [
+      'init <dir> [--width 1920] [--height 1080] [--fps 30] [--duration 150] [--title "…"]  (create HTML/CSS/SVG/WebGL stage project)',
+      'audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/asset audit)',
+      'frames <stage.html | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]',
+      'render <stage.html | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--no-audio] [--audit]',
+      'sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: ' + SFX_KINDS.join(', ') + ')',
+      'serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/ mounts)',
+      'search <query> --json', 'describe <id> --json',
+      'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "…"] [--width 960] [--fps 25]',
       'doctor --backend js|browser|ffmpeg',
-    ], delivery: 'HTML preview, PNG frames, and video without audio: H.264 MP4 (opaque), ProRes 4444 MOV or VP9 WebM (either can carry alpha with --transparent). breakdown adds a timeline of the atoms under the picture and also writes GIF. frames, render and breakdown need a Chromium-family browser; render and breakdown also need ffmpeg.' };
+    ], delivery: 'HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) with deterministic CSS/WAAPI/video/atom seeking, DOM geometry audit, procedural SFX + audio muxing, and full-page Chrome capture to MP4/MOV/WebM/PNG. Legacy MotionSpec JSON commands remain supported.' };
+    case 'init': {
+      if (!path) throw new Error('USAGE: init <new-directory> [--width 1920] [--height 1080] [--fps 30] [--duration 150]');
+      const runtimeSource = join(motionfluxRoot, 'stage', 'runtime.mjs');
+      const hasRuntime = await stat(runtimeSource).then(() => true, () => false);
+      return initStageProject({
+        outDir: path,
+        ...(args.width !== undefined ? { width: args.width } : {}),
+        ...(args.height !== undefined ? { height: args.height } : {}),
+        ...(args.fps !== undefined ? { fps: args.fps } : {}),
+        ...(args.duration !== undefined ? { durationFrames: args.duration } : {}),
+        ...(args.title !== undefined ? { title: args.title } : {}),
+        ...(hasRuntime ? { runtimeSourcePath: runtimeSource } : {}),
+      });
+    }
+    case 'audit': {
+      if (!path) throw new Error('USAGE: audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png]');
+      const report = await auditStage(path, {
+        ...(args.browser ? { browser: args.browser } : {}),
+        motionfluxRoot,
+        ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
+        ...(args.contact ? { contactSheetOut: args.contact } : {}),
+      });
+      if (args.out) await save(args.out, `${JSON.stringify(report, null, 2)}\n`);
+      return report;
+    }
+    case 'sfx': {
+      if (!path || !args.out) throw new Error('USAGE: sfx <audio.json> --out <track.wav> [--duration 5] [--fps 30]');
+      const raw = JSON.parse(await readFile(resolve(path), 'utf8')) as AudioCue[] | { cues?: AudioCue[]; audio?: AudioCue[]; durationSec?: number; fps?: number };
+      const cues = Array.isArray(raw) ? raw : (raw.cues ?? raw.audio ?? []);
+      const fps = args.fps ?? (Array.isArray(raw) ? 30 : (raw.fps ?? 30));
+      const durationSec = args.duration ?? (Array.isArray(raw) ? 5 : (raw.durationSec ?? 5));
+      if (!(durationSec > 0 && fps > 0)) throw new Error('USAGE: --duration and --fps must be positive numbers.');
+      const { wav, proceduralCount } = synthesizeSfxTrack(cues, durationSec, fps);
+      const out = resolve(args.out);
+      await mkdir(dirname(out), { recursive: true });
+      await writeFile(out, wav);
+      return { path: out, bytes: wav.length, durationSeconds: durationSec, sampleRate: 48000, channels: 2, proceduralCount };
+    }
+    case 'serve': {
+      const target = resolve(path ?? '.');
+      const info = await stat(target).catch(() => undefined);
+      if (!info) throw new Error(`PATH_MISSING: ${target} does not exist.`);
+      const dir = info.isDirectory() ? target : dirname(target);
+      const entry = info.isDirectory() ? 'index.html' : target.slice(dir.length + 1);
+      const server = await startStageServer(dir, { motionfluxRoot, port: args.port ?? 4178 });
+      process.stdout.write(`${JSON.stringify({ ok: true, result: { url: `${server.url}/${entry}`, root: dir, port: server.port } }, null, 2)}\n`);
+      await new Promise<void>((done) => {
+        const stop = () => { void server.close().then(done); };
+        process.once('SIGINT', stop);
+        process.once('SIGTERM', stop);
+      });
+      return { closed: true };
+    }
     case 'search': return { capabilities: searchCapabilities(args.positional.join(' ')) };
     case 'patterns': {
       const indexPath = join(dirname(resourceRoot), '../assets/patterns/index.json');
@@ -285,6 +356,31 @@ async function main(): Promise<unknown> {
         capabilities: capabilities.length, browser: 'Open generated HTML in a browser with Canvas 2D, FontFace and Web Crypto support.' };
     }
     default: {
+      if ((args.command === 'frames' || args.command === 'render') && isHtmlInput(path)) {
+        if (!args.out) throw new Error('USAGE: Supply --out <output path>.');
+        if (args.scale !== undefined && !(args.scale > 0 && args.scale <= 4)) {
+          throw new Error('USAGE: --scale must be between 0 and 4 (e.g. 1 or 2).');
+        }
+        if (args.command === 'frames') {
+          return captureStageFrames(path!, {
+            outDir: args.out,
+            ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
+            ...(args.browser ? { browser: args.browser } : {}),
+            motionfluxRoot,
+            transparent: Boolean(args.transparent),
+            ...(args.scale !== undefined ? { scale: args.scale } : {}),
+          });
+        }
+        return renderStageVideo(path!, {
+          outPath: args.out,
+          ...(args.browser ? { browser: args.browser } : {}),
+          motionfluxRoot,
+          transparent: Boolean(args.transparent),
+          ...(args.scale !== undefined ? { scale: args.scale } : {}),
+          noAudio: Boolean(args.noAudio),
+          runAudit: Boolean(args.runAudit),
+        });
+      }
       if (args.command === 'breakdown' && path) {
         const raw: unknown = JSON.parse(await readFile(resolve(path), 'utf8'));
         if (raw && typeof raw === 'object' && 'source' in raw) return renderVideoBreakdown(resolve(path), args);

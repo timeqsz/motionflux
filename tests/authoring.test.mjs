@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { composePattern, inspectControls, compileScene, validateScene, readBrief } from '../packages/core/dist/index.js';
 
-const directory = 'assets/patterns/title-yields-to-product';
+const directory = 'tests/fixtures/products';
 const load = async name => JSON.parse(await readFile(`${directory}/${name}.brief.json`, 'utf8'));
 const product = brief => ({ type: 'image', src: 'assets/product.png', sha256: brief.product.sha256 });
 const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['scripts/motion.mjs', ...args], { encoding: 'utf8' })).result;

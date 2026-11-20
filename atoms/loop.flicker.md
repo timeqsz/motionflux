@@ -44,18 +44,3 @@ const out = loopFlicker({
 - `out.opacity` 随时间变化；其余属性保持初值（position [0, 0]、rotation 0、scale 1、opacity 1）。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"loop.flicker","startFrame":0,"durationFrames":240,"fillAfter":"hold","params":{"rateHz":8,"low":0.15,"chance":0.35}}
-```
-
-完整的最小场景：`assets/examples/loop.flicker.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold loop.flicker --out work/loop.flicker.scene.json --width 1920 --height 1080 --duration 240
-node scripts/motion.mjs render work/loop.flicker.scene.json --out work/loop.flicker.mov --transparent
-```

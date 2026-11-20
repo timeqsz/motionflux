@@ -44,19 +44,3 @@ const out = feelTrail({
 - `out.copies`：每个副本的 `offset`、`rotation`、`scale`、`flip`、`delay`（帧）、`opacity`、`slot`（排布序号）和 `ghost`（0 为本体，残影从 1 起）。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"feel.trail","startFrame":0,"durationFrames":240,"fillAfter":"hold","params":{"count":7,"gapFrames":1.5,"strength":0.6}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`loop.swing`、`loop.spin`。
-完整的最小场景：`assets/examples/feel.trail.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold feel.trail --out work/feel.trail.scene.json --width 1920 --height 1080 --duration 240
-node scripts/motion.mjs render work/feel.trail.scene.json --out work/feel.trail.mov --transparent
-```

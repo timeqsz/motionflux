@@ -46,19 +46,3 @@ drawAtom(ctx, out, { x: 186, y: 254, color: '#1d201d', font: '150px "你的字�
 `draw.mjs` 会按这个结构画；也可以自己读它，画到 SVG、WebGL 或别的地方。
 
 通用约定（时间、随机种子、多个原子叠加）见 [README.md](README.md)。
-
-## 在场景 JSON 里用
-
-```json
-{"id":"my-clip","target":"节点 ID","recipe":"feel.chroma","startFrame":0,"durationFrames":240,"fillAfter":"hold","params":{"offsetPx":8,"angleDeg":0}}
-```
-
-示例场景里它和这些原子一起用在同一对象上：`loop.swing`。
-完整的最小场景：`assets/examples/feel.chroma.scene.json`。
-
-## 直接出一条素材
-
-```sh
-node scripts/motion.mjs scaffold feel.chroma --out work/feel.chroma.scene.json --width 1920 --height 1080 --duration 240 --text "你的文字"
-node scripts/motion.mjs render work/feel.chroma.scene.json --out work/feel.chroma.mov --transparent
-```
