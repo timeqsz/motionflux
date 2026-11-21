@@ -299,7 +299,7 @@ test('Built-in commercial templates (saas-launch, hardware-3d, data-story) and d
       assert.equal(report.summary.errors, 0);
     }
 
-    // Direct Motion.md audit via CLI (exercises overlapping wipe-left transition without false overlap errors)
+    // Direct Motion.md audit via CLI at both 16:9 landscape AND 9:16 portrait (adaptive reframing, zero clipping/overlap)
     const mdAudit = JSON.parse(
       execFileSync(
         process.execPath,
@@ -308,7 +308,19 @@ test('Built-in commercial templates (saas-launch, hardware-3d, data-story) and d
       ),
     );
     assert.equal(mdAudit.ok, true);
-    assert.equal(mdAudit.result.passed, true, `Motion.md audit issues: ${JSON.stringify(mdAudit.result.issues)}`);
+    assert.equal(mdAudit.result.passed, true, `Motion.md 16:9 audit issues: ${JSON.stringify(mdAudit.result.issues)}`);
+
+    const portraitAudit = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [cli, 'audit', join(work, 'hardware-3d', 'Motion.md'), '--aspect', '9:16', '--frames', '0,25,65'],
+        { encoding: 'utf8' },
+      ),
+    );
+    assert.equal(portraitAudit.ok, true);
+    assert.equal(portraitAudit.result.meta.width, 1080);
+    assert.equal(portraitAudit.result.meta.height, 1920);
+    assert.equal(portraitAudit.result.passed, true, `Motion.md 9:16 portrait audit issues: ${JSON.stringify(portraitAudit.result.issues)}`);
   } finally {
     await rm(work, { recursive: true, force: true });
   }

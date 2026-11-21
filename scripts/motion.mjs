@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // packages/cli/src/index.ts
-import { readFile as readFile2, writeFile as writeFile6, mkdir as mkdir5, mkdtemp as mkdtemp3, rm as rm4, stat as stat4 } from "node:fs/promises";
-import { tmpdir as tmpdir3 } from "node:os";
-import { dirname as dirname5, resolve as resolve7, join as join8, extname as extname3 } from "node:path";
+import { readFile as readFile3, writeFile as writeFile8, mkdir as mkdir7, mkdtemp as mkdtemp4, rm as rm5, stat as stat6 } from "node:fs/promises";
+import { tmpdir as tmpdir4 } from "node:os";
+import { dirname as dirname6, resolve as resolve9, join as join10, extname as extname3 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -2453,7 +2453,7 @@ function composePattern(input, product) {
 }
 
 // packages/core/src/index.ts
-var ENGINE_VERSION = "0.6.0";
+var ENGINE_VERSION = "0.8.0";
 var ALGORITHM_VERSION = "value-noise-fnv-mix-v1";
 function freeze(value) {
   if (value && typeof value === "object") {
@@ -3328,41 +3328,173 @@ function videoBreakdownPlan(breakdown, options) {
   };
 }
 
-// packages/renderer-browser/src/breakdown.ts
-var unitOf = (plan) => plan.width / 640;
-var header = 46;
-var blockHeight = 22;
-var laneGap = 4;
-var trackGap = 12;
-var footer = 18;
-function layout(plan) {
-  let top = header;
-  const tracks = plan.tracks.map((track) => {
-    const ends = [];
-    const blocks = [...track.blocks].sort((a, b) => a.from - b.from || a.to - b.to).map((block) => {
-      let lane = ends.findIndex((end) => end <= block.from);
-      if (lane < 0) lane = ends.length;
-      ends[lane] = block.to;
-      return { ...block, lane };
-    });
-    const height = Math.max(1, ends.length) * (blockHeight + laneGap) - laneGap;
-    const result = { track, blocks, top, height };
-    top += height + trackGap;
-    return result;
+// packages/cli/src/video-inspect.ts
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { mkdir as mkdir2, stat, writeFile as writeFile3 } from "node:fs/promises";
+import { basename, join as join4, relative, resolve as resolve2 } from "node:path";
+function parseFrameRate(raw) {
+  if (!raw) return 30;
+  const parts = raw.split("/").map(Number);
+  if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+    return Math.round(parts[0] / parts[1] * 1e3) / 1e3;
+  }
+  const single2 = Number(raw);
+  return Number.isFinite(single2) && single2 > 0 ? single2 : 30;
+}
+function parseScdetLog(stderrLog) {
+  const cuts = [];
+  for (const line of stderrLog.split("\n")) {
+    const m = line.match(/lavfi\.scd\.score:\s*([\d.]+).*?lavfi\.scd\.time:\s*([\d.]+)/u);
+    if (m) {
+      const score = Math.round(Number(m[1]) * 100) / 100;
+      const timeSec = Math.round(Number(m[2]) * 1e3) / 1e3;
+      if (Number.isFinite(timeSec) && timeSec > 0.05) {
+        cuts.push({ timeSec, score });
+      }
+    }
+  }
+  return cuts;
+}
+async function inspectReferenceVideo(videoPath, options) {
+  const absVideo = resolve2(videoPath);
+  await stat(absVideo).catch(() => {
+    throw new Error(`SOURCE_MISSING: Video file does not exist at ${absVideo}.`);
   });
-  return { tracks, height: top + footer };
-}
-function panelHeight(plan) {
-  return Math.ceil(layout(plan).height * unitOf(plan));
-}
-function breakdownSize(plan, scene) {
-  const sceneHeight = Math.round(scene.height * plan.width / scene.width);
-  const height = sceneHeight + panelHeight(plan);
-  return { width: plan.width + plan.width % 2, height: height + height % 2, sceneHeight };
+  const ffmpeg = ffmpegPath();
+  if (!toolVersion(ffmpeg)) {
+    throw new Error("FFMPEG_MISSING: ffmpeg was not found. Run `node scripts/motion.mjs setup --target ffmpeg --apply` or set MOTIONFLUX_FFMPEG_PATH.");
+  }
+  const ffprobe = ffmpeg.replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
+  const probed = spawnSync3(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name,width,height,r_frame_rate,avg_frame_rate:format=duration",
+      "-of",
+      "json",
+      absVideo
+    ],
+    { encoding: "utf8" }
+  );
+  if (probed.status !== 0) {
+    throw new Error(`SOURCE_UNREADABLE: ffprobe could not read ${absVideo}.`);
+  }
+  const meta = JSON.parse(probed.stdout);
+  const stream = meta.streams?.[0];
+  const durationSeconds = Math.round(Number(meta.format?.duration ?? 0) * 1e3) / 1e3;
+  if (!stream || !(durationSeconds > 0)) {
+    throw new Error(`SOURCE_UNREADABLE: ${absVideo} has no readable video stream or duration.`);
+  }
+  const width = stream.width ?? 1920;
+  const height = stream.height ?? 1080;
+  const fps = parseFrameRate(stream.avg_frame_rate || stream.r_frame_rate);
+  const codec = stream.codec_name ?? "unknown";
+  const threshold = options.threshold ?? 12;
+  const scdetRun = spawnSync3(
+    ffmpeg,
+    ["-hide_banner", "-i", absVideo, "-vf", `scdet=s=1:t=${threshold}`, "-an", "-f", "null", "-"],
+    { encoding: "utf8" }
+  );
+  const cuts = parseScdetLog(`${scdetRun.stdout ?? ""}
+${scdetRun.stderr ?? ""}`);
+  const boundaries = [0, ...cuts.map((c) => c.timeSec).filter((t) => t > 0.15 && t < durationSeconds - 0.15), durationSeconds];
+  const shots = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const fromSec = Math.round(boundaries[i] * 100) / 100;
+    const toSec = Math.round(boundaries[i + 1] * 100) / 100;
+    if (toSec > fromSec) {
+      shots.push({
+        index: shots.length + 1,
+        fromSec,
+        toSec,
+        durationSec: Math.round((toSec - fromSec) * 100) / 100
+      });
+    }
+  }
+  const outDir = resolve2(options.outDir);
+  await mkdir2(outDir, { recursive: true });
+  const totalTiles = Math.max(4, Math.min(24, Math.round(options.tiles ?? 9)));
+  const cols = 3;
+  const rows = Math.ceil(totalTiles / cols);
+  const sampleFps = Math.max(0.2, totalTiles / Math.max(0.5, durationSeconds));
+  const contactSheet = join4(outDir, "source-sheet.png");
+  const sheetRun = spawnSync3(
+    ffmpeg,
+    [
+      "-y",
+      "-v",
+      "error",
+      "-i",
+      absVideo,
+      "-vf",
+      `fps=${sampleFps.toFixed(4)},scale=480:-1,tile=${cols}x${rows}`,
+      "-update",
+      "1",
+      "-frames:v",
+      "1",
+      contactSheet
+    ],
+    { encoding: "utf8" }
+  );
+  if (sheetRun.status !== 0) {
+    throw new Error(`CONTACT_SHEET_FAILED: ffmpeg could not render contact sheet. ${sheetRun.stderr?.trim() ?? ""}`);
+  }
+  const clipEnd = Math.round(Math.min(durationSeconds, 12) * 100) / 100;
+  const relVideo = relative(outDir, absVideo).replace(/\\/gu, "/");
+  const firstShotEnd = Math.min(clipEnd, shots[0]?.toSec ?? clipEnd);
+  const template = {
+    title: `${basename(absVideo)} \u2014 Motion Study`,
+    source: {
+      video: relVideo,
+      from: 0,
+      to: clipEnd
+    },
+    tracks: [
+      {
+        atom: "prop.move",
+        name: "primary-subject",
+        spans: [[0, Math.max(0.2, Math.round(firstShotEnd * 0.6 * 100) / 100)]]
+      },
+      {
+        atom: "timing.spring",
+        name: "settle-curve",
+        spans: [[0, Math.max(0.2, Math.round(firstShotEnd * 0.6 * 100) / 100)]]
+      }
+    ]
+  };
+  const breakdownTemplate = join4(outDir, "breakdown.template.json");
+  await writeFile3(breakdownTemplate, `${JSON.stringify(template, null, 2)}
+`);
+  const inspectionJson = join4(outDir, "inspection.json");
+  const report = {
+    source: absVideo,
+    codec,
+    width,
+    height,
+    fps,
+    durationSeconds,
+    cuts,
+    shots,
+    contactSheet,
+    breakdownTemplate,
+    inspectionJson
+  };
+  await writeFile3(inspectionJson, `${JSON.stringify(report, null, 2)}
+`);
+  return report;
 }
 
+// packages/cli/src/mcp.ts
+import { mkdir as mkdir6, mkdtemp as mkdtemp3, readFile as readFile2, rm as rm4, stat as stat5, writeFile as writeFile7 } from "node:fs/promises";
+import { tmpdir as tmpdir3 } from "node:os";
+import { dirname as dirname5, join as join9, resolve as resolve8 } from "node:path";
+
 // packages/stage/src/audio.ts
-import { resolve as resolve2, dirname as dirname2 } from "node:path";
+import { resolve as resolve3, dirname as dirname2 } from "node:path";
 import { access as access2 } from "node:fs/promises";
 var SFX_KINDS = [
   "whoosh",
@@ -3610,10 +3742,10 @@ async function buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, f
     labels.push("[a_sfx]");
     nextInput++;
   }
-  const baseDir = dirname2(resolve2(entryHtmlPath));
+  const baseDir = dirname2(resolve3(entryHtmlPath));
   for (let i = 0; i < fileCues.length; i++) {
     const cue = fileCues[i];
-    const filePath = resolve2(baseDir, cue.src);
+    const filePath = resolve3(baseDir, cue.src);
     await access2(filePath).catch(() => {
       throw new Error(`AUDIO_MISSING: Audio file "${cue.src}" not found at ${filePath}.`);
     });
@@ -3662,8 +3794,8 @@ async function buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, f
 // packages/stage/src/server.ts
 import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { extname, join as join4, normalize, resolve as resolve3, sep } from "node:path";
+import { stat as stat2 } from "node:fs/promises";
+import { extname, join as join5, normalize, resolve as resolve4, sep } from "node:path";
 var MIME = {
   ".html": "text/html; charset=utf-8",
   ".htm": "text/html; charset=utf-8",
@@ -3695,14 +3827,14 @@ var MIME = {
 };
 function safeJoin(root, relPath) {
   const clean = normalize(relPath).replace(/^(\.\.[/\\])+/u, "");
-  const full = resolve3(root, clean);
-  const absRoot = resolve3(root);
+  const full = resolve4(root, clean);
+  const absRoot = resolve4(root);
   if (full !== absRoot && !full.startsWith(`${absRoot}${sep}`)) return void 0;
   return full;
 }
 async function startStageServer(projectDir, options = {}) {
-  const absProject = resolve3(projectDir);
-  const absMfRoot = options.motionfluxRoot ? resolve3(options.motionfluxRoot) : void 0;
+  const absProject = resolve4(projectDir);
+  const absMfRoot = options.motionfluxRoot ? resolve4(options.motionfluxRoot) : void 0;
   const handler = async (req, res) => {
     try {
       const rawUrl = req.url ?? "/";
@@ -3722,10 +3854,10 @@ async function startStageServer(projectDir, options = {}) {
         res.end("Forbidden");
         return;
       }
-      let info = await stat(filePath).catch(() => void 0);
+      let info = await stat2(filePath).catch(() => void 0);
       if (info?.isDirectory()) {
-        filePath = join4(filePath, "index.html");
-        info = await stat(filePath).catch(() => void 0);
+        filePath = join5(filePath, "index.html");
+        info = await stat2(filePath).catch(() => void 0);
       }
       if (!info || !info.isFile()) {
         res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
@@ -3784,12 +3916,12 @@ async function startStageServer(projectDir, options = {}) {
 }
 
 // packages/stage/src/capture.ts
-import { spawn as spawn3, spawnSync as spawnSync3 } from "node:child_process";
-import { mkdir as mkdir2, mkdtemp as mkdtemp2, rm as rm3, stat as stat2, writeFile as writeFile3 } from "node:fs/promises";
+import { spawn as spawn3, spawnSync as spawnSync4 } from "node:child_process";
+import { mkdir as mkdir3, mkdtemp as mkdtemp2, rm as rm3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir2 } from "node:os";
-import { basename, dirname as dirname3, extname as extname2, join as join5, resolve as resolve4 } from "node:path";
+import { basename as basename2, dirname as dirname3, extname as extname2, join as join6, resolve as resolve5 } from "node:path";
 async function launchChrome(browser) {
-  const profile = await mkdtemp2(join5(tmpdir2(), "motionflux-stage-browser-"));
+  const profile = await mkdtemp2(join6(tmpdir2(), "motionflux-stage-browser-"));
   const child = spawn3(
     browser,
     [
@@ -3895,9 +4027,9 @@ function selectDefaultAuditFrames(meta) {
   return [...picked].sort((a, b) => a - b);
 }
 async function openStagePage(entryHtmlPath, options) {
-  const absEntry = resolve4(entryHtmlPath);
+  const absEntry = resolve5(entryHtmlPath);
   const projectDir = dirname3(absEntry);
-  const entryName = basename(absEntry);
+  const entryName = basename2(absEntry);
   const server = await startStageServer(projectDir, {
     ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}
   });
@@ -4014,10 +4146,10 @@ async function renderContactSheetPng(browser, tiles, meta) {
     img{display:block;object-fit:contain;background:#000}
   </style><div class="grid">${cardsHtml}</div>`;
   const cdp = await launchChrome(browser);
-  const work = await mkdtemp2(join5(tmpdir2(), "motionflux-contact-"));
+  const work = await mkdtemp2(join6(tmpdir2(), "motionflux-contact-"));
   try {
-    const file = join5(work, "sheet.html");
-    await writeFile3(file, html);
+    const file = join6(work, "sheet.html");
+    await writeFile4(file, html);
     const server = await startStageServer(work);
     try {
       const { targetId } = await cdp.send("Target.createTarget", { url: `${server.url}/sheet.html` });
@@ -4076,15 +4208,15 @@ async function auditStage(entryHtmlPath, options = {}) {
     let contactSheetPath;
     if (options.contactSheetOut && tiles.length > 0) {
       const sheetPng = await renderContactSheetPng(browser, tiles, page.meta);
-      contactSheetPath = resolve4(options.contactSheetOut);
-      await mkdir2(dirname3(contactSheetPath), { recursive: true });
-      await writeFile3(contactSheetPath, sheetPng);
+      contactSheetPath = resolve5(options.contactSheetOut);
+      await mkdir3(dirname3(contactSheetPath), { recursive: true });
+      await writeFile4(contactSheetPath, sheetPng);
     }
     const allIssues = results.flatMap((r) => r.issues);
     const errors = allIssues.filter((i) => i.severity === "error").length;
     const warnings = allIssues.filter((i) => i.severity === "warning").length;
     return {
-      entry: resolve4(entryHtmlPath),
+      entry: resolve5(entryHtmlPath),
       meta: page.meta,
       passed: errors === 0,
       summary: {
@@ -4116,14 +4248,14 @@ async function captureStageFrames(entryHtmlPath, options) {
   });
   try {
     const targetFrames = options.frames && options.frames.length > 0 ? options.frames : Array.from({ length: page.meta.durationFrames }, (_, i) => i);
-    const outDir = resolve4(options.outDir);
-    await mkdir2(outDir, { recursive: true });
+    const outDir = resolve5(options.outDir);
+    await mkdir3(outDir, { recursive: true });
     const files = [];
     for (const frame of targetFrames) {
       await page.seek(frame, transparent);
       const png = await page.screenshot(transparent);
-      const file = join5(outDir, `frame-${String(frame).padStart(6, "0")}.png`);
-      await writeFile3(file, png);
+      const file = join6(outDir, `frame-${String(frame).padStart(6, "0")}.png`);
+      await writeFile4(file, png);
       files.push(file);
     }
     return {
@@ -4144,7 +4276,7 @@ async function captureStageFrames(entryHtmlPath, options) {
 }
 function probeStageVideo(path2) {
   const probe = (process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg").replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
-  const result = spawnSync3(
+  const result = spawnSync4(
     probe,
     [
       "-v",
@@ -4204,7 +4336,7 @@ async function renderStageVideo(entryHtmlPath, options) {
     transparent,
     scale
   });
-  const work = await mkdtemp2(join5(tmpdir2(), "motionflux-stage-audio-"));
+  const work = await mkdtemp2(join6(tmpdir2(), "motionflux-stage-audio-"));
   try {
     const width = Math.round(page.meta.width * scale);
     const height = Math.round(page.meta.height * scale);
@@ -4228,12 +4360,12 @@ async function renderStageVideo(entryHtmlPath, options) {
     const cues = options.noAudio ? [] : page.meta.audio;
     if (cues.some(isProceduralCue)) {
       const { wav } = synthesizeSfxTrack(cues, durationSec, page.meta.fps);
-      sfxWavPath = join5(work, "sfx.wav");
-      await writeFile3(sfxWavPath, wav);
+      sfxWavPath = join6(work, "sfx.wav");
+      await writeFile4(sfxWavPath, wav);
     }
     const audioPlan = cues.length > 0 ? await buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, page.meta.fps) : void 0;
-    const out = resolve4(options.outPath);
-    await mkdir2(dirname3(out), { recursive: true });
+    const out = resolve5(options.outPath);
+    await mkdir3(dirname3(out), { recursive: true });
     const audioCodecArgs = !audioPlan ? ["-an"] : format === "webm" ? ["-c:a", "libopus", "-b:a", options.quality === "cinema" ? "224k" : "160k"] : format === "mov" ? ["-c:a", "pcm_s16le"] : ["-c:a", "aac", "-b:a", options.quality === "cinema" ? "256k" : "192k"];
     const ffmpegArgs = [
       "-y",
@@ -4298,7 +4430,7 @@ async function renderStageVideo(entryHtmlPath, options) {
       path: out,
       type: `video/${format === "mov" ? "quicktime" : format}`,
       quality: options.quality ?? "standard",
-      bytes: (await stat2(out)).size,
+      bytes: (await stat3(out)).size,
       expected: {
         frames: page.meta.durationFrames,
         durationSeconds: durationSec,
@@ -4322,8 +4454,8 @@ async function renderStageVideo(entryHtmlPath, options) {
 }
 
 // packages/stage/src/motion-md.ts
-import { cp, mkdir as mkdir3, readFile, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname4, join as join6, resolve as resolve5 } from "node:path";
+import { cp, mkdir as mkdir4, readFile, writeFile as writeFile5 } from "node:fs/promises";
+import { dirname as dirname4, join as join7, resolve as resolve6 } from "node:path";
 
 // packages/stage/src/runtime.ts
 var TRANSITION_KINDS = [
@@ -4336,6 +4468,31 @@ var TRANSITION_KINDS = [
 ];
 
 // packages/stage/src/motion-md.ts
+function resolveAspectDimensions(aspect, explicitWidth, explicitHeight) {
+  if (explicitWidth !== void 0 && explicitHeight !== void 0) {
+    return { width: Math.round(explicitWidth), height: Math.round(explicitHeight) };
+  }
+  const key = aspect?.trim();
+  const map = {
+    "16:9": [1920, 1080],
+    "9:16": [1080, 1920],
+    "1:1": [1080, 1080],
+    "4:5": [1080, 1350]
+  };
+  if (key && key in map) {
+    const [w, h] = map[key];
+    if (explicitWidth !== void 0) return { width: Math.round(explicitWidth), height: Math.round(explicitWidth * h / w) };
+    if (explicitHeight !== void 0) return { width: Math.round(explicitHeight * w / h), height: Math.round(explicitHeight) };
+    return { width: w, height: h };
+  }
+  if (key) {
+    throw new Error(`USAGE: --aspect must be 16:9, 9:16, 1:1, or 4:5; got "${aspect}".`);
+  }
+  return {
+    width: Math.round(explicitWidth ?? 1920),
+    height: Math.round(explicitHeight ?? 1080)
+  };
+}
 var MOTION_LAYOUTS = [
   "hero",
   "split",
@@ -4435,7 +4592,7 @@ function estimateReadingUnits(texts) {
   }
   return cjk + latinWords * 2.2;
 }
-function parseMotionMd(markdown) {
+function parseMotionMd(markdown, overrides = {}) {
   const diagnostics = [];
   const normalized = markdown.replace(/\r\n/gu, "\n");
   let body = normalized;
@@ -4468,8 +4625,26 @@ function parseMotionMd(markdown) {
     current.lines.push(line);
   }
   const title = meta.title || "MotionFlux Production";
-  const width = Math.round(Number(meta.width ?? 1920));
-  const height = Math.round(Number(meta.height ?? 1080));
+  const rawW = overrides.width ?? (meta.width !== void 0 ? Number(meta.width) : void 0);
+  const rawH = overrides.height ?? (meta.height !== void 0 ? Number(meta.height) : void 0);
+  const rawAspect = overrides.aspect ?? meta.aspect;
+  let width = 1920;
+  let height = 1080;
+  try {
+    const dims = resolveAspectDimensions(
+      rawAspect,
+      overrides.aspect ? overrides.width : rawW,
+      overrides.aspect ? overrides.height : rawH
+    );
+    width = dims.width;
+    height = dims.height;
+  } catch (err) {
+    diagnostics.push({
+      severity: "error",
+      code: "INVALID_ASPECT",
+      message: err instanceof Error ? err.message : String(err)
+    });
+  }
   const fps = Math.round(Number(meta.fps ?? 60));
   const accent = /^#[0-9a-fA-F]{6}$/u.test(meta.accent ?? "") ? meta.accent : "#38bdf8";
   const rawTheme = (meta.theme ?? "obsidian").toLowerCase();
@@ -4848,6 +5023,13 @@ node scripts/motion.mjs render index.html --out master.mp4 --quality cinema`;
 function compileMotionMdToHtml(doc, options = {}) {
   const runtimeImport = options.runtimeImportPath ?? "/__motionflux/stage/runtime.mjs";
   const studioImport = options.studioImportPath ?? "/__motionflux/atoms/studio.mjs";
+  const isVerticalLayout = doc.height >= doc.width;
+  const isTallPortrait = doc.height > doc.width * 1.15;
+  const rigX = isVerticalLayout ? 0 : 0.56;
+  const rigY = isVerticalLayout ? 0.34 : -0.02;
+  const opticsY = isVerticalLayout ? 0.36 : 0.04;
+  const minStudioDist = isVerticalLayout ? 3.25 : 2.6;
+  const defaultStudioDist = isVerticalLayout ? 3.35 : 2.75;
   const palette = doc.theme === "ivory" ? {
     bgTop: "#f8fafc",
     bgBottom: "#e2e8f0",
@@ -4961,7 +5143,7 @@ function compileMotionMdToHtml(doc, options = {}) {
     bridge.rotation.y = -0.32;
     bridge.castShadow = true;
     rigGroups.watch.add(basePlate, mainWheel, pinion, jewelMain, jewelPin, screwL, screwR, hairspring, bridge);
-    rigGroups.watch.position.set(0.56, -0.02, 0);
+    rigGroups.watch.position.set(${rigX}, ${rigY}, 0);
     rigGroups.watch.rotation.set(0.28, -0.22, 0.04);
 
     // 2. CNC Industrial Hardware Rig (anodized deck, 72-flute knurled encoder & damped keycaps)
@@ -4988,7 +5170,7 @@ function compileMotionMdToHtml(doc, options = {}) {
       return cap;
     });
     rigGroups.hardware.add(deck, collar, encoder);
-    rigGroups.hardware.position.set(0.56, -0.02, 0);
+    rigGroups.hardware.position.set(${rigX}, ${rigY}, 0);
     rigGroups.hardware.rotation.set(0.24, -0.2, 0);
 
     // 3. Hollow Machined Cinema Optical Iris & AR Meniscus Lens Rig
@@ -5043,7 +5225,7 @@ function compileMotionMdToHtml(doc, options = {}) {
     frontLens.rotation.x = Math.PI / 2;
     frontLens.position.z = 0.12;
     rigGroups.optics.add(barrel, retainingRing, rearMountRing, sensorChamber, irisGroup, frontLens);
-    rigGroups.optics.position.set(0.58, 0.04, 0);
+    rigGroups.optics.position.set(${isVerticalLayout ? 0 : 0.58}, ${opticsY}, 0);
     rigGroups.optics.rotation.set(-0.44, -0.26, 0.06);
 
     await studio.renderer.compileAsync(studio.scene, studio.camera);
@@ -5078,7 +5260,7 @@ function compileMotionMdToHtml(doc, options = {}) {
       const azDeg = lerp(spec.fromAzimuthDeg, spec.toAzimuthDeg, easeInOutCubic(localProgress));
       const az = (azDeg * Math.PI) / 180;
       const el = ((spec.elevationDeg || 22) * Math.PI) / 180;
-      const dist = Math.max(2.6, spec.distance || 2.75);
+      const dist = Math.max(${minStudioDist}, spec.distance || ${defaultStudioDist});
       studio.camera.position.set(
         Math.sin(az) * Math.cos(el) * dist,
         Math.sin(el) * dist,
@@ -5215,12 +5397,13 @@ function compileMotionMdToHtml(doc, options = {}) {
     }
     .mf-hero-stack .mf-badge { align-self: center; }
     .mf-layout-studio {
-      align-items: center;
-      justify-content: flex-start;
+      flex-direction: ${isVerticalLayout ? "column" : "row"};
+      align-items: ${isVerticalLayout ? "stretch" : "center"};
+      justify-content: ${isVerticalLayout ? "flex-end" : "flex-start"};
     }
     .mf-studio-hud {
-      width: 46%;
-      padding: 36px 40px;
+      width: ${isVerticalLayout ? "100%" : "46%"};
+      padding: ${isVerticalLayout ? "28px 32px" : "36px 40px"};
       border-radius: 24px;
       background: var(--mf-card-bg);
       border: 1px solid var(--mf-card-border);
@@ -5267,7 +5450,7 @@ function compileMotionMdToHtml(doc, options = {}) {
     .mf-metrics-grid {
       width: 100%;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: ${isTallPortrait ? "1fr" : "repeat(auto-fit, minmax(260px, 1fr))"};
       gap: 24px;
     }
     .mf-metric-card {
@@ -5295,7 +5478,7 @@ function compileMotionMdToHtml(doc, options = {}) {
     .mf-features-grid {
       width: 100%;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: ${isTallPortrait ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))"};
       gap: 24px;
     }
     .mf-feature-card {
@@ -5325,12 +5508,13 @@ function compileMotionMdToHtml(doc, options = {}) {
       color: var(--mf-muted);
     }
     .mf-layout-split {
-      align-items: center;
-      justify-content: space-between;
-      gap: 48px;
+      flex-direction: ${isVerticalLayout ? "column" : "row"};
+      align-items: ${isVerticalLayout ? "stretch" : "center"};
+      justify-content: ${isVerticalLayout ? "center" : "space-between"};
+      gap: ${isVerticalLayout ? "30px" : "48px"};
     }
     .mf-split-copy {
-      flex: 1;
+      flex: ${isVerticalLayout ? "none" : "1"};
       display: flex;
       flex-direction: column;
       gap: 18px;
@@ -5358,7 +5542,8 @@ function compileMotionMdToHtml(doc, options = {}) {
       flex: none;
     }
     .mf-window-card {
-      flex: 1.05;
+      flex: ${isVerticalLayout ? "none" : "1.05"};
+      width: ${isVerticalLayout ? "100%" : "auto"};
       border-radius: 20px;
       background: ${palette.codeBg};
       border: 1px solid var(--mf-card-border);
@@ -5446,26 +5631,30 @@ function compileMotionMdToHtml(doc, options = {}) {
 `;
 }
 async function compileMotionMdProject(mdPath, options) {
-  const absMd = resolve5(mdPath);
+  const absMd = resolve6(mdPath);
   const raw = await readFile(absMd, "utf8");
-  const doc = parseMotionMd(raw);
-  const outDir = resolve5(options.outDir);
-  await mkdir3(outDir, { recursive: true });
+  const doc = parseMotionMd(raw, {
+    ...options.aspect !== void 0 ? { aspect: options.aspect } : {},
+    ...options.width !== void 0 ? { width: options.width } : {},
+    ...options.height !== void 0 ? { height: options.height } : {}
+  });
+  const outDir = resolve6(options.outDir);
+  await mkdir4(outDir, { recursive: true });
   let runtimeImportPath = "/__motionflux/stage/runtime.mjs";
   if (options.runtimeSourcePath) {
-    await cp(options.runtimeSourcePath, join6(outDir, "runtime.mjs"));
+    await cp(options.runtimeSourcePath, join7(outDir, "runtime.mjs"));
     runtimeImportPath = "./runtime.mjs";
   }
-  const targetMd = join6(outDir, "Motion.md");
-  if (resolve5(absMd) !== resolve5(targetMd)) {
-    await writeFile4(targetMd, raw);
+  const targetMd = join7(outDir, "Motion.md");
+  if (resolve6(absMd) !== resolve6(targetMd)) {
+    await writeFile5(targetMd, raw);
   }
-  const planPath = join6(outDir, "stage.plan.json");
-  await writeFile4(planPath, `${JSON.stringify(doc, null, 2)}
+  const planPath = join7(outDir, "stage.plan.json");
+  await writeFile5(planPath, `${JSON.stringify(doc, null, 2)}
 `);
   const html = compileMotionMdToHtml(doc, { runtimeImportPath });
-  const entry = join6(outDir, "index.html");
-  await writeFile4(entry, html);
+  const entry = join7(outDir, "index.html");
+  await writeFile5(entry, html);
   return {
     directory: outDir,
     entry,
@@ -5475,12 +5664,12 @@ async function compileMotionMdProject(mdPath, options) {
   };
 }
 async function saveMotionMdPlan(mdPath, outPath) {
-  const raw = await readFile(resolve5(mdPath), "utf8");
+  const raw = await readFile(resolve6(mdPath), "utf8");
   const doc = parseMotionMd(raw);
   if (outPath) {
-    const absOut = resolve5(outPath);
-    await mkdir3(dirname4(absOut), { recursive: true });
-    await writeFile4(absOut, `${JSON.stringify(doc, null, 2)}
+    const absOut = resolve6(outPath);
+    await mkdir4(dirname4(absOut), { recursive: true });
+    await writeFile5(absOut, `${JSON.stringify(doc, null, 2)}
 `);
     return { ...doc, planPath: absOut };
   }
@@ -5488,8 +5677,8 @@ async function saveMotionMdPlan(mdPath, outPath) {
 }
 
 // packages/stage/src/scaffold.ts
-import { cp as cp2, mkdir as mkdir4, stat as stat3, writeFile as writeFile5 } from "node:fs/promises";
-import { join as join7, resolve as resolve6 } from "node:path";
+import { cp as cp2, mkdir as mkdir5, stat as stat4, writeFile as writeFile6 } from "node:fs/promises";
+import { join as join8, resolve as resolve7 } from "node:path";
 var STAGE_TEMPLATES = [
   {
     id: "default",
@@ -5723,17 +5912,17 @@ function buildDataStoryHtml(title, width, height, fps, durationFrames, runtimeIm
     h1 { margin: 16px 0; font-size: clamp(52px, 4.6vw, 84px); line-height: 1.08; letter-spacing: -0.03em; }
     h2 { margin: 10px 0 28px 0; font-size: clamp(38px, 3.3vw, 56px); line-height: 1.12; letter-spacing: -0.02em; }
     .sub { margin: 0; font-size: 25px; line-height: 1.48; color: #cbd5e1; max-width: 820px; }
-    .telemetry-layout { display: grid; grid-template-columns: 1.25fr 0.85fr; gap: 32px; align-items: stretch; }
+    .telemetry-layout { display: grid; grid-template-columns: ${height >= width ? "1fr" : "1.25fr 0.85fr"}; gap: 28px; align-items: stretch; }
     .chart-card, .stat-card, .pillar-card {
       background: rgba(15, 23, 42, 0.78);
       border: 1px solid rgba(148, 163, 184, 0.18);
       border-radius: 22px;
-      padding: 30px;
+      padding: 28px;
     }
     .stat-stack { display: flex; flex-direction: column; gap: 20px; justify-content: space-between; }
-    .stat-val { font-size: 48px; font-weight: 760; font-variant-numeric: tabular-nums; color: #f8fafc; }
+    .stat-val { font-size: 46px; font-weight: 760; font-variant-numeric: tabular-nums; color: #f8fafc; }
     .stat-lbl { font-size: 19px; color: #cbd5e1; margin-top: 6px; }
-    .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .pillars { display: grid; grid-template-columns: ${height > width * 1.15 ? "1fr" : "repeat(3, 1fr)"}; gap: 22px; }
     .pillar-idx { font: 700 16px/1 ui-monospace, monospace; color: #34d399; margin-bottom: 12px; }
     .pillar-title { margin: 0 0 10px 0; font-size: 26px; font-weight: 700; }
     .pillar-desc { margin: 0; font-size: 19px; line-height: 1.48; color: #cbd5e1; }
@@ -5866,8 +6055,7 @@ async function initStageProject(options) {
       `USAGE: --template must be one of ${STAGE_TEMPLATES.map((t) => t.id).join(", ")}; got "${String(options.template)}".`
     );
   }
-  const width = Math.round(options.width ?? 1920);
-  const height = Math.round(options.height ?? 1080);
+  const { width, height } = resolveAspectDimensions(options.aspect, options.width, options.height);
   const fps = Math.round(options.fps ?? tplMeta.defaultFps);
   const durationFrames = Math.round(options.durationFrames ?? tplMeta.defaultDurationFrames);
   const title = options.title ?? (rawTemplate === "default" ? "MotionFlux Stage" : tplMeta.title);
@@ -5880,20 +6068,20 @@ async function initStageProject(options) {
   if (!(durationFrames >= 1 && durationFrames <= 36e3)) {
     throw new Error("USAGE: --duration must be 1\u201336000 frames.");
   }
-  const outDir = resolve6(options.outDir);
-  const existing = await stat3(join7(outDir, "index.html")).catch(() => void 0);
+  const outDir = resolve7(options.outDir);
+  const existing = await stat4(join8(outDir, "index.html")).catch(() => void 0);
   if (existing) {
-    throw new Error(`TARGET_EXISTS: ${join7(outDir, "index.html")} already exists. Choose a new directory.`);
+    throw new Error(`TARGET_EXISTS: ${join8(outDir, "index.html")} already exists. Choose a new directory.`);
   }
-  await mkdir4(outDir, { recursive: true });
-  const runtimeTarget = join7(outDir, "runtime.mjs");
+  await mkdir5(outDir, { recursive: true });
+  const runtimeTarget = join8(outDir, "runtime.mjs");
   if (options.runtimeSourcePath) {
     await cp2(options.runtimeSourcePath, runtimeTarget);
   }
   const runtimeImport = options.runtimeSourcePath ? "./runtime.mjs" : "/__motionflux/stage/runtime.mjs";
   const mdContent = buildMotionMdForTemplate(rawTemplate, title, width, height, fps, durationFrames);
-  const motionMdPath = join7(outDir, "Motion.md");
-  await writeFile5(motionMdPath, mdContent);
+  const motionMdPath = join8(outDir, "Motion.md");
+  await writeFile6(motionMdPath, mdContent);
   let html;
   if (rawTemplate === "saas-launch" || rawTemplate === "hardware-3d") {
     const doc = parseMotionMd(mdContent);
@@ -6043,8 +6231,8 @@ async function initStageProject(options) {
 </html>
 `;
   }
-  const entry = join7(outDir, "index.html");
-  await writeFile5(entry, html);
+  const entry = join8(outDir, "index.html");
+  await writeFile6(entry, html);
   return {
     directory: outDir,
     entry,
@@ -6058,43 +6246,531 @@ async function initStageProject(options) {
   };
 }
 
-// packages/cli/src/index.ts
-import { spawn as spawn4, spawnSync as spawnSync4 } from "node:child_process";
-var resourceRoot = join8(dirname5(fileURLToPath(import.meta.url)), "resources");
-var motionfluxRoot = resolve7(dirname5(fileURLToPath(import.meta.url)), "..");
-var isHtmlInput = (path2) => Boolean(path2 && /\.html?$/iu.test(path2));
-var isMarkdownInput = (path2) => Boolean(path2 && /\.md$/iu.test(path2));
-async function withStageEntry(inputPath, fn) {
-  if (!isMarkdownInput(inputPath)) return fn(inputPath);
-  const absMd = resolve7(inputPath);
-  const doc = parseMotionMd(await readFile2(absMd, "utf8"));
+// packages/cli/src/mcp.ts
+var MCP_RESOURCES = [
+  { uri: "motionflux://docs/skill", name: "MotionFlux Skill Overview", mimeType: "text/markdown", relPath: "SKILL.md" },
+  { uri: "motionflux://docs/stage", name: "Stage Runtime Protocol (stage-1)", mimeType: "text/markdown", relPath: "stage/README.md" },
+  { uri: "motionflux://docs/motion-md", name: "Motion.md Director Script Spec", mimeType: "text/markdown", relPath: "references/motion-md.md" },
+  { uri: "motionflux://docs/physical-3d", name: "Physical 3D & Mechanical Engineering Rules", mimeType: "text/markdown", relPath: "references/physical-3d.md" },
+  { uri: "motionflux://docs/studio", name: "3D PBR & CAD Studio Kit (studio.mjs)", mimeType: "text/markdown", relPath: "atoms/studio.md" },
+  { uri: "motionflux://docs/install", name: "Environment Check & Automated Setup", mimeType: "text/markdown", relPath: "references/install.md" },
+  { uri: "motionflux://docs/catalog", name: "53 2D Motion Atoms Catalog", mimeType: "text/markdown", relPath: "assets/catalog.md" }
+];
+var MCP_TOOLS = [
+  {
+    name: "motionflux_doctor",
+    description: "Check MotionFlux runtime environment (Node >=22, Chrome/Chromium/Edge, WebGL2, WebGPU, FFmpeg, and available package managers).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        backend: {
+          type: "string",
+          enum: ["all", "js", "browser", "webgl2", "webgpu", "ffmpeg"],
+          description: 'Target backend to probe (defaults to "all").'
+        },
+        browser: { type: "string", description: "Optional explicit browser executable path." }
+      }
+    }
+  },
+  {
+    name: "motionflux_setup",
+    description: "Preview (apply=false) or execute (apply=true) automated cross-platform installation for missing browser or FFmpeg dependencies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", enum: ["all", "browser", "ffmpeg"] },
+        manager: { type: "string", description: "auto | playwright | brew | apt | dnf | pacman | apk | winget | scoop | choco" },
+        apply: { type: "boolean", description: "False by default (safe dry-run). Set true to execute installation." }
+      }
+    }
+  },
+  {
+    name: "motionflux_templates",
+    description: "List built-in commercial Stage and Motion.md templates (default, saas-launch, hardware-3d, data-story).",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "motionflux_search_atoms",
+    description: "Search the 53 zero-dependency pure motion atoms by effect, property, or keyword.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: 'Search keywords, e.g. "spring", "decode", "ripple", "stagger".' }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "motionflux_init",
+    description: "Scaffold a runnable Stage HTML + Motion.md project from a built-in commercial template.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        outDir: { type: "string", description: "Target directory to create." },
+        template: { type: "string", enum: ["default", "saas-launch", "hardware-3d", "data-story"] },
+        aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "4:5"] },
+        width: { type: "number" },
+        height: { type: "number" },
+        fps: { type: "number" },
+        durationFrames: { type: "number" },
+        title: { type: "string" }
+      },
+      required: ["outDir"]
+    }
+  },
+  {
+    name: "motionflux_plan",
+    description: "Parse and validate a structured Motion.md director script (from file path or inline markdown), returning frame budgets, audio cues, and copy-density diagnostics.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Path to a Motion.md file." },
+        markdown: { type: "string", description: "Inline Motion.md content (used if path is omitted)." },
+        aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "4:5"] }
+      }
+    }
+  },
+  {
+    name: "motionflux_compile",
+    description: "Compile a Motion.md file or inline markdown script into a self-contained HTML/CSS/SVG/3D Stage project directory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        outDir: { type: "string", description: "Output directory for index.html, Motion.md, and stage.plan.json." },
+        path: { type: "string", description: "Path to source Motion.md." },
+        markdown: { type: "string", description: "Inline Motion.md content if path is omitted." },
+        aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "4:5"] }
+      },
+      required: ["outDir"]
+    }
+  },
+  {
+    name: "motionflux_audit",
+    description: "Run Visual Audit 2.0 in headless Chrome on a Stage index.html or Motion.md, checking clipping, overflow, overlap, and WCAG contrast with exact CSS selector & fix hints.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Path to index.html or Motion.md." },
+        frames: { type: "array", items: { type: "number" }, description: "Optional explicit frame numbers to audit." },
+        contactSheetOut: { type: "string", description: "Optional path to save annotated contact sheet PNG." }
+      },
+      required: ["path"]
+    }
+  },
+  {
+    name: "motionflux_render",
+    description: "Render a Stage index.html or Motion.md to MP4 (H.264), MOV (ProRes 4444), or WebM (VP9) with procedural SFX/audio muxing and optional pre-render audit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Path to Stage index.html or Motion.md." },
+        outPath: { type: "string", description: "Output video path (.mp4, .mov, or .webm)." },
+        quality: { type: "string", enum: ["cinema", "standard"], description: 'Defaults to "cinema" (-preset slow -crf 15).' },
+        crf: { type: "number" },
+        transparent: { type: "boolean" },
+        scale: { type: "number" },
+        runAudit: { type: "boolean" },
+        aspect: { type: "string", enum: ["16:9", "9:16", "1:1", "4:5"] }
+      },
+      required: ["path", "outPath"]
+    }
+  },
+  {
+    name: "motionflux_inspect_video",
+    description: "Inspect a reference video via ffprobe + FFmpeg scene-cut detection (scdet), generate a contact sheet PNG, and scaffold a breakdown.template.json.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        videoPath: { type: "string", description: "Path to reference video file." },
+        outDir: { type: "string", description: "Directory to write source-sheet.png, inspection.json, and breakdown.template.json." },
+        tiles: { type: "number", description: "Number of contact sheet tiles (4\u201324, default 9)." }
+      },
+      required: ["videoPath", "outDir"]
+    }
+  }
+];
+async function withTempStageFromPath(inputPath, aspect, fn) {
+  const abs = resolve8(inputPath);
+  if (!/\.md$/iu.test(abs)) return fn(abs);
+  const doc = parseMotionMd(await readFile2(abs, "utf8"), aspect ? { aspect } : {});
   const html = compileMotionMdToHtml(doc);
-  const tempHtml = join8(dirname5(absMd), `.mf-stage-${process.pid}-${Date.now()}.html`);
-  await writeFile6(tempHtml, html);
+  const tempHtml = join9(dirname5(abs), `.mf-mcp-${process.pid}-${Date.now()}.html`);
+  await writeFile7(tempHtml, html);
   try {
-    return await fn(tempHtml, doc);
+    return await fn(tempHtml);
   } finally {
     await rm4(tempHtml, { force: true });
   }
 }
+async function dispatchMcpRequest(req, motionfluxRoot2) {
+  if (req.id === void 0) return null;
+  const ok = (result) => ({ jsonrpc: "2.0", id: req.id, result });
+  const err = (code, message) => ({ jsonrpc: "2.0", id: req.id, error: { code, message } });
+  try {
+    if (req.method === "initialize") {
+      const clientProto = typeof req.params?.protocolVersion === "string" ? req.params.protocolVersion : "2024-11-05";
+      return ok({
+        protocolVersion: clientProto,
+        capabilities: {
+          tools: {},
+          resources: {}
+        },
+        serverInfo: {
+          name: "motionflux",
+          version: ENGINE_VERSION
+        }
+      });
+    }
+    if (req.method === "ping") {
+      return ok({});
+    }
+    if (req.method === "tools/list") {
+      return ok({ tools: MCP_TOOLS });
+    }
+    if (req.method === "resources/list") {
+      return ok({
+        resources: MCP_RESOURCES.map(({ uri, name, mimeType }) => ({ uri, name, mimeType }))
+      });
+    }
+    if (req.method === "resources/read") {
+      const uri = String(req.params?.uri ?? "");
+      const found = MCP_RESOURCES.find((r) => r.uri === uri);
+      if (!found) return err(-32602, `Unknown resource URI: ${uri}`);
+      const text4 = await readFile2(join9(motionfluxRoot2, found.relPath), "utf8");
+      return ok({
+        contents: [{ uri: found.uri, mimeType: found.mimeType, text: text4 }]
+      });
+    }
+    if (req.method === "tools/call") {
+      const name = String(req.params?.name ?? "");
+      const toolArgs = req.params?.arguments ?? {};
+      const runtimeSource = join9(motionfluxRoot2, "stage", "runtime.mjs");
+      const hasRuntime = await stat5(runtimeSource).then(() => true, () => false);
+      const wrapToolResult = async (fn) => {
+        try {
+          const data = await fn();
+          return ok({
+            content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+          });
+        } catch (toolErr) {
+          const message = toolErr instanceof Error ? toolErr.message : String(toolErr);
+          return ok({
+            isError: true,
+            content: [{ type: "text", text: message }]
+          });
+        }
+      };
+      if (name === "motionflux_doctor") {
+        return wrapToolResult(async () => {
+          const backend = typeof toolArgs.backend === "string" ? toolArgs.backend : "all";
+          const browserArg = typeof toolArgs.browser === "string" ? toolArgs.browser : void 0;
+          const jsOk = Number(process.versions.node.split(".")[0]) >= 22;
+          if (backend === "js") return { backend, available: jsOk, node: process.version, capabilities: capabilities.length };
+          if (backend === "webgl2") {
+            const br2 = await findBrowser(browserArg);
+            return br2 ? { backend, browser: br2, ...await probeWebGL2(br2) } : { backend, available: false };
+          }
+          if (backend === "webgpu") {
+            const br2 = await findBrowser(browserArg);
+            return br2 ? { backend, browser: br2, ...await probeWebGPU(br2) } : { backend, available: false };
+          }
+          const br = await findBrowser(browserArg);
+          const ff = toolVersion(ffmpegPath());
+          const managers = detectPackageManagers();
+          const missing = [];
+          if (!br) missing.push("browser");
+          if (!ff) missing.push("ffmpeg");
+          return {
+            backend: "all",
+            available: jsOk && Boolean(br) && Boolean(ff),
+            node: { available: jsOk, version: process.version },
+            browser: br ? { available: true, path: br } : { available: false },
+            ffmpeg: ff ? { available: true, version: ff } : { available: false },
+            packageManagers: managers,
+            missing
+          };
+        });
+      }
+      if (name === "motionflux_setup") {
+        return wrapToolResult(async () => {
+          const target = typeof toolArgs.target === "string" ? toolArgs.target : "all";
+          const manager = typeof toolArgs.manager === "string" ? toolArgs.manager : "auto";
+          const apply = Boolean(toolArgs.apply);
+          const br = await findBrowser();
+          const ff = toolVersion(ffmpegPath());
+          const wanted = target === "all" ? ["browser", "ffmpeg"] : [target];
+          const missing = wanted.filter((c) => c === "browser" ? !br : !ff);
+          const plan = buildInstallPlan(missing, detectPackageManagers(), manager);
+          if (!apply) return { applied: false, missing, steps: plan.steps, blocked: plan.blocked };
+          if (plan.blocked.length > 0) throw new Error(`SETUP_BLOCKED: ${plan.blocked.map((b) => b.reason).join(" ")}`);
+          const executed = [];
+          for (const step of plan.steps) {
+            const res = await runInstallStep(step);
+            executed.push({ component: step.component, command: step.command, ok: res.ok, code: res.code });
+            if (!res.ok) throw new Error(`SETUP_FAILED: ${step.command} exited ${res.code}`);
+          }
+          return { applied: true, executed };
+        });
+      }
+      if (name === "motionflux_templates") {
+        return wrapToolResult(async () => ({ templates: listStageTemplates() }));
+      }
+      if (name === "motionflux_search_atoms") {
+        return wrapToolResult(async () => ({
+          capabilities: searchCapabilities(String(toolArgs.query ?? ""))
+        }));
+      }
+      if (name === "motionflux_init") {
+        return wrapToolResult(
+          async () => initStageProject({
+            outDir: String(toolArgs.outDir),
+            ...typeof toolArgs.template === "string" ? { template: toolArgs.template } : {},
+            ...typeof toolArgs.aspect === "string" ? { aspect: toolArgs.aspect } : {},
+            ...typeof toolArgs.width === "number" ? { width: toolArgs.width } : {},
+            ...typeof toolArgs.height === "number" ? { height: toolArgs.height } : {},
+            ...typeof toolArgs.fps === "number" ? { fps: toolArgs.fps } : {},
+            ...typeof toolArgs.durationFrames === "number" ? { durationFrames: toolArgs.durationFrames } : {},
+            ...typeof toolArgs.title === "string" ? { title: toolArgs.title } : {},
+            ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
+          })
+        );
+      }
+      if (name === "motionflux_plan") {
+        return wrapToolResult(async () => {
+          const raw = typeof toolArgs.path === "string" ? await readFile2(resolve8(toolArgs.path), "utf8") : String(toolArgs.markdown ?? "");
+          return parseMotionMd(raw, typeof toolArgs.aspect === "string" ? { aspect: toolArgs.aspect } : {});
+        });
+      }
+      if (name === "motionflux_compile") {
+        return wrapToolResult(async () => {
+          const outDir = String(toolArgs.outDir);
+          const aspect = typeof toolArgs.aspect === "string" ? toolArgs.aspect : void 0;
+          if (typeof toolArgs.path === "string") {
+            return compileMotionMdProject(toolArgs.path, {
+              outDir,
+              ...aspect ? { aspect } : {},
+              ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
+            });
+          }
+          const work = await mkdtemp3(join9(tmpdir3(), "motionflux-mcp-md-"));
+          try {
+            const mdPath = join9(work, "Motion.md");
+            await writeFile7(mdPath, String(toolArgs.markdown ?? ""));
+            return await compileMotionMdProject(mdPath, {
+              outDir,
+              ...aspect ? { aspect } : {},
+              ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
+            });
+          } finally {
+            await rm4(work, { recursive: true, force: true });
+          }
+        });
+      }
+      if (name === "motionflux_audit") {
+        try {
+          const inputPath = String(toolArgs.path);
+          const frames = Array.isArray(toolArgs.frames) ? toolArgs.frames.map(Number) : void 0;
+          const contactSheetOut = typeof toolArgs.contactSheetOut === "string" ? toolArgs.contactSheetOut : void 0;
+          const report = await withTempStageFromPath(
+            inputPath,
+            void 0,
+            (entryHtml) => auditStage(entryHtml, {
+              motionfluxRoot: motionfluxRoot2,
+              ...frames ? { frames } : {},
+              ...contactSheetOut ? { contactSheetOut } : {}
+            })
+          );
+          const content = [{ type: "text", text: JSON.stringify(report, null, 2) }];
+          if (report.contactSheet) {
+            const pngBytes = await readFile2(report.contactSheet);
+            content.push({ type: "image", data: pngBytes.toString("base64"), mimeType: "image/png" });
+          }
+          return ok({ content });
+        } catch (auditErr) {
+          return ok({
+            isError: true,
+            content: [{ type: "text", text: auditErr instanceof Error ? auditErr.message : String(auditErr) }]
+          });
+        }
+      }
+      if (name === "motionflux_render") {
+        return wrapToolResult(async () => {
+          const inputPath = String(toolArgs.path);
+          const outPath = String(toolArgs.outPath);
+          await mkdir6(dirname5(resolve8(outPath)), { recursive: true });
+          const aspect = typeof toolArgs.aspect === "string" ? toolArgs.aspect : void 0;
+          return withTempStageFromPath(
+            inputPath,
+            aspect,
+            (entryHtml) => renderStageVideo(entryHtml, {
+              outPath,
+              motionfluxRoot: motionfluxRoot2,
+              quality: typeof toolArgs.quality === "string" ? toolArgs.quality : "cinema",
+              ...typeof toolArgs.crf === "number" ? { crf: toolArgs.crf } : {},
+              transparent: Boolean(toolArgs.transparent),
+              ...typeof toolArgs.scale === "number" ? { scale: toolArgs.scale } : {},
+              runAudit: toolArgs.runAudit !== false
+            })
+          );
+        });
+      }
+      if (name === "motionflux_inspect_video") {
+        return wrapToolResult(
+          async () => inspectReferenceVideo(String(toolArgs.videoPath), {
+            outDir: String(toolArgs.outDir),
+            ...typeof toolArgs.tiles === "number" ? { tiles: toolArgs.tiles } : {}
+          })
+        );
+      }
+      return err(-32601, `Unknown tool: ${name}`);
+    }
+    return err(-32601, `Method not found: ${req.method}`);
+  } catch (error) {
+    return err(-32603, error instanceof Error ? error.message : String(error));
+  }
+}
+async function runMcpStdioServer(motionfluxRoot2) {
+  console.log = (...args) => {
+    process.stderr.write(`${args.map(String).join(" ")}
+`);
+  };
+  await new Promise((done) => {
+    let buffer = Buffer.alloc(0);
+    let queue = Promise.resolve();
+    const send = (payload, mode2) => {
+      const json = JSON.stringify(payload);
+      if (mode2 === "content-length") {
+        process.stdout.write(`Content-Length: ${Buffer.byteLength(json, "utf8")}\r
+\r
+${json}`);
+      } else {
+        process.stdout.write(`${json}
+`);
+      }
+    };
+    const drain = () => {
+      while (buffer.length > 0) {
+        let start = 0;
+        while (start < buffer.length && (buffer[start] === 13 || buffer[start] === 10)) start++;
+        if (start > 0) buffer = buffer.subarray(start);
+        if (buffer.length === 0) break;
+        const headAscii = buffer.subarray(0, Math.min(32, buffer.length)).toString("ascii");
+        if (/^content-length:/iu.test(headAscii)) {
+          const sepCrLf = buffer.indexOf("\r\n\r\n");
+          const sepLf = buffer.indexOf("\n\n");
+          const hasCrLf = sepCrLf !== -1 && (sepLf === -1 || sepCrLf < sepLf);
+          const sepIdx = hasCrLf ? sepCrLf : sepLf;
+          const sepLen = hasCrLf ? 4 : 2;
+          if (sepIdx === -1) break;
+          const headerText = buffer.subarray(0, sepIdx).toString("ascii");
+          const lenMatch = headerText.match(/content-length:\s*(\d+)/iu);
+          if (!lenMatch) {
+            buffer = buffer.subarray(sepIdx + sepLen);
+            continue;
+          }
+          const bodyBytes = Number(lenMatch[1]);
+          if (buffer.length < sepIdx + sepLen + bodyBytes) break;
+          const rawJson = buffer.subarray(sepIdx + sepLen, sepIdx + sepLen + bodyBytes).toString("utf8");
+          buffer = buffer.subarray(sepIdx + sepLen + bodyBytes);
+          queue = queue.then(async () => {
+            const parsed = JSON.parse(rawJson);
+            const reply = await dispatchMcpRequest(parsed, motionfluxRoot2);
+            if (reply) send(reply, "content-length");
+          });
+        } else {
+          const nlIdx = buffer.indexOf(10);
+          if (nlIdx === -1) break;
+          const rawLine = buffer.subarray(0, nlIdx).toString("utf8").trim();
+          buffer = buffer.subarray(nlIdx + 1);
+          if (!rawLine) continue;
+          queue = queue.then(async () => {
+            const parsed = JSON.parse(rawLine);
+            const reply = await dispatchMcpRequest(parsed, motionfluxRoot2);
+            if (reply) send(reply, "jsonl");
+          });
+        }
+      }
+    };
+    process.stdin.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      drain();
+    });
+    process.stdin.once("end", () => {
+      void queue.then(() => done());
+    });
+  });
+}
+
+// packages/renderer-browser/src/breakdown.ts
+var unitOf = (plan) => plan.width / 640;
+var header = 46;
+var blockHeight = 22;
+var laneGap = 4;
+var trackGap = 12;
+var footer = 18;
+function layout(plan) {
+  let top = header;
+  const tracks = plan.tracks.map((track) => {
+    const ends = [];
+    const blocks = [...track.blocks].sort((a, b) => a.from - b.from || a.to - b.to).map((block) => {
+      let lane = ends.findIndex((end) => end <= block.from);
+      if (lane < 0) lane = ends.length;
+      ends[lane] = block.to;
+      return { ...block, lane };
+    });
+    const height = Math.max(1, ends.length) * (blockHeight + laneGap) - laneGap;
+    const result = { track, blocks, top, height };
+    top += height + trackGap;
+    return result;
+  });
+  return { tracks, height: top + footer };
+}
+function panelHeight(plan) {
+  return Math.ceil(layout(plan).height * unitOf(plan));
+}
+function breakdownSize(plan, scene) {
+  const sceneHeight = Math.round(scene.height * plan.width / scene.width);
+  const height = sceneHeight + panelHeight(plan);
+  return { width: plan.width + plan.width % 2, height: height + height % 2, sceneHeight };
+}
+
+// packages/cli/src/index.ts
+import { spawn as spawn4, spawnSync as spawnSync5 } from "node:child_process";
+var resourceRoot = join10(dirname6(fileURLToPath(import.meta.url)), "resources");
+var motionfluxRoot = resolve9(dirname6(fileURLToPath(import.meta.url)), "..");
+var isHtmlInput = (path2) => Boolean(path2 && /\.html?$/iu.test(path2));
+var isMarkdownInput = (path2) => Boolean(path2 && /\.md$/iu.test(path2));
+async function withStageEntry(inputPath, aspect, fn) {
+  if (!isMarkdownInput(inputPath)) return fn(inputPath);
+  const absMd = resolve9(inputPath);
+  const doc = parseMotionMd(await readFile3(absMd, "utf8"), aspect ? { aspect } : {});
+  const html = compileMotionMdToHtml(doc);
+  const tempHtml = join10(dirname6(absMd), `.mf-stage-${process.pid}-${Date.now()}.html`);
+  await writeFile8(tempHtml, html);
+  try {
+    return await fn(tempHtml, doc);
+  } finally {
+    await rm5(tempHtml, { force: true });
+  }
+}
 async function readScene(path2) {
   if (!path2) throw new Error("USAGE: Supply a scene JSON path.");
-  const scene = JSON.parse(await readFile2(resolve7(path2), "utf8"));
+  const scene = JSON.parse(await readFile3(resolve9(path2), "utf8"));
   assertScene(scene);
   return scene;
 }
 async function assetBytes(scene, scenePath) {
   const encoded = {};
   for (const asset of Object.values(scene.assets)) {
-    const data = await readFile2(resolve7(dirname5(scenePath), asset.src));
+    const data = await readFile3(resolve9(dirname6(scenePath), asset.src));
     if (createHash2("sha256").update(data).digest("hex") !== asset.sha256) throw new Error(`ASSET_HASH: ${asset.src} differs from the scene lock.`);
     encoded[asset.src] = data.toString("base64");
   }
   return encoded;
 }
 async function save(path2, data) {
-  await mkdir5(dirname5(resolve7(path2)), { recursive: true });
-  await writeFile6(resolve7(path2), data);
+  await mkdir7(dirname6(resolve9(path2)), { recursive: true });
+  await writeFile8(resolve9(path2), data);
 }
 function parseFrameList(list) {
   return list.split(",").flatMap((part) => {
@@ -6113,8 +6789,8 @@ function parseFrames(list, total2) {
   if (outside !== void 0) throw new Error(`USAGE: frame ${outside} is outside the scene; valid frames are 0\u2013${total2 - 1}.`);
   return frames;
 }
-var numeric = ["frame", "width", "height", "duration", "fps", "scale", "port", "crf"];
-var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "quality", "target", "manager", "template", "text", "color", "background", "title", "contact"];
+var numeric = ["frame", "width", "height", "duration", "fps", "scale", "port", "crf", "tiles"];
+var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "quality", "target", "manager", "template", "aspect", "text", "color", "background", "title", "contact"];
 function parseArgs(args) {
   const command = args.shift() ?? "help";
   const positional = [];
@@ -6153,6 +6829,7 @@ function parseArgs(args) {
   }
   const supported = {
     help: [],
+    mcp: [],
     templates: [],
     search: [],
     patterns: [],
@@ -6165,22 +6842,23 @@ function parseArgs(args) {
     preview: ["out"],
     "export-html": ["out"],
     deliver: ["out", "previous", "authoring"],
-    init: ["template", "width", "height", "duration", "fps", "title"],
-    plan: ["out"],
-    compile: ["out"],
-    audit: ["frames", "out", "contact", "browser"],
+    init: ["template", "aspect", "width", "height", "duration", "fps", "title"],
+    plan: ["out", "aspect"],
+    compile: ["out", "aspect", "width", "height"],
+    audit: ["frames", "out", "contact", "browser", "aspect"],
     sfx: ["out", "duration", "fps"],
     serve: ["port"],
     scaffold: ["out", "width", "height", "duration", "fps", "text", "color", "background"],
-    frames: ["out", "frames", "browser", "transparent", "scale"],
-    render: ["out", "browser", "transparent", "scale", "quality", "crf", "noAudio", "runAudit"],
+    frames: ["out", "frames", "browser", "transparent", "scale", "aspect"],
+    render: ["out", "browser", "transparent", "scale", "quality", "crf", "noAudio", "runAudit", "aspect"],
+    "inspect-video": ["out", "tiles"],
     breakdown: ["out", "browser", "title", "width", "fps"],
     doctor: ["backend", "browser"],
     setup: ["target", "manager", "apply", "browser"]
   };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command].includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (!["search", "patterns"].includes(command) && positional.length > (["help", "templates", "doctor", "setup"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
+  if (!["search", "patterns"].includes(command) && positional.length > (["help", "mcp", "templates", "doctor", "setup"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
   return { command, positional, ...options };
 }
 async function scaffold(id4, options) {
@@ -6228,7 +6906,7 @@ async function scaffold(id4, options) {
   scene.fps = { numerator: fps, denominator: 1 };
   scene.durationFrames = duration;
   assertScene(scene);
-  const out = resolve7(options.out);
+  const out = resolve9(options.out);
   await save(out, `${JSON.stringify(scene, null, 2)}
 `);
   return {
@@ -6258,22 +6936,22 @@ async function renderBreakdown(scene, html, plan, args) {
   const count = Math.max(1, Math.floor(seconds2 * fps + 1e-9));
   const frames = Array.from({ length: count }, (_, k) => k * sceneFps / fps);
   const size2 = breakdownSize(plan, scene.canvas);
-  const work = await mkdtemp3(join8(tmpdir3(), "motionflux-breakdown-"));
-  const page = join8(work, "breakdown.html");
-  const out = resolve7(args.out);
+  const work = await mkdtemp4(join10(tmpdir4(), "motionflux-breakdown-"));
+  const page = join10(work, "breakdown.html");
+  const out = resolve9(args.out);
   try {
-    await writeFile6(page, html);
-    await mkdir5(dirname5(out), { recursive: true });
+    await writeFile8(page, html);
+    await mkdir7(dirname6(out), { recursive: true });
     await encodeVideo(out, format, false, { numerator: fps, denominator: 1 }, (write) => captureFrames(page, frames, browser, false, (_frame, png) => write(png)));
   } finally {
-    await rm4(work, { recursive: true, force: true });
+    await rm5(work, { recursive: true, force: true });
   }
   const written = probeVideo(out);
   const expectedSeconds = count / fps;
   return {
     path: out,
     type: format === "gif" ? "image/gif" : `video/${format}`,
-    bytes: (await stat4(out)).size,
+    bytes: (await stat6(out)).size,
     fps,
     expected: { frames: count, durationSeconds: expectedSeconds, width: size2.width, height: size2.height },
     written: written ?? "ffprobe not available; the file was not read back",
@@ -6291,7 +6969,7 @@ async function renderBreakdown(scene, html, plan, args) {
   };
 }
 async function renderVideoBreakdown(file, args) {
-  const breakdown = readVideoBreakdown(JSON.parse(await readFile2(file, "utf8")));
+  const breakdown = readVideoBreakdown(JSON.parse(await readFile3(file, "utf8")));
   if (args.title) breakdown.title = args.title;
   const format = extname3(args.out ?? "").slice(1).toLowerCase();
   if (!args.out || !["gif", "mp4", "webm"].includes(format)) throw new Error("USAGE: breakdown writes --out <file>.gif, .mp4 or .webm.");
@@ -6299,12 +6977,12 @@ async function renderVideoBreakdown(file, args) {
   if (!(fps >= 1 && fps <= 60)) throw new Error("USAGE: --fps must be 1\u201360.");
   if (format === "gif" && !Number.isInteger(100 / fps)) throw new Error("USAGE: GIF frame delays are whole hundredths of a second; use --fps 10, 20, 25 or 50.");
   if (!toolVersion(ffmpegPath())) throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH.");
-  const video = resolve7(dirname5(file), breakdown.source.video);
-  await stat4(video).catch(() => {
+  const video = resolve9(dirname6(file), breakdown.source.video);
+  await stat6(video).catch(() => {
     throw new Error(`SOURCE_MISSING: ${video} does not exist. source.video is relative to the breakdown file.`);
   });
   const probe = ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
-  const probed = spawnSync4(probe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", video], { encoding: "utf8" });
+  const probed = spawnSync5(probe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", video], { encoding: "utf8" });
   if (probed.status !== 0) throw new Error(`SOURCE_UNREADABLE: ffprobe could not read ${video}.`);
   const meta = JSON.parse(probed.stdout);
   const source = meta.streams[0];
@@ -6321,15 +6999,15 @@ async function renderVideoBreakdown(file, args) {
   const panel = panelHeight(plan) + panelHeight(plan) % 2;
   const browser = await findBrowser(args.browser);
   if (!browser) throw new Error("BROWSER_MISSING: breakdown draws the timeline in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-  const work = await mkdtemp3(join8(tmpdir3(), "motionflux-breakdown-"));
-  const out = resolve7(args.out);
+  const work = await mkdtemp4(join10(tmpdir4(), "motionflux-breakdown-"));
+  const out = resolve9(args.out);
   try {
-    const script = await readFile2(join8(resourceRoot, "breakdown-panel.js"), "utf8");
-    const page = join8(work, "panel.html");
-    await writeFile6(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
-    await mkdir5(join8(work, "panel"));
-    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile6(join8(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
-    await mkdir5(dirname5(out), { recursive: true });
+    const script = await readFile3(join10(resourceRoot, "breakdown-panel.js"), "utf8");
+    const page = join10(work, "panel.html");
+    await writeFile8(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
+    await mkdir7(join10(work, "panel"));
+    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile8(join10(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
+    await mkdir7(dirname6(out), { recursive: true });
     const stack = `[0:v]fps=${fps},scale=${width}:${pictureHeight}:flags=lanczos,setsar=1[clip];[clip][1:v]vstack=inputs=2`;
     const encode = format === "gif" ? ["-filter_complex", `${stack},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle`, "-loop", "0"] : format === "mp4" ? ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart"] : ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "28"];
     const result = await new Promise((done) => {
@@ -6346,7 +7024,7 @@ async function renderVideoBreakdown(file, args) {
         "-framerate",
         String(fps),
         "-i",
-        join8(work, "panel", "%06d.png"),
+        join10(work, "panel", "%06d.png"),
         ...encode,
         "-an",
         "-frames:v",
@@ -6361,14 +7039,14 @@ async function renderVideoBreakdown(file, args) {
     });
     if (result.code !== 0) throw new Error(`ENCODE_FAILED: ffmpeg exited with code ${result.code}. ${result.log.trim().split("\n").slice(-3).join(" ")}`);
   } finally {
-    await rm4(work, { recursive: true, force: true });
+    await rm5(work, { recursive: true, force: true });
   }
   const written = probeVideo(out);
   const height = pictureHeight + panel;
   return {
     path: out,
     type: format === "gif" ? "image/gif" : `video/${format}`,
-    bytes: (await stat4(out)).size,
+    bytes: (await stat6(out)).size,
     fps,
     source: { video, from: breakdown.source.from, to: breakdown.source.to, width: source.width, height: source.height },
     expected: { frames: count, durationSeconds: count / fps, width, height },
@@ -6390,31 +7068,34 @@ async function main() {
   const path2 = args.positional[0];
   switch (args.command) {
     case "help":
-      return { version: ENGINE_VERSION, stageVersion: "stage-1", motionMdVersion: "motion-md-1", commands: [
+      return { version: ENGINE_VERSION, stageVersion: "stage-1", motionMdVersion: "motion-md-1", mcpSupported: true, commands: [
         "doctor [--backend all|js|browser|webgl2|webgpu|ffmpeg] [--browser <path>]  (check full runtime environment)",
         "setup [--target all|browser|ffmpeg] [--manager auto|playwright|brew|apt|dnf|pacman|apk|winget|scoop|choco] [--apply]  (plan or install missing runtime dependencies)",
+        "mcp  (start zero-dependency Model Context Protocol stdio server for Claude/Cursor/Antigravity/Codex)",
         "templates  (list built-in Stage & Motion.md commercial templates)",
-        'init <dir> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240] [--title "\u2026"]',
-        "plan <Motion.md> [--out stage.plan.json]  (parse & validate structured Motion.md director script + pacing diagnostics)",
-        "compile <Motion.md> --out <dir>  (compile Motion.md into runnable HTML/CSS/SVG/3D Stage project)",
-        "audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/WCAG contrast audit)",
-        "frames <stage.html | Motion.md | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]",
-        "render <stage.html | Motion.md | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]",
+        'init <dir> [--template default|saas-launch|hardware-3d|data-story] [--aspect 16:9|9:16|1:1|4:5] [--fps 60] [--duration 240] [--title "\u2026"]',
+        "plan <Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--out stage.plan.json]  (parse & validate Motion.md director script + pacing diagnostics)",
+        "compile <Motion.md> --out <dir> [--aspect 16:9|9:16|1:1|4:5]  (compile Motion.md into runnable HTML/CSS/SVG/3D Stage project)",
+        "audit <stage.html | Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]",
+        "frames <stage.html | Motion.md | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2] [--aspect 16:9|9:16|1:1|4:5]",
+        "render <stage.html | Motion.md | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit] [--aspect 16:9|9:16|1:1|4:5]",
+        "inspect-video <reference.mp4> --out <dir> [--tiles 9]  (probe cuts via FFmpeg scdet, render contact sheet & breakdown.template.json)",
         "sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: " + SFX_KINDS.join(", ") + ")",
         "serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/stage/* and /__motionflux/atoms/* mounts)",
         "search <query> --json",
         "describe <id> --json",
         'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "\u2026"] [--width 960] [--fps 25]'
-      ], delivery: "Structured Motion.md director compiler + HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with scene transitions, WCAG/DOM visual audit, procedural SFX + audio muxing, and cinema MP4/MOV/WebM/PNG capture." };
+      ], delivery: "Zero-dependency MCP server + Motion.md director compiler (multi-aspect 16:9 / 9:16 / 1:1 / 4:5) + HTML/CSS/SVG/WebGL Stage runtime + 3D PBR/CAD studio kit + WCAG/DOM visual audit + procedural SFX + cinema MP4/MOV/WebM/PNG capture." };
     case "templates":
       return { templates: listStageTemplates() };
     case "init": {
-      if (!path2) throw new Error("USAGE: init <new-directory> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240]");
-      const runtimeSource = join8(motionfluxRoot, "stage", "runtime.mjs");
-      const hasRuntime = await stat4(runtimeSource).then(() => true, () => false);
+      if (!path2) throw new Error("USAGE: init <new-directory> [--template default|saas-launch|hardware-3d|data-story] [--aspect 16:9|9:16|1:1|4:5] [--width 1920] [--height 1080] [--fps 60] [--duration 240]");
+      const runtimeSource = join10(motionfluxRoot, "stage", "runtime.mjs");
+      const hasRuntime = await stat6(runtimeSource).then(() => true, () => false);
       return initStageProject({
         outDir: path2,
         ...args.template !== void 0 ? { template: args.template } : {},
+        ...args.aspect !== void 0 ? { aspect: args.aspect } : {},
         ...args.width !== void 0 ? { width: args.width } : {},
         ...args.height !== void 0 ? { height: args.height } : {},
         ...args.fps !== void 0 ? { fps: args.fps } : {},
@@ -6424,22 +7105,42 @@ async function main() {
       });
     }
     case "plan": {
-      if (!path2) throw new Error("USAGE: plan <Motion.md> [--out stage.plan.json]");
+      if (!path2) throw new Error("USAGE: plan <Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--out stage.plan.json]");
+      if (args.aspect) {
+        const doc = parseMotionMd(await readFile3(resolve9(path2), "utf8"), { aspect: args.aspect });
+        if (args.out) {
+          await save(args.out, `${JSON.stringify(doc, null, 2)}
+`);
+          return { ...doc, planPath: resolve9(args.out) };
+        }
+        return doc;
+      }
       return saveMotionMdPlan(path2, args.out);
     }
     case "compile": {
-      if (!path2 || !args.out) throw new Error("USAGE: compile <Motion.md> --out <directory>");
-      const runtimeSource = join8(motionfluxRoot, "stage", "runtime.mjs");
-      const hasRuntime = await stat4(runtimeSource).then(() => true, () => false);
+      if (!path2 || !args.out) throw new Error("USAGE: compile <Motion.md> --out <directory> [--aspect 16:9|9:16|1:1|4:5]");
+      const runtimeSource = join10(motionfluxRoot, "stage", "runtime.mjs");
+      const hasRuntime = await stat6(runtimeSource).then(() => true, () => false);
       return compileMotionMdProject(path2, {
         outDir: args.out,
+        ...args.aspect !== void 0 ? { aspect: args.aspect } : {},
+        ...args.width !== void 0 ? { width: args.width } : {},
+        ...args.height !== void 0 ? { height: args.height } : {},
         ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
       });
     }
+    case "inspect-video": {
+      if (!path2 || !args.out) throw new Error("USAGE: inspect-video <reference.mp4> --out <directory> [--tiles 9]");
+      return inspectReferenceVideo(path2, {
+        outDir: args.out,
+        ...args.tiles !== void 0 ? { tiles: args.tiles } : {}
+      });
+    }
     case "audit": {
-      if (!path2) throw new Error("USAGE: audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png]");
+      if (!path2) throw new Error("USAGE: audit <stage.html | Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--frames 0,30,60] [--out report.json] [--contact sheet.png]");
       const report = await withStageEntry(
         path2,
+        args.aspect,
         (entryHtml) => auditStage(entryHtml, {
           ...args.browser ? { browser: args.browser } : {},
           motionfluxRoot,
@@ -6453,22 +7154,22 @@ async function main() {
     }
     case "sfx": {
       if (!path2 || !args.out) throw new Error("USAGE: sfx <audio.json> --out <track.wav> [--duration 5] [--fps 30]");
-      const raw = JSON.parse(await readFile2(resolve7(path2), "utf8"));
+      const raw = JSON.parse(await readFile3(resolve9(path2), "utf8"));
       const cues = Array.isArray(raw) ? raw : raw.cues ?? raw.audio ?? [];
       const fps = args.fps ?? (Array.isArray(raw) ? 30 : raw.fps ?? 30);
       const durationSec = args.duration ?? (Array.isArray(raw) ? 5 : raw.durationSec ?? 5);
       if (!(durationSec > 0 && fps > 0)) throw new Error("USAGE: --duration and --fps must be positive numbers.");
       const { wav, proceduralCount } = synthesizeSfxTrack(cues, durationSec, fps);
-      const out = resolve7(args.out);
-      await mkdir5(dirname5(out), { recursive: true });
-      await writeFile6(out, wav);
+      const out = resolve9(args.out);
+      await mkdir7(dirname6(out), { recursive: true });
+      await writeFile8(out, wav);
       return { path: out, bytes: wav.length, durationSeconds: durationSec, sampleRate: 48e3, channels: 2, proceduralCount };
     }
     case "serve": {
-      const target = resolve7(path2 ?? ".");
-      const info = await stat4(target).catch(() => void 0);
+      const target = resolve9(path2 ?? ".");
+      const info = await stat6(target).catch(() => void 0);
       if (!info) throw new Error(`PATH_MISSING: ${target} does not exist.`);
-      const dir = info.isDirectory() ? target : dirname5(target);
+      const dir = info.isDirectory() ? target : dirname6(target);
       const entry = info.isDirectory() ? "index.html" : target.slice(dir.length + 1);
       const server = await startStageServer(dir, { motionfluxRoot, port: args.port ?? 4178 });
       process.stdout.write(`${JSON.stringify({ ok: true, result: { url: `${server.url}/${entry}`, root: dir, port: server.port } }, null, 2)}
@@ -6485,31 +7186,31 @@ async function main() {
     case "search":
       return { capabilities: searchCapabilities(args.positional.join(" ")) };
     case "patterns": {
-      const indexPath = join8(dirname5(resourceRoot), "../assets/patterns/index.json");
-      const index = JSON.parse(await readFile2(indexPath, "utf8"));
+      const indexPath = join10(dirname6(resourceRoot), "../assets/patterns/index.json");
+      const index = JSON.parse(await readFile3(indexPath, "utf8"));
       const terms = args.positional.join(" ").normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
       return { match: "all-keywords; suitability is decided by the agent", patterns: index.patterns.filter((pattern) => terms.every((term) => JSON.stringify(pattern).normalize("NFKC").toLowerCase().includes(term))) };
     }
     case "controls": {
       if (!path2 || !args.scene) throw new Error("USAGE: controls <authoring.json> --scene <scene.json>");
-      const report = inspectControls(JSON.parse(await readFile2(resolve7(path2), "utf8")), await readScene(args.scene));
+      const report = inspectControls(JSON.parse(await readFile3(resolve9(path2), "utf8")), await readScene(args.scene));
       return { ...report, savedValuesOnly: true };
     }
     case "compose": {
       if (!path2 || !args.out) throw new Error("USAGE: compose <brief.json> --out <new-directory>");
-      const brief = readBrief(JSON.parse(await readFile2(resolve7(path2), "utf8")));
-      const bytes = await readFile2(resolve7(dirname5(resolve7(path2)), brief.product.src));
+      const brief = readBrief(JSON.parse(await readFile3(resolve9(path2), "utf8")));
+      const bytes = await readFile3(resolve9(dirname6(resolve9(path2)), brief.product.src));
       if (createHash2("sha256").update(bytes).digest("hex") !== brief.product.sha256) throw new Error("ASSET_HASH: Product image differs from the brief lock.");
       const src = `assets/product${extname3(brief.product.src).toLowerCase()}`;
       const { scene, authoring } = composePattern(brief, { type: "image", src, sha256: brief.product.sha256 });
       const assets = { [src]: bytes.toString("base64") };
-      const runtime = await readFile2(join8(resourceRoot, "standalone.js"), "utf8");
+      const runtime = await readFile3(join10(resourceRoot, "standalone.js"), "utf8");
       const html = createStandaloneHtml(scene, runtime, assets, "");
       return writeDelivery({ scene, assets, html, out: args.out, authoring });
     }
     case "study": {
       if (!path2) throw new Error("USAGE: Supply a study JSON path.");
-      const input = JSON.parse(await readFile2(resolve7(path2), "utf8"));
+      const input = JSON.parse(await readFile3(resolve9(path2), "utf8"));
       const scene = args.scene ? await readScene(args.scene) : void 0;
       assertStudy(input, scene);
       const report = studyReport(input, scene);
@@ -6656,6 +7357,7 @@ async function main() {
         if (args.command === "frames") {
           return withStageEntry(
             path2,
+            args.aspect,
             (entryHtml) => captureStageFrames(entryHtml, {
               outDir: args.out,
               ...args.frames ? { frames: parseFrameList(args.frames) } : {},
@@ -6668,6 +7370,7 @@ async function main() {
         }
         return withStageEntry(
           path2,
+          args.aspect,
           (entryHtml, mdDoc) => renderStageVideo(entryHtml, {
             outPath: args.out,
             ...args.browser ? { browser: args.browser } : {},
@@ -6682,21 +7385,21 @@ async function main() {
         );
       }
       if (args.command === "breakdown" && path2) {
-        const raw = JSON.parse(await readFile2(resolve7(path2), "utf8"));
-        if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve7(path2), args);
+        const raw = JSON.parse(await readFile3(resolve9(path2), "utf8"));
+        if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve9(path2), args);
       }
       const scene = await readScene(path2);
       if (args.command === "sample") return { state: compileScene(scene).evaluate(args.frame ?? 0), lock: versionLock(scene) };
-      const assets = await assetBytes(scene, resolve7(path2));
+      const assets = await assetBytes(scene, resolve9(path2));
       if (args.command === "validate") return { valid: true, assetsVerified: Object.keys(assets).length, lock: versionLock(scene) };
       if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
-      const [runtime, license] = await Promise.all([readFile2(join8(resourceRoot, "standalone.js"), "utf8"), readFile2(join8(resourceRoot, "OFL.txt"), "utf8")]);
+      const [runtime, license] = await Promise.all([readFile3(join10(resourceRoot, "standalone.js"), "utf8"), readFile3(join10(resourceRoot, "OFL.txt"), "utf8")]);
       const plan = args.command === "breakdown" ? breakdownPlan(scene, { width: Math.round(args.width ?? Math.min(960, scene.canvas.width)), ...args.title ? { title: args.title } : {} }) : void 0;
       if (plan && (plan.width < 160 || plan.width > 3840)) throw new Error("USAGE: --width must be 160\u20133840 px.");
       const html = createStandaloneHtml(scene, runtime, assets, args.command === "deliver" ? "" : license, plan ? { breakdown: plan } : {});
       if (args.command === "deliver") {
         const previous = args.previous ? await readScene(args.previous) : void 0;
-        const authoring = args.authoring ? JSON.parse(await readFile2(resolve7(args.authoring), "utf8")) : void 0;
+        const authoring = args.authoring ? JSON.parse(await readFile3(resolve9(args.authoring), "utf8")) : void 0;
         return writeDelivery({ scene, ...previous ? { previous } : {}, ...authoring !== void 0 ? { authoring } : {}, assets, html, out: args.out });
       }
       if (args.command === "breakdown") return renderBreakdown(scene, html, plan, args);
@@ -6714,23 +7417,23 @@ async function main() {
         }
         const browser = await findBrowser(args.browser);
         if (!browser) throw new Error("BROWSER_MISSING: frames and render draw in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-        const work = await mkdtemp3(join8(tmpdir3(), "motionflux-render-"));
-        const page = join8(work, "scene.html");
+        const work = await mkdtemp4(join10(tmpdir4(), "motionflux-render-"));
+        const page = join10(work, "scene.html");
         try {
-          await writeFile6(page, html);
-          const out = resolve7(args.out);
+          await writeFile8(page, html);
+          const out = resolve9(args.out);
           if (args.command === "frames") {
             const frames = parseFrames(args.frames, scene.durationFrames);
             const files = [];
-            await mkdir5(out, { recursive: true });
+            await mkdir7(out, { recursive: true });
             await captureFrames(page, frames, browser, transparent, async (frame, png) => {
-              const file = join8(out, `frame-${String(frame).padStart(6, "0")}.png`);
-              await writeFile6(file, png);
+              const file = join10(out, `frame-${String(frame).padStart(6, "0")}.png`);
+              await writeFile8(file, png);
               files.push(file);
             });
             return { directory: out, type: "png-sequence", pattern: "frame-%06d.png", frames: files.length, files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)], ...size2, fps: scene.fps, alpha: transparent, videoDelivered: false, browser, lock: versionLock(scene) };
           }
-          await mkdir5(dirname5(out), { recursive: true });
+          await mkdir7(dirname6(out), { recursive: true });
           const all = parseFrames(void 0, scene.durationFrames);
           await encodeVideo(out, format, transparent, scene.fps, (write) => captureFrames(page, all, browser, transparent, (_frame, png) => write(png)), encodeOptions);
           const written = probeVideo(out);
@@ -6739,7 +7442,7 @@ async function main() {
             path: out,
             type: `video/${format === "mov" ? "quicktime" : format}`,
             quality: args.quality ?? "standard",
-            bytes: (await stat4(out)).size,
+            bytes: (await stat6(out)).size,
             expected: { frames: all.length, durationSeconds: expectedSeconds, ...size2, alpha: transparent },
             written: written ?? "ffprobe not available; the file was not read back",
             verified: Boolean(written && written.frames === all.length && written.width === size2.width && written.height === size2.height && Math.abs(written.durationSeconds - expectedSeconds) < 0.05 && written.alpha === transparent),
@@ -6749,27 +7452,35 @@ async function main() {
             lock: versionLock(scene)
           };
         } finally {
-          await rm4(work, { recursive: true, force: true });
+          await rm5(work, { recursive: true, force: true });
         }
       }
       await save(args.out, html);
-      return { path: resolve7(args.out), type: "standalone-html", embeddedAssets: Object.keys(assets).length, videoDelivered: false, lock: versionLock(scene) };
+      return { path: resolve9(args.out), type: "standalone-html", embeddedAssets: Object.keys(assets).length, videoDelivered: false, lock: versionLock(scene) };
     }
   }
 }
-main().then((result) => process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}
-`)).catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  const code = error instanceof SceneValidationError || error instanceof MotionMdValidationError ? error.code : error && typeof error === "object" && "code" in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? "COMMAND_FAILED";
-  process.stdout.write(`${JSON.stringify({
-    ok: false,
-    error: {
-      code,
-      message,
-      ...error instanceof SceneValidationError ? { issues: error.issues } : {},
-      ...error instanceof MotionMdValidationError ? { diagnostics: error.diagnostics } : {}
-    }
-  }, null, 2)}
+if (process.argv[2] === "mcp") {
+  runMcpStdioServer(motionfluxRoot).catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}
 `);
-  process.exitCode = 1;
-});
+    process.exitCode = 1;
+  });
+} else {
+  main().then((result) => process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}
+`)).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = error instanceof SceneValidationError || error instanceof MotionMdValidationError ? error.code : error && typeof error === "object" && "code" in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? "COMMAND_FAILED";
+    process.stdout.write(`${JSON.stringify({
+      ok: false,
+      error: {
+        code,
+        message,
+        ...error instanceof SceneValidationError ? { issues: error.issues } : {},
+        ...error instanceof MotionMdValidationError ? { diagnostics: error.diagnostics } : {}
+      }
+    }, null, 2)}
+`);
+    process.exitCode = 1;
+  });
+}

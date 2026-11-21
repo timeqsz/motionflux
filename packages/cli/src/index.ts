@@ -12,6 +12,8 @@ import { captureFrames, encodeVideo, ffmpegPath, findBrowser, probeVideo, probeW
 import { buildInstallPlan, detectPackageManagers, runInstallStep } from './env.js';
 import { writeDelivery } from './delivery.js';
 import { breakdownPlan, readVideoBreakdown, videoBreakdownPlan } from './breakdown.js';
+import { inspectReferenceVideo } from './video-inspect.js';
+import { runMcpStdioServer } from './mcp.js';
 import { breakdownSize, panelHeight } from '../../renderer-browser/src/breakdown.js';
 import { auditStage, captureStageFrames, compileMotionMdProject, compileMotionMdToHtml, initStageProject, listStageTemplates, MotionMdValidationError, parseMotionMd, renderStageVideo, saveMotionMdPlan, startStageServer, synthesizeSfxTrack, SFX_KINDS, type AudioCue, type MotionMdDocument } from '../../stage/src/index.js';
 import { spawn, spawnSync } from 'node:child_process';
@@ -23,11 +25,12 @@ const isMarkdownInput = (path: string | undefined): boolean => Boolean(path && /
 
 async function withStageEntry<T>(
   inputPath: string,
+  aspect: string | undefined,
   fn: (htmlPath: string, mdDoc?: MotionMdDocument) => Promise<T>,
 ): Promise<T> {
   if (!isMarkdownInput(inputPath)) return fn(inputPath);
   const absMd = resolve(inputPath);
-  const doc = parseMotionMd(await readFile(absMd, 'utf8'));
+  const doc = parseMotionMd(await readFile(absMd, 'utf8'), aspect ? { aspect } : {});
   const html = compileMotionMdToHtml(doc);
   const tempHtml = join(dirname(absMd), `.mf-stage-${process.pid}-${Date.now()}.html`);
   await writeFile(tempHtml, html);
@@ -75,10 +78,10 @@ function parseFrames(list: string | undefined, total: number): number[] {
 }
 interface Options { out?: string; previous?: string; scene?: string; authoring?: string; frame?: number; backend?: string; frames?: string; browser?: string; transparent?: boolean;
   width?: number; height?: number; duration?: number; fps?: number; crf?: number; quality?: string; target?: string; manager?: string; apply?: boolean;
-  template?: string; text?: string; color?: string; background?: string; title?: string;
+  template?: string; aspect?: string; tiles?: number; text?: string; color?: string; background?: string; title?: string;
   scale?: number; contact?: string; port?: number; noAudio?: boolean; runAudit?: boolean }
-const numeric = ['frame', 'width', 'height', 'duration', 'fps', 'scale', 'port', 'crf'] as const;
-const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'quality', 'target', 'manager', 'template', 'text', 'color', 'background', 'title', 'contact'] as const;
+const numeric = ['frame', 'width', 'height', 'duration', 'fps', 'scale', 'port', 'crf', 'tiles'] as const;
+const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'quality', 'target', 'manager', 'template', 'aspect', 'text', 'color', 'background', 'title', 'contact'] as const;
 function parseArgs(args: string[]): { command: string; positional: string[] } & Options {
   const command = args.shift() ?? 'help';
   const positional: string[] = [];
@@ -99,22 +102,23 @@ function parseArgs(args: string[]): { command: string; positional: string[] } & 
     } else if (arg.startsWith('--')) throw new Error(`USAGE: Unknown option ${arg}.`);
     else positional.push(arg);
   }
-  const supported: Record<string, string[]> = { help: [], templates: [], search: [], patterns: [], compose: ['out'], controls: ['scene'], describe: [], validate: [], study: ['scene', 'out'], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous', 'authoring'],
-    init: ['template', 'width', 'height', 'duration', 'fps', 'title'],
-    plan: ['out'],
-    compile: ['out'],
-    audit: ['frames', 'out', 'contact', 'browser'],
+  const supported: Record<string, string[]> = { help: [], mcp: [], templates: [], search: [], patterns: [], compose: ['out'], controls: ['scene'], describe: [], validate: [], study: ['scene', 'out'], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous', 'authoring'],
+    init: ['template', 'aspect', 'width', 'height', 'duration', 'fps', 'title'],
+    plan: ['out', 'aspect'],
+    compile: ['out', 'aspect', 'width', 'height'],
+    audit: ['frames', 'out', 'contact', 'browser', 'aspect'],
     sfx: ['out', 'duration', 'fps'],
     serve: ['port'],
     scaffold: ['out', 'width', 'height', 'duration', 'fps', 'text', 'color', 'background'],
-    frames: ['out', 'frames', 'browser', 'transparent', 'scale'],
-    render: ['out', 'browser', 'transparent', 'scale', 'quality', 'crf', 'noAudio', 'runAudit'],
+    frames: ['out', 'frames', 'browser', 'transparent', 'scale', 'aspect'],
+    render: ['out', 'browser', 'transparent', 'scale', 'quality', 'crf', 'noAudio', 'runAudit', 'aspect'],
+    'inspect-video': ['out', 'tiles'],
     breakdown: ['out', 'browser', 'title', 'width', 'fps'],
     doctor: ['backend', 'browser'],
     setup: ['target', 'manager', 'apply', 'browser'] };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command]!.includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (!['search', 'patterns'].includes(command) && positional.length > (['help', 'templates', 'doctor', 'setup'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
+  if (!['search', 'patterns'].includes(command) && positional.length > (['help', 'mcp', 'templates', 'doctor', 'setup'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
   return { command, positional, ...options };
 }
 /**
@@ -259,29 +263,32 @@ async function main(): Promise<unknown> {
   const args = parseArgs(process.argv.slice(2));
   const path = args.positional[0];
   switch (args.command) {
-    case 'help': return { version: ENGINE_VERSION, stageVersion: 'stage-1', motionMdVersion: 'motion-md-1', commands: [
+    case 'help': return { version: ENGINE_VERSION, stageVersion: 'stage-1', motionMdVersion: 'motion-md-1', mcpSupported: true, commands: [
       'doctor [--backend all|js|browser|webgl2|webgpu|ffmpeg] [--browser <path>]  (check full runtime environment)',
       'setup [--target all|browser|ffmpeg] [--manager auto|playwright|brew|apt|dnf|pacman|apk|winget|scoop|choco] [--apply]  (plan or install missing runtime dependencies)',
+      'mcp  (start zero-dependency Model Context Protocol stdio server for Claude/Cursor/Antigravity/Codex)',
       'templates  (list built-in Stage & Motion.md commercial templates)',
-      'init <dir> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240] [--title "…"]',
-      'plan <Motion.md> [--out stage.plan.json]  (parse & validate structured Motion.md director script + pacing diagnostics)',
-      'compile <Motion.md> --out <dir>  (compile Motion.md into runnable HTML/CSS/SVG/3D Stage project)',
-      'audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/WCAG contrast audit)',
-      'frames <stage.html | Motion.md | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]',
-      'render <stage.html | Motion.md | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]',
+      'init <dir> [--template default|saas-launch|hardware-3d|data-story] [--aspect 16:9|9:16|1:1|4:5] [--fps 60] [--duration 240] [--title "…"]',
+      'plan <Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--out stage.plan.json]  (parse & validate Motion.md director script + pacing diagnostics)',
+      'compile <Motion.md> --out <dir> [--aspect 16:9|9:16|1:1|4:5]  (compile Motion.md into runnable HTML/CSS/SVG/3D Stage project)',
+      'audit <stage.html | Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]',
+      'frames <stage.html | Motion.md | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2] [--aspect 16:9|9:16|1:1|4:5]',
+      'render <stage.html | Motion.md | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit] [--aspect 16:9|9:16|1:1|4:5]',
+      'inspect-video <reference.mp4> --out <dir> [--tiles 9]  (probe cuts via FFmpeg scdet, render contact sheet & breakdown.template.json)',
       'sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: ' + SFX_KINDS.join(', ') + ')',
       'serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/stage/* and /__motionflux/atoms/* mounts)',
       'search <query> --json', 'describe <id> --json',
       'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "…"] [--width 960] [--fps 25]',
-    ], delivery: 'Structured Motion.md director compiler + HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with scene transitions, WCAG/DOM visual audit, procedural SFX + audio muxing, and cinema MP4/MOV/WebM/PNG capture.' };
+    ], delivery: 'Zero-dependency MCP server + Motion.md director compiler (multi-aspect 16:9 / 9:16 / 1:1 / 4:5) + HTML/CSS/SVG/WebGL Stage runtime + 3D PBR/CAD studio kit + WCAG/DOM visual audit + procedural SFX + cinema MP4/MOV/WebM/PNG capture.' };
     case 'templates': return { templates: listStageTemplates() };
     case 'init': {
-      if (!path) throw new Error('USAGE: init <new-directory> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240]');
+      if (!path) throw new Error('USAGE: init <new-directory> [--template default|saas-launch|hardware-3d|data-story] [--aspect 16:9|9:16|1:1|4:5] [--width 1920] [--height 1080] [--fps 60] [--duration 240]');
       const runtimeSource = join(motionfluxRoot, 'stage', 'runtime.mjs');
       const hasRuntime = await stat(runtimeSource).then(() => true, () => false);
       return initStageProject({
         outDir: path,
         ...(args.template !== undefined ? { template: args.template } : {}),
+        ...(args.aspect !== undefined ? { aspect: args.aspect } : {}),
         ...(args.width !== undefined ? { width: args.width } : {}),
         ...(args.height !== undefined ? { height: args.height } : {}),
         ...(args.fps !== undefined ? { fps: args.fps } : {}),
@@ -291,21 +298,36 @@ async function main(): Promise<unknown> {
       });
     }
     case 'plan': {
-      if (!path) throw new Error('USAGE: plan <Motion.md> [--out stage.plan.json]');
+      if (!path) throw new Error('USAGE: plan <Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--out stage.plan.json]');
+      if (args.aspect) {
+        const doc = parseMotionMd(await readFile(resolve(path), 'utf8'), { aspect: args.aspect });
+        if (args.out) { await save(args.out, `${JSON.stringify(doc, null, 2)}\n`); return { ...doc, planPath: resolve(args.out) }; }
+        return doc;
+      }
       return saveMotionMdPlan(path, args.out);
     }
     case 'compile': {
-      if (!path || !args.out) throw new Error('USAGE: compile <Motion.md> --out <directory>');
+      if (!path || !args.out) throw new Error('USAGE: compile <Motion.md> --out <directory> [--aspect 16:9|9:16|1:1|4:5]');
       const runtimeSource = join(motionfluxRoot, 'stage', 'runtime.mjs');
       const hasRuntime = await stat(runtimeSource).then(() => true, () => false);
       return compileMotionMdProject(path, {
         outDir: args.out,
+        ...(args.aspect !== undefined ? { aspect: args.aspect } : {}),
+        ...(args.width !== undefined ? { width: args.width } : {}),
+        ...(args.height !== undefined ? { height: args.height } : {}),
         ...(hasRuntime ? { runtimeSourcePath: runtimeSource } : {}),
       });
     }
+    case 'inspect-video': {
+      if (!path || !args.out) throw new Error('USAGE: inspect-video <reference.mp4> --out <directory> [--tiles 9]');
+      return inspectReferenceVideo(path, {
+        outDir: args.out,
+        ...(args.tiles !== undefined ? { tiles: args.tiles } : {}),
+      });
+    }
     case 'audit': {
-      if (!path) throw new Error('USAGE: audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png]');
-      const report = await withStageEntry(path, (entryHtml) =>
+      if (!path) throw new Error('USAGE: audit <stage.html | Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--frames 0,30,60] [--out report.json] [--contact sheet.png]');
+      const report = await withStageEntry(path, args.aspect, (entryHtml) =>
         auditStage(entryHtml, {
           ...(args.browser ? { browser: args.browser } : {}),
           motionfluxRoot,
@@ -522,7 +544,7 @@ async function main(): Promise<unknown> {
           throw new Error('USAGE: --scale must be between 0 and 4 (e.g. 1 or 2).');
         }
         if (args.command === 'frames') {
-          return withStageEntry(path!, (entryHtml) =>
+          return withStageEntry(path!, args.aspect, (entryHtml) =>
             captureStageFrames(entryHtml, {
               outDir: args.out!,
               ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
@@ -533,7 +555,7 @@ async function main(): Promise<unknown> {
             }),
           );
         }
-        return withStageEntry(path!, (entryHtml, mdDoc) =>
+        return withStageEntry(path!, args.aspect, (entryHtml, mdDoc) =>
           renderStageVideo(entryHtml, {
             outPath: args.out!,
             ...(args.browser ? { browser: args.browser } : {}),
@@ -604,18 +626,25 @@ async function main(): Promise<unknown> {
     }
   }
 }
-main().then((result) => process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`)).catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  const code = error instanceof SceneValidationError || error instanceof MotionMdValidationError ? error.code
-    : error && typeof error === 'object' && 'code' in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? 'COMMAND_FAILED';
-  process.stdout.write(`${JSON.stringify({
-    ok: false,
-    error: {
-      code,
-      message,
-      ...(error instanceof SceneValidationError ? { issues: error.issues } : {}),
-      ...(error instanceof MotionMdValidationError ? { diagnostics: error.diagnostics } : {}),
-    },
-  }, null, 2)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[2] === 'mcp') {
+  runMcpStdioServer(motionfluxRoot).catch((error: unknown) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+} else {
+  main().then((result) => process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`)).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = error instanceof SceneValidationError || error instanceof MotionMdValidationError ? error.code
+      : error && typeof error === 'object' && 'code' in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? 'COMMAND_FAILED';
+    process.stdout.write(`${JSON.stringify({
+      ok: false,
+      error: {
+        code,
+        message,
+        ...(error instanceof SceneValidationError ? { issues: error.issues } : {}),
+        ...(error instanceof MotionMdValidationError ? { diagnostics: error.diagnostics } : {}),
+      },
+    }, null, 2)}\n`);
+    process.exitCode = 1;
+  });
+}

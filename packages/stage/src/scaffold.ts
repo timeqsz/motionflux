@@ -1,6 +1,6 @@
 import { cp, mkdir, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { compileMotionMdToHtml, parseMotionMd } from './motion-md.js';
+import { compileMotionMdToHtml, parseMotionMd, resolveAspectDimensions } from './motion-md.js';
 import type { StageTemplateId } from './types.js';
 
 export interface StageTemplateInfo {
@@ -54,6 +54,7 @@ export function listStageTemplates(): readonly StageTemplateInfo[] {
 export interface InitStageOptions {
   outDir: string;
   template?: string;
+  aspect?: string;
   width?: number;
   height?: number;
   fps?: number;
@@ -277,17 +278,17 @@ function buildDataStoryHtml(
     h1 { margin: 16px 0; font-size: clamp(52px, 4.6vw, 84px); line-height: 1.08; letter-spacing: -0.03em; }
     h2 { margin: 10px 0 28px 0; font-size: clamp(38px, 3.3vw, 56px); line-height: 1.12; letter-spacing: -0.02em; }
     .sub { margin: 0; font-size: 25px; line-height: 1.48; color: #cbd5e1; max-width: 820px; }
-    .telemetry-layout { display: grid; grid-template-columns: 1.25fr 0.85fr; gap: 32px; align-items: stretch; }
+    .telemetry-layout { display: grid; grid-template-columns: ${height >= width ? '1fr' : '1.25fr 0.85fr'}; gap: 28px; align-items: stretch; }
     .chart-card, .stat-card, .pillar-card {
       background: rgba(15, 23, 42, 0.78);
       border: 1px solid rgba(148, 163, 184, 0.18);
       border-radius: 22px;
-      padding: 30px;
+      padding: 28px;
     }
     .stat-stack { display: flex; flex-direction: column; gap: 20px; justify-content: space-between; }
-    .stat-val { font-size: 48px; font-weight: 760; font-variant-numeric: tabular-nums; color: #f8fafc; }
+    .stat-val { font-size: 46px; font-weight: 760; font-variant-numeric: tabular-nums; color: #f8fafc; }
     .stat-lbl { font-size: 19px; color: #cbd5e1; margin-top: 6px; }
-    .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .pillars { display: grid; grid-template-columns: ${height > width * 1.15 ? '1fr' : 'repeat(3, 1fr)'}; gap: 22px; }
     .pillar-idx { font: 700 16px/1 ui-monospace, monospace; color: #34d399; margin-bottom: 12px; }
     .pillar-title { margin: 0 0 10px 0; font-size: 26px; font-weight: 700; }
     .pillar-desc { margin: 0; font-size: 19px; line-height: 1.48; color: #cbd5e1; }
@@ -432,8 +433,7 @@ export async function initStageProject(options: InitStageOptions): Promise<{
     );
   }
 
-  const width = Math.round(options.width ?? 1920);
-  const height = Math.round(options.height ?? 1080);
+  const { width, height } = resolveAspectDimensions(options.aspect, options.width, options.height);
   const fps = Math.round(options.fps ?? tplMeta.defaultFps);
   const durationFrames = Math.round(options.durationFrames ?? tplMeta.defaultDurationFrames);
   const title = options.title ?? (rawTemplate === 'default' ? 'MotionFlux Stage' : tplMeta.title);

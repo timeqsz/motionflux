@@ -19,7 +19,7 @@ export { applyFilter, filterReach, type Mask } from './raster.js';
 export { createAtom, type Atom, type AtomInput, type AtomMeta, type AtomOutput } from './atom.js';
 export { motionSchema } from './schema.js';
 export type { Copy } from './recipes/index.js';
-export const ENGINE_VERSION = '0.6.0';
+export const ENGINE_VERSION = '0.8.0';
 export const ALGORITHM_VERSION = 'value-noise-fnv-mix-v1';
 export interface CompiledScene {
   readonly spec: MotionSpec;

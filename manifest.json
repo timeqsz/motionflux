@@ -1,6 +1,6 @@
 {
   "name": "motionflux",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "atoms2d": 53,
   "files": [
     {
@@ -579,9 +579,14 @@
       "sha256": "22e692128672498f0f33793daa0a13cd0a7aacdbe9b3c2ed54f90e0e5d7dcea7"
     },
     {
+      "path": "references/mcp.md",
+      "bytes": 3035,
+      "sha256": "d13d0c76825a178a076fa67c2750c235051a1eed6140486d31e105708d64123a"
+    },
+    {
       "path": "references/motion-md.md",
-      "bytes": 5188,
-      "sha256": "597141da1f06bdf8b195af9aa5a4fda61411eee218441605b21f8d7597a1e1d4"
+      "bytes": 5425,
+      "sha256": "09751c3acc66c42b468d1c446da1838308ab3785a7461988efa06e24f22aef2b"
     },
     {
       "path": "references/physical-3d.md",
@@ -605,13 +610,13 @@
     },
     {
       "path": "scripts/motion.mjs",
-      "bytes": 310096,
-      "sha256": "554d389e2c200cc4196c1332f8717eed4f01dfc30dae625004622fb6e65b0b26"
+      "bytes": 340789,
+      "sha256": "d882e6e24c3327ed00d81e8a001b1a0eb4a315eb9c855a0821a6116f6d0ca553"
     },
     {
       "path": "SKILL.md",
-      "bytes": 6500,
-      "sha256": "7e2fef5714fa369b71aace71466bf7866b4c2803f2f3bf1b4e74f1d84c84635b"
+      "bytes": 6885,
+      "sha256": "2c49cf84701b16c7fc44a8731ada419f25263d3238885e29d6a5ef3c73d784a9"
     },
     {
       "path": "stage/README.md",
@@ -631,7 +636,7 @@
     {
       "path": "VERSION.json",
       "bytes": 161,
-      "sha256": "67ab4122da1799c85eab3c37ca8c092268229c3de0de914aba259c5c1d0ce192"
+      "sha256": "35c436f5f50360a695dab4bfdd1f85a61f375e855f3e1a1f2d3012d2007fff77"
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "name": "motionflux",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Deterministic HTML/CSS/SVG/WebGL motion stage, procedural SFX, DOM visual audit, and 53 independent 2D motion atoms",
   "private": true,
   "type": "module",

@@ -17,6 +17,38 @@ export type StudioRigPreset = 'watch' | 'hardware' | 'optics';
 
 export type MotionTheme = 'obsidian' | 'slate' | 'ivory';
 
+export type AspectPreset = '16:9' | '9:16' | '1:1' | '4:5';
+
+export function resolveAspectDimensions(
+  aspect: string | undefined,
+  explicitWidth?: number,
+  explicitHeight?: number,
+): { width: number; height: number } {
+  if (explicitWidth !== undefined && explicitHeight !== undefined) {
+    return { width: Math.round(explicitWidth), height: Math.round(explicitHeight) };
+  }
+  const key = aspect?.trim();
+  const map: Record<string, [number, number]> = {
+    '16:9': [1920, 1080],
+    '9:16': [1080, 1920],
+    '1:1': [1080, 1080],
+    '4:5': [1080, 1350],
+  };
+  if (key && key in map) {
+    const [w, h] = map[key]!;
+    if (explicitWidth !== undefined) return { width: Math.round(explicitWidth), height: Math.round((explicitWidth * h) / w) };
+    if (explicitHeight !== undefined) return { width: Math.round((explicitHeight * w) / h), height: Math.round(explicitHeight) };
+    return { width: w, height: h };
+  }
+  if (key) {
+    throw new Error(`USAGE: --aspect must be 16:9, 9:16, 1:1, or 4:5; got "${aspect}".`);
+  }
+  return {
+    width: Math.round(explicitWidth ?? 1920),
+    height: Math.round(explicitHeight ?? 1080),
+  };
+}
+
 export const MOTION_LAYOUTS: readonly MotionSceneLayout[] = [
   'hero',
   'split',
@@ -192,7 +224,10 @@ function estimateReadingUnits(texts: Array<string | undefined>): number {
  * Parse and validate a structured `Motion.md` director script into frame-exact Stage scenes,
  * procedural/file audio cues, camera choreography, and pacing diagnostics.
  */
-export function parseMotionMd(markdown: string): MotionMdDocument {
+export function parseMotionMd(
+  markdown: string,
+  overrides: { aspect?: string; width?: number; height?: number } = {},
+): MotionMdDocument {
   const diagnostics: MotionMdDiagnostic[] = [];
   const normalized = markdown.replace(/\r\n/gu, '\n');
   let body = normalized;
@@ -233,8 +268,26 @@ export function parseMotionMd(markdown: string): MotionMdDocument {
   }
 
   const title = meta.title || 'MotionFlux Production';
-  const width = Math.round(Number(meta.width ?? 1920));
-  const height = Math.round(Number(meta.height ?? 1080));
+  const rawW = overrides.width ?? (meta.width !== undefined ? Number(meta.width) : undefined);
+  const rawH = overrides.height ?? (meta.height !== undefined ? Number(meta.height) : undefined);
+  const rawAspect = overrides.aspect ?? meta.aspect;
+  let width = 1920;
+  let height = 1080;
+  try {
+    const dims = resolveAspectDimensions(
+      rawAspect,
+      overrides.aspect ? overrides.width : rawW,
+      overrides.aspect ? overrides.height : rawH,
+    );
+    width = dims.width;
+    height = dims.height;
+  } catch (err) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'INVALID_ASPECT',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   const fps = Math.round(Number(meta.fps ?? 60));
   const accent = /^#[0-9a-fA-F]{6}$/u.test(meta.accent ?? '') ? meta.accent! : '#38bdf8';
   const rawTheme = (meta.theme ?? 'obsidian').toLowerCase();
@@ -678,6 +731,13 @@ export function compileMotionMdToHtml(
 ): string {
   const runtimeImport = options.runtimeImportPath ?? '/__motionflux/stage/runtime.mjs';
   const studioImport = options.studioImportPath ?? '/__motionflux/atoms/studio.mjs';
+  const isVerticalLayout = doc.height >= doc.width;
+  const isTallPortrait = doc.height > doc.width * 1.15;
+  const rigX = isVerticalLayout ? 0 : 0.56;
+  const rigY = isVerticalLayout ? 0.34 : -0.02;
+  const opticsY = isVerticalLayout ? 0.36 : 0.04;
+  const minStudioDist = isVerticalLayout ? 3.25 : 2.6;
+  const defaultStudioDist = isVerticalLayout ? 3.35 : 2.75;
 
   const palette =
     doc.theme === 'ivory'
@@ -801,7 +861,7 @@ export function compileMotionMdToHtml(
     bridge.rotation.y = -0.32;
     bridge.castShadow = true;
     rigGroups.watch.add(basePlate, mainWheel, pinion, jewelMain, jewelPin, screwL, screwR, hairspring, bridge);
-    rigGroups.watch.position.set(0.56, -0.02, 0);
+    rigGroups.watch.position.set(${rigX}, ${rigY}, 0);
     rigGroups.watch.rotation.set(0.28, -0.22, 0.04);
 
     // 2. CNC Industrial Hardware Rig (anodized deck, 72-flute knurled encoder & damped keycaps)
@@ -828,7 +888,7 @@ export function compileMotionMdToHtml(
       return cap;
     });
     rigGroups.hardware.add(deck, collar, encoder);
-    rigGroups.hardware.position.set(0.56, -0.02, 0);
+    rigGroups.hardware.position.set(${rigX}, ${rigY}, 0);
     rigGroups.hardware.rotation.set(0.24, -0.2, 0);
 
     // 3. Hollow Machined Cinema Optical Iris & AR Meniscus Lens Rig
@@ -883,7 +943,7 @@ export function compileMotionMdToHtml(
     frontLens.rotation.x = Math.PI / 2;
     frontLens.position.z = 0.12;
     rigGroups.optics.add(barrel, retainingRing, rearMountRing, sensorChamber, irisGroup, frontLens);
-    rigGroups.optics.position.set(0.58, 0.04, 0);
+    rigGroups.optics.position.set(${isVerticalLayout ? 0 : 0.58}, ${opticsY}, 0);
     rigGroups.optics.rotation.set(-0.44, -0.26, 0.06);
 
     await studio.renderer.compileAsync(studio.scene, studio.camera);
@@ -918,7 +978,7 @@ export function compileMotionMdToHtml(
       const azDeg = lerp(spec.fromAzimuthDeg, spec.toAzimuthDeg, easeInOutCubic(localProgress));
       const az = (azDeg * Math.PI) / 180;
       const el = ((spec.elevationDeg || 22) * Math.PI) / 180;
-      const dist = Math.max(2.6, spec.distance || 2.75);
+      const dist = Math.max(${minStudioDist}, spec.distance || ${defaultStudioDist});
       studio.camera.position.set(
         Math.sin(az) * Math.cos(el) * dist,
         Math.sin(el) * dist,
@@ -1057,12 +1117,13 @@ export function compileMotionMdToHtml(
     }
     .mf-hero-stack .mf-badge { align-self: center; }
     .mf-layout-studio {
-      align-items: center;
-      justify-content: flex-start;
+      flex-direction: ${isVerticalLayout ? 'column' : 'row'};
+      align-items: ${isVerticalLayout ? 'stretch' : 'center'};
+      justify-content: ${isVerticalLayout ? 'flex-end' : 'flex-start'};
     }
     .mf-studio-hud {
-      width: 46%;
-      padding: 36px 40px;
+      width: ${isVerticalLayout ? '100%' : '46%'};
+      padding: ${isVerticalLayout ? '28px 32px' : '36px 40px'};
       border-radius: 24px;
       background: var(--mf-card-bg);
       border: 1px solid var(--mf-card-border);
@@ -1109,7 +1170,7 @@ export function compileMotionMdToHtml(
     .mf-metrics-grid {
       width: 100%;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: ${isTallPortrait ? '1fr' : 'repeat(auto-fit, minmax(260px, 1fr))'};
       gap: 24px;
     }
     .mf-metric-card {
@@ -1137,7 +1198,7 @@ export function compileMotionMdToHtml(
     .mf-features-grid {
       width: 100%;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: ${isTallPortrait ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))'};
       gap: 24px;
     }
     .mf-feature-card {
@@ -1167,12 +1228,13 @@ export function compileMotionMdToHtml(
       color: var(--mf-muted);
     }
     .mf-layout-split {
-      align-items: center;
-      justify-content: space-between;
-      gap: 48px;
+      flex-direction: ${isVerticalLayout ? 'column' : 'row'};
+      align-items: ${isVerticalLayout ? 'stretch' : 'center'};
+      justify-content: ${isVerticalLayout ? 'center' : 'space-between'};
+      gap: ${isVerticalLayout ? '30px' : '48px'};
     }
     .mf-split-copy {
-      flex: 1;
+      flex: ${isVerticalLayout ? 'none' : '1'};
       display: flex;
       flex-direction: column;
       gap: 18px;
@@ -1200,7 +1262,8 @@ export function compileMotionMdToHtml(
       flex: none;
     }
     .mf-window-card {
-      flex: 1.05;
+      flex: ${isVerticalLayout ? 'none' : '1.05'};
+      width: ${isVerticalLayout ? '100%' : 'auto'};
       border-radius: 20px;
       background: ${palette.codeBg};
       border: 1px solid var(--mf-card-border);
@@ -1296,6 +1359,9 @@ export async function compileMotionMdProject(
   mdPath: string,
   options: {
     outDir: string;
+    aspect?: string;
+    width?: number;
+    height?: number;
     runtimeSourcePath?: string;
   },
 ): Promise<{
@@ -1307,7 +1373,11 @@ export async function compileMotionMdProject(
 }> {
   const absMd = resolve(mdPath);
   const raw = await readFile(absMd, 'utf8');
-  const doc = parseMotionMd(raw);
+  const doc = parseMotionMd(raw, {
+    ...(options.aspect !== undefined ? { aspect: options.aspect } : {}),
+    ...(options.width !== undefined ? { width: options.width } : {}),
+    ...(options.height !== undefined ? { height: options.height } : {}),
+  });
   const outDir = resolve(options.outDir);
   await mkdir(outDir, { recursive: true });
 

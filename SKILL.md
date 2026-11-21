@@ -29,14 +29,14 @@ node scripts/motion.mjs setup --apply  # 自动安装（优先免 sudo 用户态
 
 不要再用扁平二维色块或纯线稿硬凑商业视频。直接在浏览器完整渲染引擎（HTML + CSS Flexbox/Grid + 现代排版 + SVG + `<img>`/`<video>` + WebGL2/WebGPU/Three.js）上构建：
 
-1. **选商业模板或编写 `Motion.md` 分镜脚本**：
+1. **选商业模板、多画幅适配或编写 `Motion.md` 分镜脚本**：
    ```sh
-   # 查看内置模板：default | saas-launch | hardware-3d | data-story
+   # 查看内置模板：default | saas-launch | hardware-3d | data-story（支持 --aspect 16:9|9:16|1:1|4:5 自适应排版）
    node scripts/motion.mjs templates
-   node scripts/motion.mjs init work/<project> --template saas-launch --fps 60 --duration 240
+   node scripts/motion.mjs init work/<project> --template saas-launch --aspect 16:9 --fps 60 --duration 240
    # 或校验/编译自定义 Motion.md 导演脚本（详见 references/motion-md.md）：
    node scripts/motion.mjs plan work/<project>/Motion.md
-   node scripts/motion.mjs compile work/<project>/Motion.md --out work/<project>-stage
+   node scripts/motion.mjs compile work/<project>/Motion.md --out work/<project>-9x16 --aspect 9:16
    ```
 2. **精修舞台、镜头转场、三维物理器物与音效**：
    - 在 `index.html` 中用 `[data-mf-scene="<id>"]` 划分镜头，在 `scenes` 中声明 `transitionIn: { kind: 'crossfade' | 'wipe-left' | 'wipe-up' | 'slide-left' | 'zoom-through', durationFrames }` 实现无缝重叠转场。
@@ -62,9 +62,9 @@ node scripts/motion.mjs setup --apply  # 自动安装（优先免 sudo 用户态
 1. 在[原子清单](assets/catalog.md)按属性或效果找 ID，再读对应的 `atoms/<ID>.md`。
 2. 拷贝所需 `atoms/<ID>.mjs`（零依赖纯函数），每帧传入 `frame` 和 `durationFrames` 获取这一帧的数值/几何。接口约定见[原子接口](atoms/README.md)。
 
-## 3. 拆参考视频
+## 3. 拆参考视频与 MCP 接入
 
-1. **看片段**：用宿主的播放器或抽帧工具查看指定范围，沿用原片时间码；不拿文案猜动作。
+1. **自动探测切镜与联版抽帧**：运行 `node scripts/motion.mjs inspect-video <ref.mp4> --out work/study` 自动通过 FFmpeg `scdet` 识别镜头切点、输出 `source-sheet.png` 原片联版图并生成 `breakdown.template.json`；沿用原片时间码看片，不拿文案猜动作。
 2. **按对象记变化**：同一对象从入场到落定沿用同一名称，区分观察（observed）、推断（inferred）与未知（unknown），不虚构曲线或插件。
-3. **画在原片下方**：按原子分轨，一次连续动作是一块，同轨重复不合并、重叠时错层；块内不塞文字，同一原子全片同色。游标跟随原片，只有生效的块提亮。
-4. **交付可看拆解**：默认输出每段「原片＋同步分轨」动图/视频及可编辑动作数据；核对一次重叠、一次落定和一次切段。
+3. **画在原片下方**：按原子分轨，一次连续动作是一块，同轨重复不合并、重叠时错层；运行 `node scripts/motion.mjs breakdown work/study/breakdown.json --out work/study/breakdown.mp4` 交付「原片＋同步分轨」成片。
+4. **MCP 工具接入**：需要将 MotionFlux 作为原生 MCP 工具挂载到宿主客户端时，直接运行 `node scripts/motion.mjs mcp`（零额外依赖，详见 [references/mcp.md](references/mcp.md)）。
