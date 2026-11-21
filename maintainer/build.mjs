@@ -74,7 +74,7 @@ const stage = 'dist/skill';
 await mkdir(stage, { recursive: true });
 const releaseFiles = ['SKILL.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'VERSION.json', 'assets/catalog.md', 'assets/catalog-index.json',
   'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs', 'scripts/env.sh', 'scripts/env.ps1',
-  'references/install.md', 'references/physical-3d.md', 'references/three-license.txt',
+  'references/install.md', 'references/motion-md.md', 'references/physical-3d.md', 'references/three-license.txt',
   'atoms/README.md', 'atoms/index.mjs', 'atoms/draw.mjs', 'atoms/studio.md', 'atoms/studio.mjs',
   ...capabilities.flatMap(({ id }) => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
 for (const name of releaseFiles) {

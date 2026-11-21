@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // packages/cli/src/index.ts
-import { readFile, writeFile as writeFile5, mkdir as mkdir4, mkdtemp as mkdtemp3, rm as rm4, stat as stat4 } from "node:fs/promises";
+import { readFile as readFile2, writeFile as writeFile6, mkdir as mkdir5, mkdtemp as mkdtemp3, rm as rm4, stat as stat4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { dirname as dirname4, resolve as resolve6, join as join7, extname as extname3 } from "node:path";
+import { dirname as dirname5, resolve as resolve7, join as join8, extname as extname3 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -4321,15 +4321,1556 @@ async function renderStageVideo(entryHtmlPath, options) {
   }
 }
 
+// packages/stage/src/motion-md.ts
+import { cp, mkdir as mkdir3, readFile, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname4, join as join6, resolve as resolve5 } from "node:path";
+
+// packages/stage/src/runtime.ts
+var TRANSITION_KINDS = [
+  "cut",
+  "crossfade",
+  "wipe-left",
+  "wipe-up",
+  "zoom-through",
+  "slide-left"
+];
+
+// packages/stage/src/motion-md.ts
+var MOTION_LAYOUTS = [
+  "hero",
+  "split",
+  "metrics",
+  "feature-grid",
+  "terminal",
+  "studio-3d",
+  "closing"
+];
+var MotionMdValidationError = class extends Error {
+  code = "MOTION_MD_INVALID";
+  diagnostics;
+  constructor(diagnostics) {
+    super(`MOTION_MD_INVALID: ${diagnostics.map((d) => d.message).join(" | ")}`);
+    this.diagnostics = diagnostics;
+  }
+};
+function slugify(text4, fallback) {
+  const s = text4.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5_-]+/gu, "-").replace(/^-+|-+$/gu, "");
+  return s || fallback;
+}
+function parseDurationToFrames(raw, fps) {
+  const trimmed = raw.trim();
+  const secMatch = trimmed.match(/^([\d.]+)\s*s(?:ec)?$/iu);
+  if (secMatch) {
+    const sec = Number(secMatch[1]);
+    return Number.isFinite(sec) && sec > 0 ? Math.max(1, Math.round(sec * fps)) : null;
+  }
+  const frameMatch = trimmed.match(/^(\d+)\s*f(?:rames?)?$/iu);
+  if (frameMatch) {
+    const f = Number(frameMatch[1]);
+    return Number.isFinite(f) && f > 0 ? f : null;
+  }
+  const plain = Number(trimmed);
+  if (Number.isFinite(plain) && plain > 0) {
+    return Number.isInteger(plain) && plain >= 10 ? plain : Math.max(1, Math.round(plain * fps));
+  }
+  return null;
+}
+function parseCameraDirective(raw) {
+  const base2 = {
+    raw: raw?.trim() ?? "static",
+    mode: "orbit",
+    fromAzimuthDeg: -22,
+    toAzimuthDeg: 22,
+    elevationDeg: 20,
+    distance: 2.35,
+    zoomFrom: 0.97,
+    zoomTo: 1.02
+  };
+  if (!raw) return base2;
+  const text4 = raw.trim();
+  if (/^static$/iu.test(text4)) {
+    return { ...base2, mode: "static", fromAzimuthDeg: 0, toAzimuthDeg: 0, zoomFrom: 1, zoomTo: 1 };
+  }
+  if (/^push-in/iu.test(text4)) {
+    const nums = [...text4.matchAll(/(-?[\d.]+)/gu)].map((m) => Number(m[1]));
+    return {
+      ...base2,
+      mode: "push-in",
+      zoomFrom: nums[0] ?? 0.95,
+      zoomTo: nums[1] ?? 1.04,
+      distance: nums[2] ?? 2.15
+    };
+  }
+  if (/^pan/iu.test(text4)) {
+    const nums = [...text4.matchAll(/(-?[\d.]+)/gu)].map((m) => Number(m[1]));
+    return {
+      ...base2,
+      mode: "pan",
+      fromAzimuthDeg: nums[0] ?? -14,
+      toAzimuthDeg: nums[1] ?? 14
+    };
+  }
+  const arrow = text4.match(/(-?[\d.]+)\s*(?:deg)?\s*->\s*(-?[\d.]+)\s*(?:deg)?/iu);
+  const elev = text4.match(/elevation\s*[:=]\s*(-?[\d.]+)/iu);
+  const dist = text4.match(/distance\s*[:=]\s*([\d.]+)/iu);
+  return {
+    ...base2,
+    mode: "orbit",
+    fromAzimuthDeg: arrow ? Number(arrow[1]) : base2.fromAzimuthDeg,
+    toAzimuthDeg: arrow ? Number(arrow[2]) : base2.toAzimuthDeg,
+    elevationDeg: elev ? Number(elev[1]) : base2.elevationDeg,
+    distance: dist ? Number(dist[1]) : base2.distance
+  };
+}
+function estimateReadingUnits(texts) {
+  let cjk = 0;
+  let latinWords = 0;
+  for (const part of texts) {
+    if (!part) continue;
+    const cjkMatches = part.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/gu);
+    cjk += cjkMatches ? cjkMatches.length : 0;
+    const stripped = part.replace(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/gu, " ");
+    const words = stripped.trim().split(/\s+/u).filter(Boolean);
+    latinWords += words.length;
+  }
+  return cjk + latinWords * 2.2;
+}
+function parseMotionMd(markdown) {
+  const diagnostics = [];
+  const normalized = markdown.replace(/\r\n/gu, "\n");
+  let body = normalized;
+  const meta = {};
+  const fm = normalized.match(/^---\n([\s\S]*?)\n---\n?/u);
+  if (fm) {
+    body = normalized.slice(fm[0].length);
+    for (const line of fm[1].split("\n")) {
+      const m = line.match(/^\s*([a-zA-Z0-9_-]+)\s*:\s*(.+?)\s*$/u);
+      if (m) meta[m[1].toLowerCase()] = m[2].replace(/^['"]|['"]$/gu, "");
+    }
+  }
+  const lines = body.split("\n");
+  const blocks = [];
+  let current;
+  for (const line of lines) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/u);
+    if (h2) {
+      current = { heading: h2[1], lines: [] };
+      blocks.push(current);
+      continue;
+    }
+    if (!current) {
+      const topMeta = line.match(/^\s*-\s*([a-zA-Z0-9_-]+)\s*:\s*(.+?)\s*$/u);
+      if (topMeta) {
+        meta[topMeta[1].toLowerCase()] = topMeta[2].replace(/^['"]|['"]$/gu, "");
+      }
+      continue;
+    }
+    current.lines.push(line);
+  }
+  const title = meta.title || "MotionFlux Production";
+  const width = Math.round(Number(meta.width ?? 1920));
+  const height = Math.round(Number(meta.height ?? 1080));
+  const fps = Math.round(Number(meta.fps ?? 60));
+  const accent = /^#[0-9a-fA-F]{6}$/u.test(meta.accent ?? "") ? meta.accent : "#38bdf8";
+  const rawTheme = (meta.theme ?? "obsidian").toLowerCase();
+  const theme = rawTheme === "slate" || rawTheme === "ivory" || rawTheme === "obsidian" ? rawTheme : "obsidian";
+  const quality = meta.quality === "standard" ? "standard" : "cinema";
+  if (!(width >= 160 && width <= 3840 && height >= 160 && height <= 3840)) {
+    diagnostics.push({
+      severity: "error",
+      code: "CANVAS_DIMENSIONS",
+      message: `Stage width/height must be between 160 and 3840 px; got ${width}\xD7${height}.`
+    });
+  }
+  if (!(fps >= 1 && fps <= 120)) {
+    diagnostics.push({
+      severity: "error",
+      code: "INVALID_FPS",
+      message: `fps must be between 1 and 120; got ${fps}.`
+    });
+  }
+  if (blocks.length === 0) {
+    diagnostics.push({
+      severity: "error",
+      code: "NO_SCENES",
+      message: "Motion.md must contain at least one `## Scene <id>: <label>` section."
+    });
+  }
+  const audio = [];
+  if (meta.bgm) {
+    audio.push({
+      src: meta.bgm,
+      atFrame: 0,
+      gain: Number.isFinite(Number(meta.bgmgain)) ? Number(meta.bgmgain) : 0.25,
+      fadeInSec: 0.4,
+      fadeOutSec: 0.9,
+      loop: true
+    });
+  }
+  const seenIds = /* @__PURE__ */ new Set();
+  const scenes = [];
+  let cursorFrame = 0;
+  for (let idx = 0; idx < blocks.length; idx++) {
+    const block = blocks[idx];
+    const strippedHeading = block.heading.replace(/^scene\s+/iu, "").trim();
+    const colonIdx = strippedHeading.indexOf(":");
+    const rawId = colonIdx >= 0 ? strippedHeading.slice(0, colonIdx).trim() : strippedHeading;
+    const label = colonIdx >= 0 ? strippedHeading.slice(colonIdx + 1).trim() : strippedHeading;
+    const sceneId = slugify(rawId, `scene-${idx + 1}`);
+    if (seenIds.has(sceneId)) {
+      diagnostics.push({
+        severity: "error",
+        code: "DUPLICATE_SCENE_ID",
+        sceneId,
+        message: `Duplicate scene id "${sceneId}". Each ## Scene heading must have a unique id.`
+      });
+    }
+    seenIds.add(sceneId);
+    const props = /* @__PURE__ */ new Map();
+    let inFence = false;
+    const fenceLines = [];
+    const freeParagraphs = [];
+    for (const rawLine of block.lines) {
+      if (rawLine.trim().startsWith("```")) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) {
+        fenceLines.push(rawLine);
+        continue;
+      }
+      const kv = rawLine.match(/^\s*-\s*([a-zA-Z0-9_-]+)\s*:\s*(.+?)\s*$/u);
+      if (kv) {
+        const key = kv[1].toLowerCase();
+        const list = props.get(key) ?? [];
+        list.push(kv[2].trim());
+        props.set(key, list);
+      } else if (rawLine.trim().length > 0 && !rawLine.trim().startsWith(">")) {
+        freeParagraphs.push(rawLine.trim());
+      }
+    }
+    const getOne = (k) => props.get(k)?.[0];
+    const durRaw = getOne("duration") ?? getOne("frames") ?? "2.5s";
+    const durFrames = parseDurationToFrames(durRaw, fps);
+    if (!durFrames) {
+      diagnostics.push({
+        severity: "error",
+        code: "INVALID_DURATION",
+        sceneId,
+        message: `Scene "${sceneId}" has invalid duration "${durRaw}". Use e.g. 2.5s or 150f.`
+      });
+    }
+    const durationFrames = durFrames ?? Math.round(2.5 * fps);
+    const startFrame = cursorFrame;
+    const endFrame = startFrame + durationFrames;
+    cursorFrame = endFrame;
+    const rawLayout = (getOne("layout") ?? "hero").toLowerCase();
+    if (!MOTION_LAYOUTS.includes(rawLayout)) {
+      diagnostics.push({
+        severity: "error",
+        code: "INVALID_LAYOUT",
+        sceneId,
+        message: `Scene "${sceneId}" has unknown layout "${rawLayout}". Valid layouts: ${MOTION_LAYOUTS.join(", ")}.`
+      });
+    }
+    const layout2 = MOTION_LAYOUTS.includes(rawLayout) ? rawLayout : "hero";
+    const rawRig = getOne("rig")?.toLowerCase();
+    let rig;
+    if (rawRig !== void 0) {
+      if (rawRig === "watch" || rawRig === "hardware" || rawRig === "optics") {
+        rig = rawRig;
+      } else {
+        diagnostics.push({
+          severity: "error",
+          code: "INVALID_RIG",
+          sceneId,
+          message: `Scene "${sceneId}" has unknown 3D rig "${rawRig}". Valid rigs: watch, hardware, optics.`
+        });
+      }
+    } else if (layout2 === "studio-3d") {
+      rig = "watch";
+    }
+    let transitionIn;
+    const transRaw = getOne("transition");
+    if (transRaw && transRaw.toLowerCase() !== "cut" && transRaw.toLowerCase() !== "none") {
+      const parts = transRaw.trim().split(/\s+/u);
+      const kind = parts[0].toLowerCase();
+      const tFrames = parts[1] ? parseDurationToFrames(parts[1], fps) : Math.round(fps * 0.3);
+      if (!TRANSITION_KINDS.includes(kind)) {
+        diagnostics.push({
+          severity: "error",
+          code: "INVALID_TRANSITION",
+          sceneId,
+          message: `Scene "${sceneId}" has unknown transition "${kind}". Valid: ${TRANSITION_KINDS.join(", ")}.`
+        });
+      } else if (!tFrames || tFrames >= durationFrames) {
+        diagnostics.push({
+          severity: "error",
+          code: "TRANSITION_TOO_LONG",
+          sceneId,
+          message: `Scene "${sceneId}" transition duration (${tFrames ?? 0}f) must be shorter than scene duration (${durationFrames}f).`
+        });
+      } else if (idx > 0) {
+        transitionIn = { kind, durationFrames: tFrames };
+      }
+    }
+    const sfxRaw = props.get("sfx")?.join(", ");
+    if (sfxRaw && sfxRaw.toLowerCase() !== "none") {
+      const entries = sfxRaw.split(/,(?![^()]*\))/u).map((s) => s.trim()).filter(Boolean);
+      for (const item of entries) {
+        const m = item.match(/^([a-z-]+)(?:@([\d.]+[fs]?))?(?:\(([^)]+)\))?$/iu);
+        if (!m) {
+          diagnostics.push({
+            severity: "error",
+            code: "INVALID_SFX_SYNTAX",
+            sceneId,
+            message: `Scene "${sceneId}" could not parse sfx cue "${item}". Expected e.g. whoosh-soft@6f or sub-hit@0.2s.`
+          });
+          continue;
+        }
+        const kind = m[1].toLowerCase();
+        if (!SFX_KINDS.includes(kind)) {
+          diagnostics.push({
+            severity: "error",
+            code: "UNKNOWN_SFX",
+            sceneId,
+            message: `Scene "${sceneId}" references unknown sfx "${kind}". Valid: ${SFX_KINDS.join(", ")}.`
+          });
+          continue;
+        }
+        const offsetFrames = m[2] ? m[2] === "0" || m[2] === "0f" || m[2] === "0s" ? 0 : parseDurationToFrames(m[2], fps) ?? 0 : 0;
+        const cue = {
+          sfx: kind,
+          atFrame: startFrame + Math.max(0, offsetFrames)
+        };
+        if (m[3]) {
+          for (const kvPair of m[3].split(";").flatMap((p) => p.split(","))) {
+            const [k, v] = kvPair.split("=").map((x) => x.trim());
+            const num2 = Number(v);
+            if (k === "gain" && Number.isFinite(num2)) cue.gain = num2;
+            if (k === "pitch" && Number.isFinite(num2)) cue.pitch = num2;
+            if (k === "pan" && Number.isFinite(num2)) cue.pan = num2;
+          }
+        }
+        audio.push(cue);
+      }
+    }
+    const metrics = [];
+    for (const mLine of props.get("metrics") ?? []) {
+      for (const chunk of mLine.split(/;|,(?!\d{3}\b)/u).map((c) => c.trim()).filter(Boolean)) {
+        const [val, lbl] = chunk.split("|").map((s) => s.trim());
+        if (val) metrics.push({ value: val, label: lbl || "Metric" });
+      }
+    }
+    const items = [];
+    for (const bLine of [...props.get("item") ?? [], ...props.get("items") ?? [], ...props.get("bullets") ?? []]) {
+      for (const chunk of bLine.split(";").map((c) => c.trim()).filter(Boolean)) {
+        const [t, d] = chunk.split("|").map((s) => s.trim());
+        if (t) items.push({ title: t, detail: d || "" });
+      }
+    }
+    const eyebrow = getOne("eyebrow");
+    const headline = getOne("headline") ?? label;
+    const subhead = getOne("subhead") ?? (freeParagraphs.length > 0 ? freeParagraphs.join(" ") : void 0);
+    const badge = getOne("badge");
+    const code = fenceLines.length > 0 ? fenceLines.join("\n") : getOne("code");
+    const cameraRaw = getOne("camera");
+    const cameraSpec = parseCameraDirective(cameraRaw);
+    const notes = getOne("notes");
+    const durationSec = Math.round(durationFrames / fps * 1e3) / 1e3;
+    const units = estimateReadingUnits([
+      eyebrow,
+      headline,
+      subhead,
+      ...metrics.map((m) => `${m.value} ${m.label}`),
+      ...items.map((it) => `${it.title} ${it.detail}`)
+    ]);
+    const readingLoadPerSec = Math.round(units / Math.max(0.25, durationSec) * 10) / 10;
+    if (readingLoadPerSec > 24) {
+      diagnostics.push({
+        severity: "warning",
+        code: "COPY_TOO_DENSE",
+        sceneId,
+        message: `Scene "${sceneId}" packs ~${readingLoadPerSec} reading units/sec into ${durationSec}s. Consider trimming copy or extending duration to >= ${(units / 18).toFixed(1)}s.`
+      });
+    }
+    scenes.push({
+      id: sceneId,
+      label,
+      startFrame,
+      endFrame,
+      durationFrames,
+      durationSec,
+      layout: layout2,
+      ...rig ? { rig } : {},
+      ...transitionIn ? { transitionIn } : {},
+      ...cameraRaw ? { camera: cameraRaw } : {},
+      cameraSpec,
+      ...notes ? { notes } : {},
+      ...eyebrow ? { eyebrow } : {},
+      headline,
+      ...subhead ? { subhead } : {},
+      ...badge ? { badge } : {},
+      metrics,
+      items,
+      ...code ? { code } : {},
+      readingLoadPerSec
+    });
+  }
+  const errors = diagnostics.filter((d) => d.severity === "error");
+  if (errors.length > 0) {
+    throw new MotionMdValidationError(diagnostics);
+  }
+  const usesStudio3D = scenes.some((s) => s.layout === "studio-3d" || Boolean(s.rig));
+  return {
+    specVersion: "motion-md-1",
+    title,
+    width,
+    height,
+    fps,
+    durationFrames: cursorFrame,
+    durationSeconds: Math.round(cursorFrame / fps * 1e3) / 1e3,
+    accent,
+    theme,
+    quality,
+    usesStudio3D,
+    scenes,
+    audio,
+    diagnostics
+  };
+}
+function escapeHtml(text4) {
+  return text4.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/"/gu, "&quot;");
+}
+function renderSceneMarkup(scene) {
+  const id4 = escapeHtml(scene.id);
+  const eyebrow = scene.eyebrow ? `<div class="mf-eyebrow" data-mf-id="${id4}-eyebrow">${escapeHtml(scene.eyebrow)}</div>` : "";
+  const badge = scene.badge ? `<span class="mf-badge" data-mf-id="${id4}-badge">${escapeHtml(scene.badge)}</span>` : "";
+  const subhead = scene.subhead ? `<p class="mf-sub" data-mf-id="${id4}-sub">${escapeHtml(scene.subhead)}</p>` : "";
+  if (scene.layout === "studio-3d") {
+    const metricStrip = scene.metrics.length > 0 ? `<div class="mf-studio-metrics">${scene.metrics.slice(0, 3).map(
+      (m, i) => `<div class="mf-mini-stat" data-mf-id="${id4}-stat-${i}" data-mf-no-overlap>
+              <div class="mf-mini-val">${escapeHtml(m.value)}</div>
+              <div class="mf-mini-lbl">${escapeHtml(m.label)}</div>
+            </div>`
+    ).join("")}</div>` : "";
+    return `
+    <section class="mf-scene mf-layout-studio" data-mf-scene="${id4}">
+      <div class="mf-studio-hud" id="anim-${id4}">
+        ${badge}
+        ${eyebrow}
+        <h1 class="mf-h1-left" data-mf-id="${id4}-title">${escapeHtml(scene.headline)}</h1>
+        ${subhead}
+        ${metricStrip}
+      </div>
+    </section>`;
+  }
+  if (scene.layout === "metrics") {
+    const cards = (scene.metrics.length > 0 ? scene.metrics : [
+      { value: "60 FPS", label: "Deterministic Lock" },
+      { value: "0 Errors", label: "DOM Geometry Audit" },
+      { value: "CRF 15", label: "Cinema Master" }
+    ]).slice(0, 4).map(
+      (m, i) => `<div class="mf-metric-card" data-mf-stagger="${i}" data-mf-id="${id4}-metric-${i}" data-mf-no-overlap>
+          <div class="mf-metric-val">${escapeHtml(m.value)}</div>
+          <div class="mf-metric-lbl">${escapeHtml(m.label)}</div>
+        </div>`
+    ).join("");
+    return `
+    <section class="mf-scene mf-layout-metrics" data-mf-scene="${id4}">
+      <div class="mf-header-stack" id="anim-${id4}">
+        ${eyebrow}
+        <h2 class="mf-h2" data-mf-id="${id4}-title">${escapeHtml(scene.headline)}</h2>
+        ${subhead}
+      </div>
+      <div class="mf-metrics-grid">${cards}</div>
+    </section>`;
+  }
+  if (scene.layout === "feature-grid") {
+    const cards = (scene.items.length > 0 ? scene.items : [
+      { title: "HTML / CSS / SVG Stage", detail: "Modern typography, flexbox/grid, and deterministic seeking." },
+      { title: "Physical 3D Studio", detail: "Involute CAD mechanics, brushed metals, and AR sapphire optics." },
+      { title: "Automated Visual Audit", detail: "WCAG contrast, clipping, overflow, and collision checks." }
+    ]).slice(0, 4).map(
+      (it, i) => `<div class="mf-feature-card" data-mf-stagger="${i}" data-mf-id="${id4}-feat-${i}" data-mf-no-overlap>
+          <div class="mf-feat-index">0${i + 1}</div>
+          <h3 class="mf-feat-title">${escapeHtml(it.title)}</h3>
+          ${it.detail ? `<p class="mf-feat-body">${escapeHtml(it.detail)}</p>` : ""}
+        </div>`
+    ).join("");
+    return `
+    <section class="mf-scene mf-layout-features" data-mf-scene="${id4}">
+      <div class="mf-header-stack" id="anim-${id4}">
+        ${eyebrow}
+        <h2 class="mf-h2" data-mf-id="${id4}-title">${escapeHtml(scene.headline)}</h2>
+      </div>
+      <div class="mf-features-grid">${cards}</div>
+    </section>`;
+  }
+  if (scene.layout === "terminal" || scene.layout === "split") {
+    const codeText = scene.code ?? `node scripts/motion.mjs doctor
+node scripts/motion.mjs audit index.html --contact sheet.png
+node scripts/motion.mjs render index.html --out master.mp4 --quality cinema`;
+    const listHtml = scene.items.length > 0 ? `<div class="mf-bullet-stack">${scene.items.slice(0, 3).map(
+      (it, i) => `<div class="mf-bullet-row" data-mf-stagger="${i}" data-mf-id="${id4}-row-${i}" data-mf-no-overlap>
+              <span class="mf-dot"></span>
+              <div><strong>${escapeHtml(it.title)}</strong>${it.detail ? ` \u2014 ${escapeHtml(it.detail)}` : ""}</div>
+            </div>`
+    ).join("")}</div>` : "";
+    return `
+    <section class="mf-scene mf-layout-split" data-mf-scene="${id4}">
+      <div class="mf-split-copy" id="anim-${id4}">
+        ${badge}
+        ${eyebrow}
+        <h2 class="mf-h2-left" data-mf-id="${id4}-title">${escapeHtml(scene.headline)}</h2>
+        ${subhead}
+        ${listHtml}
+      </div>
+      <div class="mf-window-card" data-mf-stagger="1" data-mf-id="${id4}-window" data-mf-no-overlap>
+        <div class="mf-win-bar">
+          <span class="mf-win-dot r"></span><span class="mf-win-dot y"></span><span class="mf-win-dot g"></span>
+          <span class="mf-win-title">motionflux \u2014 stage-1</span>
+        </div>
+        <pre class="mf-code"><code>${escapeHtml(codeText)}</code></pre>
+      </div>
+    </section>`;
+  }
+  return `
+    <section class="mf-scene mf-layout-hero" data-mf-scene="${id4}">
+      <div class="mf-hero-stack" id="anim-${id4}">
+        ${badge}
+        ${eyebrow}
+        <h1 class="mf-h1" data-mf-id="${id4}-title">${escapeHtml(scene.headline)}</h1>
+        ${subhead}
+      </div>
+    </section>`;
+}
+function compileMotionMdToHtml(doc, options = {}) {
+  const runtimeImport = options.runtimeImportPath ?? "/__motionflux/stage/runtime.mjs";
+  const studioImport = options.studioImportPath ?? "/__motionflux/atoms/studio.mjs";
+  const palette = doc.theme === "ivory" ? {
+    bgTop: "#f8fafc",
+    bgBottom: "#e2e8f0",
+    fg: "#0f172a",
+    muted: "#334155",
+    cardBg: "rgba(255, 255, 255, 0.84)",
+    cardBorder: "rgba(15, 23, 42, 0.12)",
+    gridLine: "rgba(15, 23, 42, 0.05)",
+    codeBg: "#0f172a",
+    codeFg: "#e2e8f0"
+  } : doc.theme === "slate" ? {
+    bgTop: "#172033",
+    bgBottom: "#0b101b",
+    fg: "#f8fafc",
+    muted: "#cbd5e1",
+    cardBg: "rgba(15, 23, 42, 0.72)",
+    cardBorder: "rgba(148, 163, 184, 0.2)",
+    gridLine: "rgba(255, 255, 255, 0.04)",
+    codeBg: "rgba(9, 13, 22, 0.92)",
+    codeFg: "#e2e8f0"
+  } : {
+    bgTop: "#121620",
+    bgBottom: "#06080c",
+    fg: "#f8fafc",
+    muted: "#cbd5e1",
+    cardBg: "rgba(15, 19, 28, 0.76)",
+    cardBorder: "rgba(255, 255, 255, 0.14)",
+    gridLine: "rgba(255, 255, 255, 0.035)",
+    codeBg: "rgba(8, 10, 15, 0.92)",
+    codeFg: "#e2e8f0"
+  };
+  const stageScenesMeta = doc.scenes.map((s) => ({
+    id: s.id,
+    ...s.label !== void 0 ? { label: s.label } : {},
+    startFrame: s.startFrame,
+    endFrame: s.endFrame,
+    ...s.transitionIn ? { transitionIn: s.transitionIn } : {},
+    ...s.camera ? { camera: s.camera } : {}
+  }));
+  const sceneDriverData = doc.scenes.map((s) => ({
+    id: s.id,
+    layout: s.layout,
+    rig: s.rig ?? null,
+    cameraSpec: s.cameraSpec
+  }));
+  const studioScriptBlock = doc.usesStudio3D ? `
+    import {
+      THREE,
+      RoundedBoxGeometry,
+      createStudioRig,
+      createStudioBackdrop,
+      createInvoluteGearGeometry,
+      createSpiralSpringGeometry,
+      createKnurledCylinderGeometry,
+      createIrisBladeGeometry,
+      createOpticalLensGeometry,
+    } from '${studioImport}';
+
+    const studioCanvas = document.getElementById('mf-studio-canvas');
+    const studio = createStudioRig({
+      canvas: studioCanvas,
+      width: ${doc.width},
+      height: ${doc.height},
+      shadowBounds: 2.8,
+      seed: 42,
+      accentColor: parseInt('${doc.accent.slice(1)}', 16),
+    });
+    studio.bloomPass.strength = 0.18;
+    studio.bloomPass.threshold = 0.94;
+    const backdrop = createStudioBackdrop({ y: -0.68, radius: 9.5 });
+    studio.scene.add(backdrop.mesh);
+
+    const rigGroups = {
+      watch: new THREE.Group(),
+      hardware: new THREE.Group(),
+      optics: new THREE.Group(),
+    };
+    studio.scene.add(rigGroups.watch, rigGroups.hardware, rigGroups.optics);
+
+    // 1. Watch Calibre Rig (exact involute gear mesh d = R1 + R2, ruby jewels, titanium bridge & hairspring)
+    const basePlate = new THREE.Mesh(new RoundedBoxGeometry(1.58, 0.08, 1.24, 4, 0.025), studio.materials.obsidian);
+    basePlate.position.y = -0.12;
+    basePlate.receiveShadow = true;
+    const mainWheel = new THREE.Mesh(
+      createInvoluteGearGeometry({ teeth: 60, pitchRadius: 0.44, spokes: 5, thickness: 0.045 }),
+      studio.materials.roseGold,
+    );
+    mainWheel.position.set(-0.14, 0, 0);
+    mainWheel.castShadow = true;
+    const pinion = new THREE.Mesh(
+      createInvoluteGearGeometry({ teeth: 30, pitchRadius: 0.22, spokes: 0, thickness: 0.058 }),
+      studio.materials.brushedSteel,
+    );
+    pinion.position.set(-0.14 + 0.44 + 0.22, 0.008, 0);
+    pinion.castShadow = true;
+    const jewelMain = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.068, 32), studio.materials.rubyJewel);
+    jewelMain.position.set(-0.14, 0.036, 0);
+    const jewelPin = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.068, 32), studio.materials.rubyJewel);
+    jewelPin.position.set(0.52, 0.038, 0);
+    const screwL = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.095, 24), studio.materials.bluedSteel);
+    screwL.position.set(-0.38, 0.06, -0.18);
+    const screwR = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.095, 24), studio.materials.bluedSteel);
+    screwR.position.set(0.62, 0.06, 0.16);
+    const hairspring = new THREE.Mesh(
+      createSpiralSpringGeometry({ turns: 5.5, innerRadius: 0.045, outerRadius: 0.19, height: 0.018 }),
+      studio.materials.bluedSteel,
+    );
+    hairspring.position.set(-0.46, 0.055, 0.28);
+    const bridge = new THREE.Mesh(new RoundedBoxGeometry(1.12, 0.032, 0.19, 3, 0.01), studio.materials.titanium);
+    bridge.position.set(0.12, 0.078, -0.01);
+    bridge.rotation.y = -0.32;
+    bridge.castShadow = true;
+    rigGroups.watch.add(basePlate, mainWheel, pinion, jewelMain, jewelPin, screwL, screwR, hairspring, bridge);
+    rigGroups.watch.position.set(0.56, -0.02, 0);
+    rigGroups.watch.rotation.set(0.28, -0.22, 0.04);
+
+    // 2. CNC Industrial Hardware Rig (anodized deck, 72-flute knurled encoder & damped keycaps)
+    const deck = new THREE.Mesh(new RoundedBoxGeometry(1.56, 0.16, 1.12, 4, 0.04), studio.materials.obsidian);
+    deck.position.y = -0.16;
+    deck.castShadow = true;
+    deck.receiveShadow = true;
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.34, 0.055, 48), studio.materials.roseGold);
+    collar.position.set(0.28, -0.05, -0.12);
+    const encoder = new THREE.Mesh(
+      createKnurledCylinderGeometry({ radius: 0.27, height: 0.25, grooves: 72 }),
+      studio.materials.titanium,
+    );
+    encoder.position.set(0.28, 0.08, -0.12);
+    encoder.castShadow = true;
+    const keycaps = [0, 1, 2].map((k) => {
+      const cap = new THREE.Mesh(
+        new RoundedBoxGeometry(0.29, 0.11, 0.29, 4, 0.028),
+        k === 0 ? studio.materials.vermilionLacquer : studio.materials.brushedSteel,
+      );
+      cap.position.set(-0.44 + k * 0.35, -0.03, 0.22);
+      cap.castShadow = true;
+      rigGroups.hardware.add(cap);
+      return cap;
+    });
+    rigGroups.hardware.add(deck, collar, encoder);
+    rigGroups.hardware.position.set(0.56, -0.02, 0);
+    rigGroups.hardware.rotation.set(0.24, -0.2, 0);
+
+    // 3. Hollow Machined Cinema Optical Iris & AR Meniscus Lens Rig
+    const barrelShape = new THREE.Shape();
+    const outerTeeth = 72;
+    for (let i = 0; i <= outerTeeth * 2; i++) {
+      const a = (i / (outerTeeth * 2)) * Math.PI * 2;
+      const r = i % 2 === 0 ? 0.62 : 0.595;
+      if (i === 0) barrelShape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else barrelShape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    const boreHole = new THREE.Path();
+    boreHole.absarc(0, 0, 0.43, 0, Math.PI * 2, true);
+    barrelShape.holes.push(boreHole);
+    const barrelGeo = new THREE.ExtrudeGeometry(barrelShape, {
+      depth: 0.22,
+      bevelEnabled: true,
+      bevelThickness: 0.018,
+      bevelSize: 0.014,
+      bevelSegments: 3,
+      curveSegments: 48,
+    });
+    barrelGeo.center();
+    const barrel = new THREE.Mesh(barrelGeo, studio.materials.obsidian);
+    const retainingRing = new THREE.Mesh(new THREE.TorusGeometry(0.445, 0.018, 24, 96), studio.materials.roseGold);
+    retainingRing.position.z = 0.115;
+    const rearMountRing = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.022, 20, 72), studio.materials.brass);
+    rearMountRing.position.z = -0.09;
+    const sensorChamber = new THREE.Mesh(new THREE.CircleGeometry(0.42, 64), studio.materials.titanium);
+    sensorChamber.position.z = -0.11;
+    const irisGroup = new THREE.Group();
+    irisGroup.position.z = 0.02;
+    const bladeCount = 11;
+    const irisBlades = Array.from({ length: bladeCount }, (_, b) => {
+      const pivot = new THREE.Group();
+      const angle = (b / bladeCount) * Math.PI * 2;
+      pivot.position.set(Math.cos(angle) * 0.39, Math.sin(angle) * 0.39, b * 0.0022);
+      pivot.rotation.z = angle + 0.52;
+      const leaf = new THREE.Mesh(
+        createIrisBladeGeometry({ innerRadius: 0.13, outerRadius: 0.39, thickness: 0.008 }),
+        b % 2 === 0 ? studio.materials.brushedSteel : studio.materials.titanium,
+      );
+      leaf.position.set(-0.19, 0, 0);
+      pivot.add(leaf);
+      irisGroup.add(pivot);
+      return { pivot, baseAngle: angle };
+    });
+    const frontLens = new THREE.Mesh(
+      createOpticalLensGeometry({ radius: 0.43, edgeThickness: 0.05, frontSag: 0.09, backSag: -0.025 }),
+      studio.materials.arGlass,
+    );
+    frontLens.rotation.x = Math.PI / 2;
+    frontLens.position.z = 0.12;
+    rigGroups.optics.add(barrel, retainingRing, rearMountRing, sensorChamber, irisGroup, frontLens);
+    rigGroups.optics.position.set(0.58, 0.04, 0);
+    rigGroups.optics.rotation.set(-0.44, -0.26, 0.06);
+
+    await studio.renderer.compileAsync(studio.scene, studio.camera);
+
+    function updateStudio3D(frame, localProgress, spec, rigName) {
+      const activeRig = rigName || 'watch';
+      rigGroups.watch.visible = activeRig === 'watch';
+      rigGroups.hardware.visible = activeRig === 'hardware';
+      rigGroups.optics.visible = activeRig === 'optics';
+
+      if (activeRig === 'watch') {
+        const omega = frame * 0.014;
+        mainWheel.rotation.y = omega;
+        pinion.rotation.y = -omega * (60 / 30) + Math.PI / 30;
+        const pulse = 1 + Math.sin(frame * 0.22) * 0.035;
+        hairspring.scale.set(pulse, 1, pulse);
+      } else if (activeRig === 'hardware') {
+        encoder.rotation.y = frame * 0.025;
+        keycaps.forEach((cap, idx) => {
+          const trigger = Math.max(0, localProgress * 3 - idx * 0.55);
+          const press = trigger > 0 && trigger < 1 ? Math.sin(trigger * Math.PI) * 0.055 : 0;
+          cap.position.y = -0.03 - press;
+        });
+      } else if (activeRig === 'optics') {
+        const closeAmt = Math.sin(localProgress * Math.PI) * 0.34;
+        irisBlades.forEach(({ pivot, baseAngle }) => {
+          pivot.rotation.z = baseAngle + 0.42 + closeAmt;
+        });
+        barrel.rotation.z = frame * 0.006;
+      }
+
+      const azDeg = lerp(spec.fromAzimuthDeg, spec.toAzimuthDeg, easeInOutCubic(localProgress));
+      const az = (azDeg * Math.PI) / 180;
+      const el = ((spec.elevationDeg || 22) * Math.PI) / 180;
+      const dist = Math.max(2.6, spec.distance || 2.75);
+      studio.camera.position.set(
+        Math.sin(az) * Math.cos(el) * dist,
+        Math.sin(el) * dist,
+        Math.cos(az) * Math.cos(el) * dist,
+      );
+      studio.camera.lookAt(0, -0.02, 0);
+      studio.render({ frame });
+    }
+    ` : "";
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(doc.title)}</title>
+  <style>
+    :root {
+      --mf-accent: ${doc.accent};
+      --mf-fg: ${palette.fg};
+      --mf-muted: ${palette.muted};
+      --mf-card-bg: ${palette.cardBg};
+      --mf-card-border: ${palette.cardBorder};
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #stage {
+      background: radial-gradient(125% 105% at 55% 10%, ${palette.bgTop} 0%, ${palette.bgBottom} 100%);
+      color: var(--mf-fg);
+    }
+    .mf-grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(${palette.gridLine} 1px, transparent 1px),
+        linear-gradient(90deg, ${palette.gridLine} 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(circle at 50% 50%, black 35%, transparent 88%);
+      pointer-events: none;
+    }
+    #mf-studio-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+    }
+    .mf-scene {
+      position: absolute;
+      inset: 0;
+      padding: 6.5% 7.5%;
+      display: flex;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .mf-scene:not(.mf-layout-studio) {
+      background: radial-gradient(125% 105% at 55% 10%, ${palette.bgTop} 0%, ${palette.bgBottom} 100%);
+    }
+    .mf-scene[data-mf-active="true"] {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mf-eyebrow {
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--mf-accent);
+    }
+    .mf-badge {
+      display: inline-flex;
+      align-self: flex-start;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      background: var(--mf-card-bg);
+      border: 1px solid var(--mf-card-border);
+      color: var(--mf-fg);
+    }
+    .mf-h1 {
+      margin: 0;
+      font-size: clamp(54px, 4.8vw, 88px);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      font-weight: 750;
+      text-align: center;
+      max-width: 1180px;
+    }
+    .mf-h1-left {
+      margin: 0;
+      font-size: clamp(46px, 3.8vw, 70px);
+      line-height: 1.1;
+      letter-spacing: -0.025em;
+      font-weight: 750;
+    }
+    .mf-h2 {
+      margin: 0;
+      font-size: clamp(42px, 3.6vw, 64px);
+      line-height: 1.12;
+      letter-spacing: -0.025em;
+      font-weight: 720;
+      text-align: center;
+    }
+    .mf-h2-left {
+      margin: 0;
+      font-size: clamp(38px, 3.2vw, 56px);
+      line-height: 1.14;
+      letter-spacing: -0.02em;
+      font-weight: 720;
+    }
+    .mf-sub {
+      margin: 0;
+      font-size: 25px;
+      line-height: 1.48;
+      color: var(--mf-muted);
+      max-width: 760px;
+    }
+    .mf-layout-hero {
+      align-items: center;
+      justify-content: center;
+    }
+    .mf-hero-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+      text-align: center;
+    }
+    .mf-hero-stack .mf-badge { align-self: center; }
+    .mf-layout-studio {
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .mf-studio-hud {
+      width: 46%;
+      padding: 36px 40px;
+      border-radius: 24px;
+      background: var(--mf-card-bg);
+      border: 1px solid var(--mf-card-border);
+      backdrop-filter: blur(18px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .mf-studio-metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .mf-mini-stat {
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--mf-card-border);
+    }
+    .mf-mini-val {
+      font-size: 24px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .mf-mini-lbl {
+      font-size: 15px;
+      color: var(--mf-muted);
+      margin-top: 4px;
+    }
+    .mf-layout-metrics, .mf-layout-features {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 44px;
+    }
+    .mf-header-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      text-align: center;
+    }
+    .mf-metrics-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+    }
+    .mf-metric-card {
+      padding: 36px 32px;
+      border-radius: 22px;
+      background: var(--mf-card-bg);
+      border: 1px solid var(--mf-card-border);
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mf-metric-val {
+      font-size: 54px;
+      font-weight: 760;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+      color: var(--mf-fg);
+    }
+    .mf-metric-lbl {
+      font-size: 21px;
+      color: var(--mf-muted);
+      font-weight: 500;
+    }
+    .mf-features-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+    .mf-feature-card {
+      padding: 32px;
+      border-radius: 22px;
+      background: var(--mf-card-bg);
+      border: 1px solid var(--mf-card-border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mf-feat-index {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--mf-accent);
+    }
+    .mf-feat-title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 680;
+    }
+    .mf-feat-body {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.48;
+      color: var(--mf-muted);
+    }
+    .mf-layout-split {
+      align-items: center;
+      justify-content: space-between;
+      gap: 48px;
+    }
+    .mf-split-copy {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .mf-bullet-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .mf-bullet-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      font-size: 20px;
+      line-height: 1.45;
+      color: var(--mf-muted);
+    }
+    .mf-bullet-row strong { color: var(--mf-fg); }
+    .mf-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--mf-accent);
+      flex: none;
+    }
+    .mf-window-card {
+      flex: 1.05;
+      border-radius: 20px;
+      background: ${palette.codeBg};
+      border: 1px solid var(--mf-card-border);
+      box-shadow: 0 28px 72px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .mf-win-bar {
+      height: 44px;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .mf-win-dot { width: 11px; height: 11px; border-radius: 999px; }
+    .mf-win-dot.r { background: #ef4444; }
+    .mf-win-dot.y { background: #f59e0b; }
+    .mf-win-dot.g { background: #10b981; }
+    .mf-win-title {
+      margin-left: 10px;
+      font: 500 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #94a3b8;
+    }
+    .mf-code {
+      margin: 0;
+      padding: 28px;
+      font: 500 19px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: ${palette.codeFg};
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage" data-mf-stage>
+    <div class="mf-grid-bg" data-mf-allow-bleed data-mf-role="background"></div>
+    ${doc.usesStudio3D ? `<canvas id="mf-studio-canvas" width="${doc.width}" height="${doc.height}" data-mf-allow-bleed></canvas>` : ""}
+    ${doc.scenes.map(renderSceneMarkup).join("\n")}
+  </div>
+
+  <script type="module">
+    import { createStage, clamp, lerp, easeInOutCubic, spring } from '${runtimeImport}';
+    ${studioScriptBlock}
+
+    const sceneDrivers = ${JSON.stringify(sceneDriverData)};
+    const driverMap = new Map(sceneDrivers.map((d) => [d.id, d]));
+
+    createStage({
+      width: ${doc.width},
+      height: ${doc.height},
+      fps: ${doc.fps},
+      durationFrames: ${doc.durationFrames},
+      scenes: ${JSON.stringify(stageScenesMeta, null, 2)},
+      audio: ${JSON.stringify(doc.audio, null, 2)},
+      onFrame({ frame, scene, localTime, localProgress, stage }) {
+        if (!scene) return;
+        const driver = driverMap.get(scene.id);
+        const headerEl = document.getElementById('anim-' + scene.id);
+        if (headerEl) {
+          const s = spring(localTime, { stiffness: 175, damping: 19 });
+          headerEl.style.opacity = String(clamp(s * 1.35));
+          headerEl.style.transform = \`translate3d(0, \${lerp(34, 0, s).toFixed(2)}px, 0)\`;
+        }
+        const sceneEl = stage.querySelector(\`[data-mf-scene="\${scene.id}"]\`);
+        if (sceneEl) {
+          const cards = sceneEl.querySelectorAll('[data-mf-stagger]');
+          cards.forEach((card) => {
+            const idx = Number(card.getAttribute('data-mf-stagger') || '0');
+            const cs = spring(Math.max(0, localTime - 0.1 - idx * 0.08), { stiffness: 185, damping: 20 });
+            card.style.opacity = String(clamp(cs * 1.4));
+            card.style.transform = \`translate3d(0, \${lerp(36, 0, cs).toFixed(2)}px, 0) scale(\${lerp(0.96, 1, cs).toFixed(4)})\`;
+          });
+        }
+        ${doc.usesStudio3D ? `if (driver && (driver.layout === 'studio-3d' || driver.rig)) {
+          studioCanvas.style.opacity = '1';
+          updateStudio3D(frame, localProgress, driver.cameraSpec, driver.rig);
+        } else if (!stage.querySelector('.mf-layout-studio[data-mf-active="true"]')) {
+          studioCanvas.style.opacity = '0';
+        }` : ""}
+      },
+    });
+  </script>
+</body>
+</html>
+`;
+}
+async function compileMotionMdProject(mdPath, options) {
+  const absMd = resolve5(mdPath);
+  const raw = await readFile(absMd, "utf8");
+  const doc = parseMotionMd(raw);
+  const outDir = resolve5(options.outDir);
+  await mkdir3(outDir, { recursive: true });
+  let runtimeImportPath = "/__motionflux/stage/runtime.mjs";
+  if (options.runtimeSourcePath) {
+    await cp(options.runtimeSourcePath, join6(outDir, "runtime.mjs"));
+    runtimeImportPath = "./runtime.mjs";
+  }
+  const targetMd = join6(outDir, "Motion.md");
+  if (resolve5(absMd) !== resolve5(targetMd)) {
+    await writeFile4(targetMd, raw);
+  }
+  const planPath = join6(outDir, "stage.plan.json");
+  await writeFile4(planPath, `${JSON.stringify(doc, null, 2)}
+`);
+  const html = compileMotionMdToHtml(doc, { runtimeImportPath });
+  const entry = join6(outDir, "index.html");
+  await writeFile4(entry, html);
+  return {
+    directory: outDir,
+    entry,
+    motionMd: targetMd,
+    planPath,
+    document: doc
+  };
+}
+async function saveMotionMdPlan(mdPath, outPath) {
+  const raw = await readFile(resolve5(mdPath), "utf8");
+  const doc = parseMotionMd(raw);
+  if (outPath) {
+    const absOut = resolve5(outPath);
+    await mkdir3(dirname4(absOut), { recursive: true });
+    await writeFile4(absOut, `${JSON.stringify(doc, null, 2)}
+`);
+    return { ...doc, planPath: absOut };
+  }
+  return doc;
+}
+
 // packages/stage/src/scaffold.ts
-import { cp, mkdir as mkdir3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
-import { join as join6, resolve as resolve5 } from "node:path";
+import { cp as cp2, mkdir as mkdir4, stat as stat3, writeFile as writeFile5 } from "node:fs/promises";
+import { join as join7, resolve as resolve6 } from "node:path";
+var STAGE_TEMPLATES = [
+  {
+    id: "default",
+    title: "Minimal Stage Starter",
+    defaultFps: 30,
+    defaultDurationFrames: 150,
+    usesStudio3D: false,
+    summary: "Two-scene HTML/CSS typography & glass card starter with spring motion and procedural SFX."
+  },
+  {
+    id: "saas-launch",
+    title: "SaaS Product Launch Trailer",
+    defaultFps: 60,
+    defaultDurationFrames: 240,
+    usesStudio3D: false,
+    summary: "Three-scene SaaS launch trailer with glass UI window mockup, wipe/zoom transitions, KPI bento, and synced SFX."
+  },
+  {
+    id: "hardware-3d",
+    title: "Physical 3D Hardware & Horology Reveal",
+    defaultFps: 60,
+    defaultDurationFrames: 240,
+    usesStudio3D: true,
+    summary: "WebGL2/Three.js PBR studio showcase (atoms/studio.mjs) with meshed involute gears, optical iris rig, and Swiss HUD."
+  },
+  {
+    id: "data-story",
+    title: "Executive Data Narrative & Telemetry",
+    defaultFps: 60,
+    defaultDurationFrames: 240,
+    usesStudio3D: false,
+    summary: "High-contrast data storytelling with animated SVG telemetry curve, tabular counters, and slide/crossfade transitions."
+  }
+];
+function listStageTemplates() {
+  return STAGE_TEMPLATES;
+}
+function buildMotionMdForTemplate(template, title, width, height, fps, durationFrames) {
+  if (template === "hardware-3d") {
+    const f1 = Math.max(20, Math.round(durationFrames * 0.55));
+    const f2 = Math.max(20, durationFrames - f1);
+    const trans = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.3)));
+    return `---
+title: ${title}
+width: ${width}
+height: ${height}
+fps: ${fps}
+accent: #38bdf8
+theme: obsidian
+quality: cinema
+---
+
+## Scene calibre: Precision Calibre
+- duration: ${f1}f
+- layout: studio-3d
+- rig: watch
+- camera: orbit(-16deg -> 16deg, elevation: 24deg, distance: 2.75)
+- sfx: sub-hit@0f, tick@${Math.min(f1 - 1, Math.round(f1 * 0.25))}f, tick@${Math.min(f1 - 1, Math.round(f1 * 0.5))}f, tick@${Math.min(f1 - 1, Math.round(f1 * 0.75))}f
+- badge: CALIBRE MF-01
+- eyebrow: GRADE-5 TITANIUM \xB7 20\xB0 INVOLUTE GEARING
+- headline: ${title}
+- subhead: Physically accurate metal anisotropy, ruby bearings, and zero-varnish PBR lighting.
+- metrics: 28,800 vph | Beat Lock, 0.00 px | Clipping
+
+## Scene optics: Sapphire & Aperture
+- duration: ${f2}f
+- layout: studio-3d
+- rig: optics
+- transition: crossfade ${trans}f
+- camera: orbit(-14deg -> 14deg, elevation: 18deg, distance: 2.7)
+- sfx: shutter@0f, whoosh-soft@4f, chime@${Math.max(1, Math.round(f2 * 0.35))}f
+- badge: AR SAPPHIRE OPTICS
+- eyebrow: 11-BLADE CINEMA IRIS \xB7 CRF 15 MASTER
+- headline: Engineered to the Sub-Millimeter
+- subhead: Multi-coated meniscus glass paired with deterministic 60fps optical post-processing.
+- metrics: 60 FPS | Master Lock, CRF 15 | Slow Preset
+`;
+  }
+  if (template === "saas-launch") {
+    const f1 = Math.max(15, Math.round(durationFrames * 0.34));
+    const f2 = Math.max(15, Math.round(durationFrames * 0.36));
+    const f3 = Math.max(15, durationFrames - f1 - f2);
+    const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
+    const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+    return `---
+title: ${title}
+width: ${width}
+height: ${height}
+fps: ${fps}
+accent: #60a5fa
+theme: slate
+quality: cinema
+---
+
+## Scene hook: Launch Hook
+- duration: ${f1}f
+- layout: hero
+- sfx: sub-hit@0f, whoosh-soft@4f, pop-soft@${Math.min(f1 - 1, Math.round(f1 * 0.25))}f
+- badge: RELEASE 2.0
+- eyebrow: DETERMINISTIC PRODUCT VIDEO
+- headline: ${title}
+- subhead: Ship agency-grade product trailers with real HTML/CSS layout, visual audit, and zero API keys.
+
+## Scene workflow: Live Workflow
+- duration: ${f2}f
+- layout: split
+- transition: wipe-left ${t2}f
+- sfx: whoosh@0f, click@${Math.min(f2 - 1, Math.round(f2 * 0.22))}f, pop-soft@${Math.min(f2 - 1, Math.round(f2 * 0.4))}f
+- eyebrow: AUTOMATED VISUAL QA
+- headline: Zero Clipping. Zero Overlap.
+- item: Frame-Exact Seeking | CSS, WAAPI, SVG, video, and WebGL locked to exact frame numbers.
+- item: WCAG Contrast Audit | Catches unreadable text, overflow, and collisions before encoding.
+- code: node scripts/motion.mjs render Motion.md --out launch.mp4 --quality cinema --audit
+
+## Scene impact: Proven Metrics
+- duration: ${f3}f
+- layout: metrics
+- transition: zoom-through ${t3}f
+- sfx: riser@0f, sub-hit@${Math.min(f3 - 1, Math.round(f3 * 0.2))}f, chime@${Math.min(f3 - 1, Math.round(f3 * 0.35))}f
+- eyebrow: PRODUCTION BENCHMARK
+- headline: Built for High-Velocity Teams
+- metrics: 60 FPS | Smooth Master, 100% | Local & Offline, 0 Errors | Audited DOM
+`;
+  }
+  if (template === "data-story") {
+    const f1 = Math.max(15, Math.round(durationFrames * 0.32));
+    const f2 = Math.max(15, Math.round(durationFrames * 0.38));
+    const f3 = Math.max(15, durationFrames - f1 - f2);
+    const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
+    const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+    return `---
+title: ${title}
+width: ${width}
+height: ${height}
+fps: ${fps}
+accent: #34d399
+theme: obsidian
+quality: cinema
+---
+
+## Scene thesis: Executive Signal
+- duration: ${f1}f
+- layout: hero
+- sfx: sub-hit@0f, pop-soft@10f
+- eyebrow: Q4 TELEMETRY BRIEF
+- headline: ${title}
+- subhead: Latency dropped 64% while throughput scaled across every regional edge cluster.
+
+## Scene curve: Telemetry Breakdown
+- duration: ${f2}f
+- layout: metrics
+- transition: slide-left ${t2}f
+- sfx: whoosh-soft@0f, tick@${Math.min(f2 - 1, Math.round(f2 * 0.2))}f, tick@${Math.min(f2 - 1, Math.round(f2 * 0.4))}f
+- eyebrow: KEY INDICATORS
+- headline: Compounding Efficiency Gains
+- metrics: -64% | P99 Latency, 4.8x | Render Throughput, 99.99% | Frame Fidelity
+
+## Scene summary: Strategic Takeaway
+- duration: ${f3}f
+- layout: feature-grid
+- transition: crossfade ${t3}f
+- sfx: whoosh@0f, chime@${Math.min(f3 - 1, Math.round(f3 * 0.3))}f
+- eyebrow: ARCHITECTURE DRIVERS
+- headline: Three Pillars Behind the Curve
+- item: Deterministic Timeline | Eliminates flaky wall-clock jitter.
+- item: Pre-Render DOM Audit | Catches layout regressions automatically.
+- item: Master Encoding | H.264 CRF 15 slow & ProRes 4444 output.
+`;
+  }
+  const mid = Math.max(1, Math.round(durationFrames * 0.55));
+  const rest = Math.max(1, durationFrames - mid);
+  return `---
+title: ${title}
+width: ${width}
+height: ${height}
+fps: ${fps}
+accent: #60a5fa
+theme: obsidian
+quality: cinema
+---
+
+## Scene intro: Opening
+- duration: ${mid}f
+- layout: hero
+- sfx: whoosh-soft@4f, pop-soft@12f
+- eyebrow: MOTIONFLUX STAGE
+- headline: ${title}
+- subhead: HTML / CSS / SVG / WebGL deterministic video stage.
+
+## Scene detail: Highlights
+- duration: ${rest}f
+- layout: feature-grid
+- transition: crossfade ${Math.max(2, Math.min(12, Math.floor(rest * 0.3)))}f
+- sfx: whoosh@0f, chime@8f
+- eyebrow: STAGE CAPABILITIES
+- headline: Modern Layout \xB7 Physics \xB7 Visual Audit
+- item: Browser Engine | Flexbox, Grid, SVG, and Three.js PBR studio.
+- item: Visual Audit | Automatic overflow, overlap, and WCAG contrast checks.
+`;
+}
+function buildDataStoryHtml(title, width, height, fps, durationFrames, runtimeImport) {
+  const f1 = Math.max(15, Math.round(durationFrames * 0.32));
+  const f2 = Math.max(15, Math.round(durationFrames * 0.38));
+  const f3 = Math.max(15, durationFrames - f1 - f2);
+  const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
+  const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+  const safeTitle = title.replace(/</gu, "&lt;");
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${safeTitle}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+    #stage { background: #070b12; color: #f8fafc; }
+    .scene {
+      position: absolute;
+      inset: 0;
+      padding: 6.5% 7.5%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: radial-gradient(120% 100% at 50% 0%, #111c2d 0%, #070b12 100%);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .scene[data-mf-active="true"] { opacity: 1; pointer-events: auto; }
+    .eyebrow { font-size: 18px; font-weight: 700; letter-spacing: 0.16em; color: #34d399; text-transform: uppercase; }
+    h1 { margin: 16px 0; font-size: clamp(52px, 4.6vw, 84px); line-height: 1.08; letter-spacing: -0.03em; }
+    h2 { margin: 10px 0 28px 0; font-size: clamp(38px, 3.3vw, 56px); line-height: 1.12; letter-spacing: -0.02em; }
+    .sub { margin: 0; font-size: 25px; line-height: 1.48; color: #cbd5e1; max-width: 820px; }
+    .telemetry-layout { display: grid; grid-template-columns: 1.25fr 0.85fr; gap: 32px; align-items: stretch; }
+    .chart-card, .stat-card, .pillar-card {
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 22px;
+      padding: 30px;
+    }
+    .stat-stack { display: flex; flex-direction: column; gap: 20px; justify-content: space-between; }
+    .stat-val { font-size: 48px; font-weight: 760; font-variant-numeric: tabular-nums; color: #f8fafc; }
+    .stat-lbl { font-size: 19px; color: #cbd5e1; margin-top: 6px; }
+    .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .pillar-idx { font: 700 16px/1 ui-monospace, monospace; color: #34d399; margin-bottom: 12px; }
+    .pillar-title { margin: 0 0 10px 0; font-size: 26px; font-weight: 700; }
+    .pillar-desc { margin: 0; font-size: 19px; line-height: 1.48; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div id="stage" data-mf-stage>
+    <section class="scene" data-mf-scene="thesis">
+      <div id="thesis-box">
+        <div class="eyebrow" data-mf-id="thesis-eyebrow">Q4 TELEMETRY BRIEF</div>
+        <h1 data-mf-id="thesis-title">${safeTitle}</h1>
+        <p class="sub" data-mf-id="thesis-sub">P99 latency dropped 64% while deterministic render throughput scaled 4.8x.</p>
+      </div>
+    </section>
+
+    <section class="scene" data-mf-scene="curve">
+      <div class="eyebrow" data-mf-id="curve-eyebrow">KEY INDICATORS</div>
+      <h2 data-mf-id="curve-title">Compounding Efficiency Gains</h2>
+      <div class="telemetry-layout">
+        <div class="chart-card" data-mf-id="chart-card" data-mf-no-overlap>
+          <svg viewBox="0 0 640 280" width="100%" height="260" aria-label="Telemetry trend">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#34d399" stop-opacity="0.42" />
+                <stop offset="100%" stop-color="#34d399" stop-opacity="0.0" />
+              </linearGradient>
+            </defs>
+            <line x1="20" y1="240" x2="620" y2="240" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+            <line x1="20" y1="140" x2="620" y2="140" stroke="rgba(255,255,255,0.07)" stroke-dasharray="6 6" />
+            <path id="trend-area" d="M20,225 C160,215 260,175 390,115 C480,74 555,48 615,34 L615,240 L20,240 Z" fill="url(#areaGrad)" />
+            <path id="trend-line" d="M20,225 C160,215 260,175 390,115 C480,74 555,48 615,34" fill="none" stroke="#34d399" stroke-width="5" stroke-linecap="round" />
+          </svg>
+        </div>
+        <div class="stat-stack">
+          <div class="stat-card" data-mf-id="stat-latency" data-mf-no-overlap>
+            <div id="val-lat" class="stat-val">-64%</div>
+            <div class="stat-lbl">P99 Render Latency</div>
+          </div>
+          <div class="stat-card" data-mf-id="stat-speed" data-mf-no-overlap>
+            <div id="val-thr" class="stat-val">4.8x</div>
+            <div class="stat-lbl">Cluster Throughput</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="scene" data-mf-scene="summary">
+      <div class="eyebrow" data-mf-id="sum-eyebrow">ARCHITECTURE DRIVERS</div>
+      <h2 data-mf-id="sum-title">Three Pillars Behind the Curve</h2>
+      <div class="pillars">
+        <div class="pillar-card" id="pil-0" data-mf-id="pillar-0" data-mf-no-overlap>
+          <div class="pillar-idx">01</div>
+          <h3 class="pillar-title">Deterministic Seek</h3>
+          <p class="pillar-desc">Frame-exact CSS, SVG, video, and WebGL synchronization.</p>
+        </div>
+        <div class="pillar-card" id="pil-1" data-mf-id="pillar-1" data-mf-no-overlap>
+          <div class="pillar-idx">02</div>
+          <h3 class="pillar-title">Visual Audit 2.0</h3>
+          <p class="pillar-desc">Pre-render WCAG contrast, overflow, and collision checks.</p>
+        </div>
+        <div class="pillar-card" id="pil-2" data-mf-id="pillar-2" data-mf-no-overlap>
+          <div class="pillar-idx">03</div>
+          <h3 class="pillar-title">Cinema Mastering</h3>
+          <p class="pillar-desc">H.264 CRF 15 slow &amp; 48kHz stereo procedural audio.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { createStage, clamp, lerp, easeOutCubic, spring } from '${runtimeImport}';
+
+    const thesisBox = document.getElementById('thesis-box');
+    const trendLine = document.getElementById('trend-line');
+    const trendArea = document.getElementById('trend-area');
+    const valLat = document.getElementById('val-lat');
+    const valThr = document.getElementById('val-thr');
+    const lineLen = 680;
+    trendLine.style.strokeDasharray = String(lineLen);
+
+    createStage({
+      width: ${width},
+      height: ${height},
+      fps: ${fps},
+      durationFrames: ${durationFrames},
+      scenes: [
+        { id: 'thesis', label: 'Thesis', startFrame: 0, endFrame: ${f1} },
+        { id: 'curve', label: 'Telemetry', startFrame: ${f1}, endFrame: ${f1 + f2}, transitionIn: { kind: 'slide-left', durationFrames: ${t2} } },
+        { id: 'summary', label: 'Takeaway', startFrame: ${f1 + f2}, endFrame: ${durationFrames}, transitionIn: { kind: 'crossfade', durationFrames: ${t3} } },
+      ],
+      audio: [
+        { atFrame: 0, sfx: 'sub-hit', gain: 0.5 },
+        { atFrame: 8, sfx: 'pop-soft', gain: 0.45 },
+        { atFrame: ${f1}, sfx: 'whoosh-soft', gain: 0.5 },
+        { atFrame: ${f1 + Math.min(f2 - 1, 14)}, sfx: 'tick', gain: 0.4 },
+        { atFrame: ${f1 + f2}, sfx: 'whoosh', gain: 0.5 },
+        { atFrame: ${f1 + f2 + Math.min(f3 - 1, 12)}, sfx: 'chime', gain: 0.45 },
+      ],
+      onFrame({ scene, localTime, localProgress }) {
+        if (scene?.id === 'thesis') {
+          const s = spring(localTime, { stiffness: 175, damping: 19 });
+          thesisBox.style.opacity = String(clamp(s * 1.35));
+          thesisBox.style.transform = \`translate3d(0, \${lerp(36, 0, s).toFixed(2)}px, 0)\`;
+        } else if (scene?.id === 'curve') {
+          const p = easeOutCubic(clamp(localProgress * 1.45));
+          trendLine.style.strokeDashoffset = String(lerp(lineLen, 0, p));
+          trendArea.style.opacity = String(p);
+          valLat.textContent = \`-\${Math.round(lerp(0, 64, p))}%\`;
+          valThr.textContent = \`\${lerp(1.0, 4.8, p).toFixed(1)}x\`;
+        } else if (scene?.id === 'summary') {
+          [0, 1, 2].forEach((idx) => {
+            const el = document.getElementById('pil-' + idx);
+            const s = spring(Math.max(0, localTime - idx * 0.09), { stiffness: 185, damping: 20 });
+            el.style.opacity = String(clamp(s * 1.4));
+            el.style.transform = \`translate3d(0, \${lerp(34, 0, s).toFixed(2)}px, 0)\`;
+          });
+        }
+      },
+    });
+  </script>
+</body>
+</html>
+`;
+}
 async function initStageProject(options) {
+  const rawTemplate = (options.template ?? "default").toLowerCase();
+  const tplMeta = STAGE_TEMPLATES.find((t) => t.id === rawTemplate);
+  if (!tplMeta) {
+    throw new Error(
+      `USAGE: --template must be one of ${STAGE_TEMPLATES.map((t) => t.id).join(", ")}; got "${String(options.template)}".`
+    );
+  }
   const width = Math.round(options.width ?? 1920);
   const height = Math.round(options.height ?? 1080);
-  const fps = Math.round(options.fps ?? 30);
-  const durationFrames = Math.round(options.durationFrames ?? 150);
-  const title = options.title ?? "MotionFlux Stage";
+  const fps = Math.round(options.fps ?? tplMeta.defaultFps);
+  const durationFrames = Math.round(options.durationFrames ?? tplMeta.defaultDurationFrames);
+  const title = options.title ?? (rawTemplate === "default" ? "MotionFlux Stage" : tplMeta.title);
   if (!(width >= 160 && width <= 3840 && height >= 160 && height <= 3840)) {
     throw new Error("USAGE: --width and --height must be 160\u20133840 px.");
   }
@@ -4339,18 +5880,29 @@ async function initStageProject(options) {
   if (!(durationFrames >= 1 && durationFrames <= 36e3)) {
     throw new Error("USAGE: --duration must be 1\u201336000 frames.");
   }
-  const outDir = resolve5(options.outDir);
-  const existing = await stat3(join6(outDir, "index.html")).catch(() => void 0);
+  const outDir = resolve6(options.outDir);
+  const existing = await stat3(join7(outDir, "index.html")).catch(() => void 0);
   if (existing) {
-    throw new Error(`TARGET_EXISTS: ${join6(outDir, "index.html")} already exists. Choose a new directory.`);
+    throw new Error(`TARGET_EXISTS: ${join7(outDir, "index.html")} already exists. Choose a new directory.`);
   }
-  await mkdir3(outDir, { recursive: true });
-  const runtimeTarget = join6(outDir, "runtime.mjs");
+  await mkdir4(outDir, { recursive: true });
+  const runtimeTarget = join7(outDir, "runtime.mjs");
   if (options.runtimeSourcePath) {
-    await cp(options.runtimeSourcePath, runtimeTarget);
+    await cp2(options.runtimeSourcePath, runtimeTarget);
   }
-  const mid = Math.round(durationFrames * 0.55);
-  const html = `<!doctype html>
+  const runtimeImport = options.runtimeSourcePath ? "./runtime.mjs" : "/__motionflux/stage/runtime.mjs";
+  const mdContent = buildMotionMdForTemplate(rawTemplate, title, width, height, fps, durationFrames);
+  const motionMdPath = join7(outDir, "Motion.md");
+  await writeFile5(motionMdPath, mdContent);
+  let html;
+  if (rawTemplate === "saas-launch" || rawTemplate === "hardware-3d") {
+    const doc = parseMotionMd(mdContent);
+    html = compileMotionMdToHtml(doc, { runtimeImportPath: runtimeImport });
+  } else if (rawTemplate === "data-story") {
+    html = buildDataStoryHtml(title, width, height, fps, durationFrames, runtimeImport);
+  } else {
+    const mid = Math.round(durationFrames * 0.55);
+    html = `<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -4449,7 +6001,7 @@ async function initStageProject(options) {
   </div>
 
   <script type="module">
-    import { createStage, clamp, lerp, remap, spring } from '${options.runtimeSourcePath ? "./runtime.mjs" : "/__motionflux/stage/runtime.mjs"}';
+    import { createStage, clamp, lerp, remap, spring } from '${runtimeImport}';
 
     const heroTitle = document.getElementById('hero-title');
     const heroSub = document.getElementById('hero-sub');
@@ -4470,7 +6022,7 @@ async function initStageProject(options) {
         { atFrame: ${mid}, sfx: 'whoosh', gain: 0.55 },
         { atFrame: ${mid + 8}, sfx: 'chime', gain: 0.4 },
       ],
-      onFrame({ frame, fps, scene, localTime }) {
+      onFrame({ frame, scene, localTime }) {
         if (scene?.id === 'intro') {
           const s1 = spring(localTime, { stiffness: 170, damping: 18 });
           const s2 = spring(Math.max(0, localTime - 0.14), { stiffness: 160, damping: 19 });
@@ -4490,11 +6042,14 @@ async function initStageProject(options) {
 </body>
 </html>
 `;
-  const entry = join6(outDir, "index.html");
-  await writeFile4(entry, html);
+  }
+  const entry = join7(outDir, "index.html");
+  await writeFile5(entry, html);
   return {
     directory: outDir,
     entry,
+    motionMd: motionMdPath,
+    template: rawTemplate,
     runtime: options.runtimeSourcePath ? runtimeTarget : "/__motionflux/stage/runtime.mjs",
     width,
     height,
@@ -4505,27 +6060,41 @@ async function initStageProject(options) {
 
 // packages/cli/src/index.ts
 import { spawn as spawn4, spawnSync as spawnSync4 } from "node:child_process";
-var resourceRoot = join7(dirname4(fileURLToPath(import.meta.url)), "resources");
-var motionfluxRoot = resolve6(dirname4(fileURLToPath(import.meta.url)), "..");
+var resourceRoot = join8(dirname5(fileURLToPath(import.meta.url)), "resources");
+var motionfluxRoot = resolve7(dirname5(fileURLToPath(import.meta.url)), "..");
 var isHtmlInput = (path2) => Boolean(path2 && /\.html?$/iu.test(path2));
+var isMarkdownInput = (path2) => Boolean(path2 && /\.md$/iu.test(path2));
+async function withStageEntry(inputPath, fn) {
+  if (!isMarkdownInput(inputPath)) return fn(inputPath);
+  const absMd = resolve7(inputPath);
+  const doc = parseMotionMd(await readFile2(absMd, "utf8"));
+  const html = compileMotionMdToHtml(doc);
+  const tempHtml = join8(dirname5(absMd), `.mf-stage-${process.pid}-${Date.now()}.html`);
+  await writeFile6(tempHtml, html);
+  try {
+    return await fn(tempHtml, doc);
+  } finally {
+    await rm4(tempHtml, { force: true });
+  }
+}
 async function readScene(path2) {
   if (!path2) throw new Error("USAGE: Supply a scene JSON path.");
-  const scene = JSON.parse(await readFile(resolve6(path2), "utf8"));
+  const scene = JSON.parse(await readFile2(resolve7(path2), "utf8"));
   assertScene(scene);
   return scene;
 }
 async function assetBytes(scene, scenePath) {
   const encoded = {};
   for (const asset of Object.values(scene.assets)) {
-    const data = await readFile(resolve6(dirname4(scenePath), asset.src));
+    const data = await readFile2(resolve7(dirname5(scenePath), asset.src));
     if (createHash2("sha256").update(data).digest("hex") !== asset.sha256) throw new Error(`ASSET_HASH: ${asset.src} differs from the scene lock.`);
     encoded[asset.src] = data.toString("base64");
   }
   return encoded;
 }
 async function save(path2, data) {
-  await mkdir4(dirname4(resolve6(path2)), { recursive: true });
-  await writeFile5(resolve6(path2), data);
+  await mkdir5(dirname5(resolve7(path2)), { recursive: true });
+  await writeFile6(resolve7(path2), data);
 }
 function parseFrameList(list) {
   return list.split(",").flatMap((part) => {
@@ -4545,7 +6114,7 @@ function parseFrames(list, total2) {
   return frames;
 }
 var numeric = ["frame", "width", "height", "duration", "fps", "scale", "port", "crf"];
-var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "quality", "target", "manager", "text", "color", "background", "title", "contact"];
+var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "quality", "target", "manager", "template", "text", "color", "background", "title", "contact"];
 function parseArgs(args) {
   const command = args.shift() ?? "help";
   const positional = [];
@@ -4584,6 +6153,7 @@ function parseArgs(args) {
   }
   const supported = {
     help: [],
+    templates: [],
     search: [],
     patterns: [],
     compose: ["out"],
@@ -4595,7 +6165,9 @@ function parseArgs(args) {
     preview: ["out"],
     "export-html": ["out"],
     deliver: ["out", "previous", "authoring"],
-    init: ["width", "height", "duration", "fps", "title"],
+    init: ["template", "width", "height", "duration", "fps", "title"],
+    plan: ["out"],
+    compile: ["out"],
     audit: ["frames", "out", "contact", "browser"],
     sfx: ["out", "duration", "fps"],
     serve: ["port"],
@@ -4608,7 +6180,7 @@ function parseArgs(args) {
   };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command].includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (!["search", "patterns"].includes(command) && positional.length > (["help", "doctor", "setup"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
+  if (!["search", "patterns"].includes(command) && positional.length > (["help", "templates", "doctor", "setup"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
   return { command, positional, ...options };
 }
 async function scaffold(id4, options) {
@@ -4656,7 +6228,7 @@ async function scaffold(id4, options) {
   scene.fps = { numerator: fps, denominator: 1 };
   scene.durationFrames = duration;
   assertScene(scene);
-  const out = resolve6(options.out);
+  const out = resolve7(options.out);
   await save(out, `${JSON.stringify(scene, null, 2)}
 `);
   return {
@@ -4686,12 +6258,12 @@ async function renderBreakdown(scene, html, plan, args) {
   const count = Math.max(1, Math.floor(seconds2 * fps + 1e-9));
   const frames = Array.from({ length: count }, (_, k) => k * sceneFps / fps);
   const size2 = breakdownSize(plan, scene.canvas);
-  const work = await mkdtemp3(join7(tmpdir3(), "motionflux-breakdown-"));
-  const page = join7(work, "breakdown.html");
-  const out = resolve6(args.out);
+  const work = await mkdtemp3(join8(tmpdir3(), "motionflux-breakdown-"));
+  const page = join8(work, "breakdown.html");
+  const out = resolve7(args.out);
   try {
-    await writeFile5(page, html);
-    await mkdir4(dirname4(out), { recursive: true });
+    await writeFile6(page, html);
+    await mkdir5(dirname5(out), { recursive: true });
     await encodeVideo(out, format, false, { numerator: fps, denominator: 1 }, (write) => captureFrames(page, frames, browser, false, (_frame, png) => write(png)));
   } finally {
     await rm4(work, { recursive: true, force: true });
@@ -4719,7 +6291,7 @@ async function renderBreakdown(scene, html, plan, args) {
   };
 }
 async function renderVideoBreakdown(file, args) {
-  const breakdown = readVideoBreakdown(JSON.parse(await readFile(file, "utf8")));
+  const breakdown = readVideoBreakdown(JSON.parse(await readFile2(file, "utf8")));
   if (args.title) breakdown.title = args.title;
   const format = extname3(args.out ?? "").slice(1).toLowerCase();
   if (!args.out || !["gif", "mp4", "webm"].includes(format)) throw new Error("USAGE: breakdown writes --out <file>.gif, .mp4 or .webm.");
@@ -4727,7 +6299,7 @@ async function renderVideoBreakdown(file, args) {
   if (!(fps >= 1 && fps <= 60)) throw new Error("USAGE: --fps must be 1\u201360.");
   if (format === "gif" && !Number.isInteger(100 / fps)) throw new Error("USAGE: GIF frame delays are whole hundredths of a second; use --fps 10, 20, 25 or 50.");
   if (!toolVersion(ffmpegPath())) throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH.");
-  const video = resolve6(dirname4(file), breakdown.source.video);
+  const video = resolve7(dirname5(file), breakdown.source.video);
   await stat4(video).catch(() => {
     throw new Error(`SOURCE_MISSING: ${video} does not exist. source.video is relative to the breakdown file.`);
   });
@@ -4749,15 +6321,15 @@ async function renderVideoBreakdown(file, args) {
   const panel = panelHeight(plan) + panelHeight(plan) % 2;
   const browser = await findBrowser(args.browser);
   if (!browser) throw new Error("BROWSER_MISSING: breakdown draws the timeline in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-  const work = await mkdtemp3(join7(tmpdir3(), "motionflux-breakdown-"));
-  const out = resolve6(args.out);
+  const work = await mkdtemp3(join8(tmpdir3(), "motionflux-breakdown-"));
+  const out = resolve7(args.out);
   try {
-    const script = await readFile(join7(resourceRoot, "breakdown-panel.js"), "utf8");
-    const page = join7(work, "panel.html");
-    await writeFile5(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
-    await mkdir4(join7(work, "panel"));
-    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile5(join7(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
-    await mkdir4(dirname4(out), { recursive: true });
+    const script = await readFile2(join8(resourceRoot, "breakdown-panel.js"), "utf8");
+    const page = join8(work, "panel.html");
+    await writeFile6(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
+    await mkdir5(join8(work, "panel"));
+    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile6(join8(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
+    await mkdir5(dirname5(out), { recursive: true });
     const stack = `[0:v]fps=${fps},scale=${width}:${pictureHeight}:flags=lanczos,setsar=1[clip];[clip][1:v]vstack=inputs=2`;
     const encode = format === "gif" ? ["-filter_complex", `${stack},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle`, "-loop", "0"] : format === "mp4" ? ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart"] : ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "28"];
     const result = await new Promise((done) => {
@@ -4774,7 +6346,7 @@ async function renderVideoBreakdown(file, args) {
         "-framerate",
         String(fps),
         "-i",
-        join7(work, "panel", "%06d.png"),
+        join8(work, "panel", "%06d.png"),
         ...encode,
         "-an",
         "-frames:v",
@@ -4818,25 +6390,31 @@ async function main() {
   const path2 = args.positional[0];
   switch (args.command) {
     case "help":
-      return { version: ENGINE_VERSION, stageVersion: "stage-1", commands: [
+      return { version: ENGINE_VERSION, stageVersion: "stage-1", motionMdVersion: "motion-md-1", commands: [
         "doctor [--backend all|js|browser|webgl2|webgpu|ffmpeg] [--browser <path>]  (check full runtime environment)",
         "setup [--target all|browser|ffmpeg] [--manager auto|playwright|brew|apt|dnf|pacman|apk|winget|scoop|choco] [--apply]  (plan or install missing runtime dependencies)",
-        'init <dir> [--width 1920] [--height 1080] [--fps 30] [--duration 150] [--title "\u2026"]  (create HTML/CSS/SVG/WebGL stage project)',
-        "audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/asset audit)",
-        "frames <stage.html | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]",
-        "render <stage.html | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]",
+        "templates  (list built-in Stage & Motion.md commercial templates)",
+        'init <dir> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240] [--title "\u2026"]',
+        "plan <Motion.md> [--out stage.plan.json]  (parse & validate structured Motion.md director script + pacing diagnostics)",
+        "compile <Motion.md> --out <dir>  (compile Motion.md into runnable HTML/CSS/SVG/3D Stage project)",
+        "audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/WCAG contrast audit)",
+        "frames <stage.html | Motion.md | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]",
+        "render <stage.html | Motion.md | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]",
         "sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: " + SFX_KINDS.join(", ") + ")",
         "serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/stage/* and /__motionflux/atoms/* mounts)",
         "search <query> --json",
         "describe <id> --json",
         'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "\u2026"] [--width 960] [--fps 25]'
-      ], delivery: "HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with deterministic CSS/WAAPI/video/atom seeking, DOM geometry audit, procedural SFX + audio muxing, and full-page Chrome capture to MP4/MOV/WebM/PNG." };
+      ], delivery: "Structured Motion.md director compiler + HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with scene transitions, WCAG/DOM visual audit, procedural SFX + audio muxing, and cinema MP4/MOV/WebM/PNG capture." };
+    case "templates":
+      return { templates: listStageTemplates() };
     case "init": {
-      if (!path2) throw new Error("USAGE: init <new-directory> [--width 1920] [--height 1080] [--fps 30] [--duration 150]");
-      const runtimeSource = join7(motionfluxRoot, "stage", "runtime.mjs");
+      if (!path2) throw new Error("USAGE: init <new-directory> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240]");
+      const runtimeSource = join8(motionfluxRoot, "stage", "runtime.mjs");
       const hasRuntime = await stat4(runtimeSource).then(() => true, () => false);
       return initStageProject({
         outDir: path2,
+        ...args.template !== void 0 ? { template: args.template } : {},
         ...args.width !== void 0 ? { width: args.width } : {},
         ...args.height !== void 0 ? { height: args.height } : {},
         ...args.fps !== void 0 ? { fps: args.fps } : {},
@@ -4845,36 +6423,52 @@ async function main() {
         ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
       });
     }
-    case "audit": {
-      if (!path2) throw new Error("USAGE: audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png]");
-      const report = await auditStage(path2, {
-        ...args.browser ? { browser: args.browser } : {},
-        motionfluxRoot,
-        ...args.frames ? { frames: parseFrameList(args.frames) } : {},
-        ...args.contact ? { contactSheetOut: args.contact } : {}
+    case "plan": {
+      if (!path2) throw new Error("USAGE: plan <Motion.md> [--out stage.plan.json]");
+      return saveMotionMdPlan(path2, args.out);
+    }
+    case "compile": {
+      if (!path2 || !args.out) throw new Error("USAGE: compile <Motion.md> --out <directory>");
+      const runtimeSource = join8(motionfluxRoot, "stage", "runtime.mjs");
+      const hasRuntime = await stat4(runtimeSource).then(() => true, () => false);
+      return compileMotionMdProject(path2, {
+        outDir: args.out,
+        ...hasRuntime ? { runtimeSourcePath: runtimeSource } : {}
       });
+    }
+    case "audit": {
+      if (!path2) throw new Error("USAGE: audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png]");
+      const report = await withStageEntry(
+        path2,
+        (entryHtml) => auditStage(entryHtml, {
+          ...args.browser ? { browser: args.browser } : {},
+          motionfluxRoot,
+          ...args.frames ? { frames: parseFrameList(args.frames) } : {},
+          ...args.contact ? { contactSheetOut: args.contact } : {}
+        })
+      );
       if (args.out) await save(args.out, `${JSON.stringify(report, null, 2)}
 `);
       return report;
     }
     case "sfx": {
       if (!path2 || !args.out) throw new Error("USAGE: sfx <audio.json> --out <track.wav> [--duration 5] [--fps 30]");
-      const raw = JSON.parse(await readFile(resolve6(path2), "utf8"));
+      const raw = JSON.parse(await readFile2(resolve7(path2), "utf8"));
       const cues = Array.isArray(raw) ? raw : raw.cues ?? raw.audio ?? [];
       const fps = args.fps ?? (Array.isArray(raw) ? 30 : raw.fps ?? 30);
       const durationSec = args.duration ?? (Array.isArray(raw) ? 5 : raw.durationSec ?? 5);
       if (!(durationSec > 0 && fps > 0)) throw new Error("USAGE: --duration and --fps must be positive numbers.");
       const { wav, proceduralCount } = synthesizeSfxTrack(cues, durationSec, fps);
-      const out = resolve6(args.out);
-      await mkdir4(dirname4(out), { recursive: true });
-      await writeFile5(out, wav);
+      const out = resolve7(args.out);
+      await mkdir5(dirname5(out), { recursive: true });
+      await writeFile6(out, wav);
       return { path: out, bytes: wav.length, durationSeconds: durationSec, sampleRate: 48e3, channels: 2, proceduralCount };
     }
     case "serve": {
-      const target = resolve6(path2 ?? ".");
+      const target = resolve7(path2 ?? ".");
       const info = await stat4(target).catch(() => void 0);
       if (!info) throw new Error(`PATH_MISSING: ${target} does not exist.`);
-      const dir = info.isDirectory() ? target : dirname4(target);
+      const dir = info.isDirectory() ? target : dirname5(target);
       const entry = info.isDirectory() ? "index.html" : target.slice(dir.length + 1);
       const server = await startStageServer(dir, { motionfluxRoot, port: args.port ?? 4178 });
       process.stdout.write(`${JSON.stringify({ ok: true, result: { url: `${server.url}/${entry}`, root: dir, port: server.port } }, null, 2)}
@@ -4891,31 +6485,31 @@ async function main() {
     case "search":
       return { capabilities: searchCapabilities(args.positional.join(" ")) };
     case "patterns": {
-      const indexPath = join7(dirname4(resourceRoot), "../assets/patterns/index.json");
-      const index = JSON.parse(await readFile(indexPath, "utf8"));
+      const indexPath = join8(dirname5(resourceRoot), "../assets/patterns/index.json");
+      const index = JSON.parse(await readFile2(indexPath, "utf8"));
       const terms = args.positional.join(" ").normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
       return { match: "all-keywords; suitability is decided by the agent", patterns: index.patterns.filter((pattern) => terms.every((term) => JSON.stringify(pattern).normalize("NFKC").toLowerCase().includes(term))) };
     }
     case "controls": {
       if (!path2 || !args.scene) throw new Error("USAGE: controls <authoring.json> --scene <scene.json>");
-      const report = inspectControls(JSON.parse(await readFile(resolve6(path2), "utf8")), await readScene(args.scene));
+      const report = inspectControls(JSON.parse(await readFile2(resolve7(path2), "utf8")), await readScene(args.scene));
       return { ...report, savedValuesOnly: true };
     }
     case "compose": {
       if (!path2 || !args.out) throw new Error("USAGE: compose <brief.json> --out <new-directory>");
-      const brief = readBrief(JSON.parse(await readFile(resolve6(path2), "utf8")));
-      const bytes = await readFile(resolve6(dirname4(resolve6(path2)), brief.product.src));
+      const brief = readBrief(JSON.parse(await readFile2(resolve7(path2), "utf8")));
+      const bytes = await readFile2(resolve7(dirname5(resolve7(path2)), brief.product.src));
       if (createHash2("sha256").update(bytes).digest("hex") !== brief.product.sha256) throw new Error("ASSET_HASH: Product image differs from the brief lock.");
       const src = `assets/product${extname3(brief.product.src).toLowerCase()}`;
       const { scene, authoring } = composePattern(brief, { type: "image", src, sha256: brief.product.sha256 });
       const assets = { [src]: bytes.toString("base64") };
-      const runtime = await readFile(join7(resourceRoot, "standalone.js"), "utf8");
+      const runtime = await readFile2(join8(resourceRoot, "standalone.js"), "utf8");
       const html = createStandaloneHtml(scene, runtime, assets, "");
       return writeDelivery({ scene, assets, html, out: args.out, authoring });
     }
     case "study": {
       if (!path2) throw new Error("USAGE: Supply a study JSON path.");
-      const input = JSON.parse(await readFile(resolve6(path2), "utf8"));
+      const input = JSON.parse(await readFile2(resolve7(path2), "utf8"));
       const scene = args.scene ? await readScene(args.scene) : void 0;
       assertStudy(input, scene);
       const report = studyReport(input, scene);
@@ -5054,49 +6648,55 @@ async function main() {
       };
     }
     default: {
-      if ((args.command === "frames" || args.command === "render") && isHtmlInput(path2)) {
+      if ((args.command === "frames" || args.command === "render") && (isHtmlInput(path2) || isMarkdownInput(path2))) {
         if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
         if (args.scale !== void 0 && !(args.scale > 0 && args.scale <= 4)) {
           throw new Error("USAGE: --scale must be between 0 and 4 (e.g. 1 or 2).");
         }
         if (args.command === "frames") {
-          return captureStageFrames(path2, {
-            outDir: args.out,
-            ...args.frames ? { frames: parseFrameList(args.frames) } : {},
+          return withStageEntry(
+            path2,
+            (entryHtml) => captureStageFrames(entryHtml, {
+              outDir: args.out,
+              ...args.frames ? { frames: parseFrameList(args.frames) } : {},
+              ...args.browser ? { browser: args.browser } : {},
+              motionfluxRoot,
+              transparent: Boolean(args.transparent),
+              ...args.scale !== void 0 ? { scale: args.scale } : {}
+            })
+          );
+        }
+        return withStageEntry(
+          path2,
+          (entryHtml, mdDoc) => renderStageVideo(entryHtml, {
+            outPath: args.out,
             ...args.browser ? { browser: args.browser } : {},
             motionfluxRoot,
             transparent: Boolean(args.transparent),
-            ...args.scale !== void 0 ? { scale: args.scale } : {}
-          });
-        }
-        return renderStageVideo(path2, {
-          outPath: args.out,
-          ...args.browser ? { browser: args.browser } : {},
-          motionfluxRoot,
-          transparent: Boolean(args.transparent),
-          ...args.scale !== void 0 ? { scale: args.scale } : {},
-          ...args.quality !== void 0 ? { quality: args.quality } : {},
-          ...args.crf !== void 0 ? { crf: args.crf } : {},
-          noAudio: Boolean(args.noAudio),
-          runAudit: Boolean(args.runAudit)
-        });
+            ...args.scale !== void 0 ? { scale: args.scale } : {},
+            ...args.quality !== void 0 ? { quality: args.quality } : mdDoc ? { quality: mdDoc.quality } : {},
+            ...args.crf !== void 0 ? { crf: args.crf } : {},
+            noAudio: Boolean(args.noAudio),
+            runAudit: Boolean(args.runAudit)
+          })
+        );
       }
       if (args.command === "breakdown" && path2) {
-        const raw = JSON.parse(await readFile(resolve6(path2), "utf8"));
-        if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve6(path2), args);
+        const raw = JSON.parse(await readFile2(resolve7(path2), "utf8"));
+        if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve7(path2), args);
       }
       const scene = await readScene(path2);
       if (args.command === "sample") return { state: compileScene(scene).evaluate(args.frame ?? 0), lock: versionLock(scene) };
-      const assets = await assetBytes(scene, resolve6(path2));
+      const assets = await assetBytes(scene, resolve7(path2));
       if (args.command === "validate") return { valid: true, assetsVerified: Object.keys(assets).length, lock: versionLock(scene) };
       if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
-      const [runtime, license] = await Promise.all([readFile(join7(resourceRoot, "standalone.js"), "utf8"), readFile(join7(resourceRoot, "OFL.txt"), "utf8")]);
+      const [runtime, license] = await Promise.all([readFile2(join8(resourceRoot, "standalone.js"), "utf8"), readFile2(join8(resourceRoot, "OFL.txt"), "utf8")]);
       const plan = args.command === "breakdown" ? breakdownPlan(scene, { width: Math.round(args.width ?? Math.min(960, scene.canvas.width)), ...args.title ? { title: args.title } : {} }) : void 0;
       if (plan && (plan.width < 160 || plan.width > 3840)) throw new Error("USAGE: --width must be 160\u20133840 px.");
       const html = createStandaloneHtml(scene, runtime, assets, args.command === "deliver" ? "" : license, plan ? { breakdown: plan } : {});
       if (args.command === "deliver") {
         const previous = args.previous ? await readScene(args.previous) : void 0;
-        const authoring = args.authoring ? JSON.parse(await readFile(resolve6(args.authoring), "utf8")) : void 0;
+        const authoring = args.authoring ? JSON.parse(await readFile2(resolve7(args.authoring), "utf8")) : void 0;
         return writeDelivery({ scene, ...previous ? { previous } : {}, ...authoring !== void 0 ? { authoring } : {}, assets, html, out: args.out });
       }
       if (args.command === "breakdown") return renderBreakdown(scene, html, plan, args);
@@ -5114,23 +6714,23 @@ async function main() {
         }
         const browser = await findBrowser(args.browser);
         if (!browser) throw new Error("BROWSER_MISSING: frames and render draw in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-        const work = await mkdtemp3(join7(tmpdir3(), "motionflux-render-"));
-        const page = join7(work, "scene.html");
+        const work = await mkdtemp3(join8(tmpdir3(), "motionflux-render-"));
+        const page = join8(work, "scene.html");
         try {
-          await writeFile5(page, html);
-          const out = resolve6(args.out);
+          await writeFile6(page, html);
+          const out = resolve7(args.out);
           if (args.command === "frames") {
             const frames = parseFrames(args.frames, scene.durationFrames);
             const files = [];
-            await mkdir4(out, { recursive: true });
+            await mkdir5(out, { recursive: true });
             await captureFrames(page, frames, browser, transparent, async (frame, png) => {
-              const file = join7(out, `frame-${String(frame).padStart(6, "0")}.png`);
-              await writeFile5(file, png);
+              const file = join8(out, `frame-${String(frame).padStart(6, "0")}.png`);
+              await writeFile6(file, png);
               files.push(file);
             });
             return { directory: out, type: "png-sequence", pattern: "frame-%06d.png", frames: files.length, files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)], ...size2, fps: scene.fps, alpha: transparent, videoDelivered: false, browser, lock: versionLock(scene) };
           }
-          await mkdir4(dirname4(out), { recursive: true });
+          await mkdir5(dirname5(out), { recursive: true });
           const all = parseFrames(void 0, scene.durationFrames);
           await encodeVideo(out, format, transparent, scene.fps, (write) => captureFrames(page, all, browser, transparent, (_frame, png) => write(png)), encodeOptions);
           const written = probeVideo(out);
@@ -5153,15 +6753,23 @@ async function main() {
         }
       }
       await save(args.out, html);
-      return { path: resolve6(args.out), type: "standalone-html", embeddedAssets: Object.keys(assets).length, videoDelivered: false, lock: versionLock(scene) };
+      return { path: resolve7(args.out), type: "standalone-html", embeddedAssets: Object.keys(assets).length, videoDelivered: false, lock: versionLock(scene) };
     }
   }
 }
 main().then((result) => process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}
 `)).catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  const code = error instanceof SceneValidationError ? error.code : error && typeof error === "object" && "code" in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? "COMMAND_FAILED";
-  process.stdout.write(`${JSON.stringify({ ok: false, error: { code, message, ...error instanceof SceneValidationError ? { issues: error.issues } : {} } }, null, 2)}
+  const code = error instanceof SceneValidationError || error instanceof MotionMdValidationError ? error.code : error && typeof error === "object" && "code" in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? "COMMAND_FAILED";
+  process.stdout.write(`${JSON.stringify({
+    ok: false,
+    error: {
+      code,
+      message,
+      ...error instanceof SceneValidationError ? { issues: error.issues } : {},
+      ...error instanceof MotionMdValidationError ? { diagnostics: error.diagnostics } : {}
+    }
+  }, null, 2)}
 `);
   process.exitCode = 1;
 });

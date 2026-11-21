@@ -142,6 +142,13 @@ test('DOM auditor detects clipping, overlap, text overflow, broken image, and CS
       left: 130px;
       top: 244px;
     }
+    .low-contrast {
+      position: absolute;
+      left: 340px;
+      top: 60px;
+      font-size: 24px;
+      color: #1c222e;
+    }
     img.broken {
       position: absolute;
       left: 400px;
@@ -158,6 +165,7 @@ test('DOM auditor detects clipping, overlap, text overflow, broken image, and CS
     <div class="overflow-box" data-mf-id="overflow">This text definitely overflows its small clipped container</div>
     <div class="overlap-a" data-mf-id="overlap-a">Collision Alpha</div>
     <div class="overlap-b" data-mf-id="overlap-b">Collision Beta</div>
+    <div class="low-contrast" data-mf-id="dim-copy">Unreadable Low Contrast Copy</div>
     <img class="broken" src="./does-not-exist.png" alt="broken" />
   </div>
   <script type="module">
@@ -178,7 +186,12 @@ test('DOM auditor detects clipping, overlap, text overflow, broken image, and CS
     assert.ok(codes.has('CLIPPED_OUTSIDE_STAGE'), `expected CLIPPED_OUTSIDE_STAGE, got ${[...codes]}`);
     assert.ok(codes.has('TEXT_OVERFLOW'), `expected TEXT_OVERFLOW, got ${[...codes]}`);
     assert.ok(codes.has('ELEMENT_OVERLAP'), `expected ELEMENT_OVERLAP, got ${[...codes]}`);
+    assert.ok(codes.has('LOW_CONTRAST_TEXT'), `expected LOW_CONTRAST_TEXT, got ${[...codes]}`);
     assert.ok(codes.has('BROKEN_IMAGE'), `expected BROKEN_IMAGE, got ${[...codes]}`);
+    const contrastIssue = report.issues.find((i) => i.code === 'LOW_CONTRAST_TEXT');
+    assert.equal(contrastIssue.selector, '[data-mf-id="dim-copy"]');
+    assert.ok(typeof contrastIssue.fix === 'string' && contrastIssue.fix.length > 10);
+    assert.ok(contrastIssue.contrastRatio < 2);
 
     // Verify CSS @keyframes moved .mover cleanly between frame 0 and frame 15
     const f0Dir = join(work, 'css-frames');
@@ -264,6 +277,38 @@ test('Stage + /__motionflux/atoms/studio.mjs renders 3D PBR CAD scene with HTML 
     assert.equal(renderOut.result.verified, true);
     assert.equal(renderOut.result.audit.passed, true, `audit issues: ${JSON.stringify(renderOut.result.audit)}`);
     assert.ok(renderOut.result.bytes > 1000);
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+});
+
+test('Built-in commercial templates (saas-launch, hardware-3d, data-story) and direct Motion.md audit pass cleanly in Chrome', async () => {
+  const work = await mkdtemp(join(tmpdir(), 'motionflux-browser-templates-'));
+  try {
+    for (const tpl of ['saas-launch', 'hardware-3d', 'data-story']) {
+      const dir = join(work, tpl);
+      execFileSync(
+        process.execPath,
+        [cli, 'init', dir, '--template', tpl, '--width', '1280', '--height', '720', '--fps', '30', '--duration', '90'],
+        { encoding: 'utf8' },
+      );
+      const report = await stagePkg.auditStage(join(dir, 'index.html'), {
+        motionfluxRoot: root,
+      });
+      assert.equal(report.passed, true, `${tpl} failed audit: ${JSON.stringify(report.issues)}`);
+      assert.equal(report.summary.errors, 0);
+    }
+
+    // Direct Motion.md audit via CLI (exercises overlapping wipe-left transition without false overlap errors)
+    const mdAudit = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [cli, 'audit', join(work, 'saas-launch', 'Motion.md'), '--frames', '0,31,34,63,66,85'],
+        { encoding: 'utf8' },
+      ),
+    );
+    assert.equal(mdAudit.ok, true);
+    assert.equal(mdAudit.result.passed, true, `Motion.md audit issues: ${JSON.stringify(mdAudit.result.issues)}`);
   } finally {
     await rm(work, { recursive: true, force: true });
   }

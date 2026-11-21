@@ -35,12 +35,30 @@ export interface FileAudioCue {
 
 export type AudioCue = ProceduralSfxCue | FileAudioCue;
 
+export type TransitionKind =
+  | 'cut'
+  | 'crossfade'
+  | 'wipe-left'
+  | 'wipe-up'
+  | 'zoom-through'
+  | 'slide-left';
+
+export interface SceneTransition {
+  kind: TransitionKind;
+  durationFrames: number;
+}
+
 export interface StageScene {
   id: string;
   label?: string;
   startFrame: number;
   endFrame: number;
+  transitionIn?: SceneTransition;
+  camera?: string;
+  notes?: string;
 }
+
+export type StageTemplateId = 'default' | 'saas-launch' | 'hardware-3d' | 'data-story';
 
 export interface StageMeta {
   version: 'stage-1';
@@ -59,6 +77,7 @@ export type AuditIssueCode =
   | 'CLIPPED_OUTSIDE_STAGE'
   | 'TEXT_OVERFLOW'
   | 'ELEMENT_OVERLAP'
+  | 'LOW_CONTRAST_TEXT'
   | 'BROKEN_IMAGE'
   | 'BROKEN_VIDEO'
   | 'FONT_LOAD_ERROR'
@@ -79,8 +98,11 @@ export interface AuditIssue {
   frame: number;
   sceneId?: string;
   target: string;
+  selector?: string;
   otherTarget?: string;
   message: string;
+  fix?: string;
+  contrastRatio?: number;
   rect?: AuditRect;
 }
 

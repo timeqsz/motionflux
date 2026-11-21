@@ -52,7 +52,7 @@ try {
   const ids = catalog.map(entry => entry.id).sort();
   const expected = ['SKILL.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'VERSION.json', 'manifest.json', 'assets/catalog.md', 'assets/catalog-index.json',
     'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs', 'scripts/env.sh', 'scripts/env.ps1',
-    'references/install.md', 'references/physical-3d.md', 'references/three-license.txt',
+    'references/install.md', 'references/motion-md.md', 'references/physical-3d.md', 'references/three-license.txt',
     'atoms/README.md', 'atoms/draw.mjs', 'atoms/index.mjs', 'atoms/studio.md', 'atoms/studio.mjs',
     ...ids.flatMap(id => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
   assert.deepEqual([...entries.keys()].sort(), expected.map(path => `motionflux/${path}`).sort());

@@ -1,4 +1,12 @@
-import type { AudioCue, AuditIssue, AuditRect, FrameAuditResult, StageMeta, StageScene } from './types.js';
+import type {
+  AudioCue,
+  AuditIssue,
+  AuditRect,
+  FrameAuditResult,
+  StageMeta,
+  StageScene,
+  TransitionKind,
+} from './types.js';
 
 export interface FrameContext {
   frame: number;
@@ -24,6 +32,7 @@ export interface StageConfig {
   element?: HTMLElement | string;
   scenes?: StageScene[];
   audio?: AudioCue[];
+  autoTransitions?: boolean;
   onInit?: (stage: HTMLElement, meta: StageMeta) => void | Promise<void>;
   onFrame?: (ctx: FrameContext) => void | Promise<void>;
 }
@@ -52,7 +61,16 @@ declare global {
   }
 }
 
-// ---------- Deterministic math & motion helpers ----------
+export const TRANSITION_KINDS: readonly TransitionKind[] = [
+  'cut',
+  'crossfade',
+  'wipe-left',
+  'wipe-up',
+  'zoom-through',
+  'slide-left',
+] as const;
+
+// ---------- Deterministic math, camera & choreography helpers ----------
 
 export function clamp(value: number, min = 0, max = 1): number {
   return value < min ? min : value > max ? max : value;
@@ -111,7 +129,7 @@ export function spring(
   const v0 = options.velocity ?? 0;
   const w0 = Math.sqrt(k / m);
   const zeta = c / (2 * Math.sqrt(k * m));
-  const x0 = -1; // displacement from target (1)
+  const x0 = -1;
 
   if (zeta < 1) {
     const wd = w0 * Math.sqrt(1 - zeta * zeta);
@@ -137,7 +155,285 @@ export function stagger(index: number, stepFrames: number, startFrame = 0): numb
   return startFrame + index * stepFrames;
 }
 
-// ---------- Internal helpers ----------
+/** Deterministic 2D camera transform string for stage planes or mockups. */
+export function cameraRig2D(options: {
+  panX?: number;
+  panY?: number;
+  zoom?: number;
+  rotateDeg?: number;
+} = {}): string {
+  const x = options.panX ?? 0;
+  const y = options.panY ?? 0;
+  const z = options.zoom ?? 1;
+  const r = options.rotateDeg ?? 0;
+  return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${z.toFixed(4)}) rotate(${r.toFixed(2)}deg)`;
+}
+
+/** Exponential beat accent envelope in [0, 1] peaking at `beatFrame`. */
+export function beatPulse(frame: number, beatFrame: number, decayFrames = 18): number {
+  if (frame < beatFrame) return 0;
+  return Math.exp(-(frame - beatFrame) / Math.max(1, decayFrames * 0.35));
+}
+
+// ---------- Scene Transition & WCAG Color Contrast Pure Helpers ----------
+
+export type ScenePhase = 'inactive' | 'entering' | 'active' | 'exiting';
+
+export interface SceneActivity {
+  active: boolean;
+  phase: ScenePhase;
+  localFrame: number;
+  localProgress: number;
+  transitionKind: TransitionKind;
+  transitionInProgress: number;
+  transitionOutProgress: number;
+}
+
+export function evaluateSceneActivity(
+  scenes: readonly StageScene[],
+  index: number,
+  frame: number,
+): SceneActivity {
+  const scene = scenes[index];
+  if (!scene) {
+    return {
+      active: false,
+      phase: 'inactive',
+      localFrame: 0,
+      localProgress: 0,
+      transitionKind: 'cut',
+      transitionInProgress: 1,
+      transitionOutProgress: 0,
+    };
+  }
+  const isLast = index === scenes.length - 1;
+  const nextScene = scenes[index + 1];
+  const span = Math.max(1, scene.endFrame - scene.startFrame);
+
+  const inSpec = scene.transitionIn;
+  const inKind: TransitionKind = inSpec?.kind ?? 'cut';
+  const inDur = inKind !== 'cut' ? Math.max(0, Math.min(span, inSpec?.durationFrames ?? 0)) : 0;
+
+  const outSpec =
+    nextScene && Math.abs(nextScene.startFrame - scene.endFrame) <= 1 ? nextScene.transitionIn : undefined;
+  const outKind: TransitionKind = outSpec?.kind ?? 'cut';
+  const nextSpan = nextScene ? Math.max(1, nextScene.endFrame - nextScene.startFrame) : 0;
+  const outDur = outKind !== 'cut' ? Math.max(0, Math.min(nextSpan, outSpec?.durationFrames ?? 0)) : 0;
+
+  const inBody = frame >= scene.startFrame && (frame < scene.endFrame || (isLast && frame <= scene.endFrame));
+  const inExit = outDur > 0 && frame >= scene.endFrame && frame < scene.endFrame + outDur;
+
+  if (inBody) {
+    const localFrame = clamp(frame - scene.startFrame, 0, span);
+    const localProgress = span > 1 ? clamp(localFrame / (span - 1), 0, 1) : 1;
+    if (inDur > 0 && frame < scene.startFrame + inDur) {
+      return {
+        active: true,
+        phase: 'entering',
+        localFrame,
+        localProgress,
+        transitionKind: inKind,
+        transitionInProgress: clamp((frame - scene.startFrame) / inDur, 0, 1),
+        transitionOutProgress: 0,
+      };
+    }
+    return {
+      active: true,
+      phase: 'active',
+      localFrame,
+      localProgress,
+      transitionKind: 'cut',
+      transitionInProgress: 1,
+      transitionOutProgress: 0,
+    };
+  }
+
+  if (inExit) {
+    const holdFrame = Math.max(0, span - 1);
+    return {
+      active: true,
+      phase: 'exiting',
+      localFrame: holdFrame,
+      localProgress: 1,
+      transitionKind: outKind,
+      transitionInProgress: 1,
+      transitionOutProgress: clamp((frame - scene.endFrame) / outDur, 0, 1),
+    };
+  }
+
+  const localFrame = clamp(frame - scene.startFrame, 0, span);
+  const localProgress = span > 1 ? clamp(localFrame / (span - 1), 0, 1) : 1;
+  return {
+    active: false,
+    phase: 'inactive',
+    localFrame,
+    localProgress,
+    transitionKind: 'cut',
+    transitionInProgress: frame < scene.startFrame ? 0 : 1,
+    transitionOutProgress: 0,
+  };
+}
+
+export interface TransitionInlineStyle {
+  opacity: string;
+  transform: string;
+  clipPath: string;
+  zIndex: string;
+}
+
+export function computeTransitionStyles(
+  kind: TransitionKind,
+  progress: number,
+  role: 'entering' | 'exiting',
+): TransitionInlineStyle {
+  const p = clamp(progress, 0, 1);
+  const smooth = easeInOutCubic(p);
+  const out = easeOutCubic(p);
+
+  if (kind === 'crossfade') {
+    return role === 'entering'
+      ? { opacity: smooth.toFixed(4), transform: '', clipPath: '', zIndex: '2' }
+      : { opacity: (1 - smooth).toFixed(4), transform: '', clipPath: '', zIndex: '1' };
+  }
+  if (kind === 'wipe-left') {
+    return role === 'entering'
+      ? {
+          opacity: '1',
+          transform: '',
+          clipPath: `inset(0 ${(100 * (1 - smooth)).toFixed(2)}% 0 0)`,
+          zIndex: '2',
+        }
+      : {
+          opacity: lerp(1, 0.86, smooth).toFixed(4),
+          transform: `scale(${lerp(1, 0.985, smooth).toFixed(4)})`,
+          clipPath: '',
+          zIndex: '1',
+        };
+  }
+  if (kind === 'wipe-up') {
+    return role === 'entering'
+      ? {
+          opacity: '1',
+          transform: '',
+          clipPath: `inset(${(100 * (1 - smooth)).toFixed(2)}% 0 0 0)`,
+          zIndex: '2',
+        }
+      : {
+          opacity: lerp(1, 0.86, smooth).toFixed(4),
+          transform: `scale(${lerp(1, 0.985, smooth).toFixed(4)})`,
+          clipPath: '',
+          zIndex: '1',
+        };
+  }
+  if (kind === 'slide-left') {
+    return role === 'entering'
+      ? {
+          opacity: '1',
+          transform: `translate3d(${(100 * (1 - out)).toFixed(2)}%, 0, 0)`,
+          clipPath: '',
+          zIndex: '2',
+        }
+      : {
+          opacity: lerp(1, 0.45, out).toFixed(4),
+          transform: `translate3d(${(-24 * out).toFixed(2)}%, 0, 0) scale(${lerp(1, 0.96, out).toFixed(4)})`,
+          clipPath: '',
+          zIndex: '1',
+        };
+  }
+  if (kind === 'zoom-through') {
+    return role === 'entering'
+      ? {
+          opacity: smooth.toFixed(4),
+          transform: `scale(${lerp(0.88, 1, out).toFixed(4)})`,
+          clipPath: '',
+          zIndex: '2',
+        }
+      : {
+          opacity: (1 - smooth).toFixed(4),
+          transform: `scale(${lerp(1, 1.15, smooth).toFixed(4)})`,
+          clipPath: '',
+          zIndex: '1',
+        };
+  }
+  return { opacity: '', transform: '', clipPath: '', zIndex: '' };
+}
+
+export function parseCssColor(input: string | undefined | null): [number, number, number, number] | null {
+  if (!input) return null;
+  const str = input.trim().toLowerCase();
+  if (!str || str === 'transparent' || str === 'none') return [0, 0, 0, 0];
+  const hex = str.match(/^#([0-9a-f]{3,8})$/u);
+  if (hex) {
+    const h = hex[1]!;
+    if (h.length === 3 || h.length === 4) {
+      const r = parseInt(h[0]! + h[0]!, 16);
+      const g = parseInt(h[1]! + h[1]!, 16);
+      const b = parseInt(h[2]! + h[2]!, 16);
+      const a = h.length === 4 ? parseInt(h[3]! + h[3]!, 16) / 255 : 1;
+      return [r, g, b, a];
+    }
+    if (h.length === 6 || h.length === 8) {
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+      return [r, g, b, a];
+    }
+  }
+  const rgb = str.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,/\s]+([\d.%]+))?\s*\)$/u);
+  if (rgb) {
+    const r = clamp(Number(rgb[1]), 0, 255);
+    const g = clamp(Number(rgb[2]), 0, 255);
+    const b = clamp(Number(rgb[3]), 0, 255);
+    let a = 1;
+    if (rgb[4] !== undefined) {
+      a = rgb[4].endsWith('%') ? clamp(Number(rgb[4].slice(0, -1)) / 100, 0, 1) : clamp(Number(rgb[4]), 0, 1);
+    }
+    return [r, g, b, a];
+  }
+  return null;
+}
+
+export function extractColorsFromCssValue(value: string | undefined | null): Array<[number, number, number, number]> {
+  if (!value || value === 'none') return [];
+  const matches = value.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)/gu) ?? [];
+  const out: Array<[number, number, number, number]> = [];
+  for (const m of matches) {
+    const parsed = parseCssColor(m);
+    if (parsed && parsed[3] > 0.02) out.push(parsed);
+  }
+  return out;
+}
+
+export function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (v: number) => {
+    const s = clamp(v / 255, 0, 1);
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+export function wcagContrastRatio(fg: [number, number, number], bg: [number, number, number]): number {
+  const l1 = relativeLuminance(fg[0], fg[1], fg[2]);
+  const l2 = relativeLuminance(bg[0], bg[1], bg[2]);
+  const bright = Math.max(l1, l2);
+  const dark = Math.min(l1, l2);
+  return Math.round(((bright + 0.05) / (dark + 0.05)) * 100) / 100;
+}
+
+function alphaComposite(
+  top: [number, number, number, number],
+  bottom: [number, number, number],
+): [number, number, number] {
+  const a = clamp(top[3], 0, 1);
+  return [
+    top[0] * a + bottom[0] * (1 - a),
+    top[1] * a + bottom[1] * (1 - a),
+    top[2] * a + bottom[2] * (1 - a),
+  ];
+}
+
+// ---------- Internal DOM helpers ----------
 
 function isCaptureMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -187,6 +483,38 @@ function describeElement(el: Element): string {
   return snippet ? `${base} ("${snippet}")` : base;
 }
 
+function buildSelector(el: Element, stopAt: Element): string {
+  const mfId = el.getAttribute('data-mf-id');
+  if (mfId) return `[data-mf-id="${mfId}"]`;
+  if (el.id) return `#${el.id}`;
+  const parts: string[] = [];
+  let cur: Element | null = el;
+  while (cur && parts.length < 3) {
+    const curMfId = cur.getAttribute('data-mf-id');
+    if (curMfId) {
+      parts.unshift(`[data-mf-id="${curMfId}"]`);
+      break;
+    }
+    const curScene = cur.getAttribute('data-mf-scene');
+    if (curScene) {
+      parts.unshift(`[data-mf-scene="${curScene}"]`);
+      break;
+    }
+    if (cur.id) {
+      parts.unshift(`#${cur.id}`);
+      break;
+    }
+    const tag = cur.tagName.toLowerCase();
+    const cls = typeof (cur as HTMLElement).className === 'string'
+      ? (cur as HTMLElement).className.trim().split(/\s+/u).filter(Boolean).slice(0, 2).map((c) => `.${c}`).join('')
+      : '';
+    parts.unshift(`${tag}${cls}`);
+    if (cur === stopAt) break;
+    cur = cur.parentElement;
+  }
+  return parts.join(' > ');
+}
+
 function hasAncestorAttr(el: Element, attr: string, stopAt: Element): boolean {
   let cur: Element | null = el;
   while (cur) {
@@ -197,16 +525,56 @@ function hasAncestorAttr(el: Element, attr: string, stopAt: Element): boolean {
   return false;
 }
 
-function isVisuallyPresent(el: Element, stopAt: Element): boolean {
+function effectiveOpacity(el: Element, stopAt: Element): number {
+  let acc = 1;
   let cur: Element | null = el;
   while (cur) {
     const style = getComputedStyle(cur);
-    if (style.display === 'none' || style.visibility === 'hidden') return false;
-    if (parseFloat(style.opacity) <= 0.04) return false;
+    if (style.display === 'none' || style.visibility === 'hidden') return 0;
+    const op = parseFloat(style.opacity);
+    if (Number.isFinite(op)) acc *= clamp(op, 0, 1);
+    if (acc <= 0.04) return 0;
     if (cur === stopAt) break;
     cur = cur.parentElement;
   }
-  return true;
+  return acc;
+}
+
+function isVisuallyPresent(el: Element, stopAt: Element): boolean {
+  return effectiveOpacity(el, stopAt) > 0.04;
+}
+
+function resolveBackdropRgb(el: Element, stageEl: Element): [number, number, number] | null {
+  const layers: Array<[number, number, number, number]> = [];
+  let cur: Element | null = el;
+  while (cur) {
+    const st = getComputedStyle(cur);
+    const bg = parseCssColor(st.backgroundColor);
+    if (bg && bg[3] > 0.01) {
+      layers.push(bg);
+    } else if (st.backgroundImage && st.backgroundImage !== 'none') {
+      const stops = extractColorsFromCssValue(st.backgroundImage);
+      if (stops.length > 0) {
+        const avgR = stops.reduce((s, c) => s + c[0], 0) / stops.length;
+        const avgG = stops.reduce((s, c) => s + c[1], 0) / stops.length;
+        const avgB = stops.reduce((s, c) => s + c[2], 0) / stops.length;
+        const avgA = stops.reduce((s, c) => s + c[3], 0) / stops.length;
+        layers.push([avgR, avgG, avgB, avgA]);
+      }
+    }
+    if (cur === stageEl) break;
+    cur = cur.parentElement;
+  }
+  if (layers.length === 0 && typeof document !== 'undefined' && document.body) {
+    const bodyBg = parseCssColor(getComputedStyle(document.body).backgroundColor);
+    if (bodyBg && bodyBg[3] > 0.01) layers.push(bodyBg);
+  }
+  if (layers.length === 0) return null;
+  let base: [number, number, number] = [11, 13, 18];
+  for (let i = layers.length - 1; i >= 0; i--) {
+    base = alphaComposite(layers[i]!, base);
+  }
+  return base;
 }
 
 function hasDirectText(el: Element): boolean {
@@ -319,7 +687,6 @@ function mountPreviewChrome(
   fit();
   window.addEventListener('resize', fit);
 
-  // Isolated Shadow DOM toolbar so CSS and DOM audit never see toolbar elements.
   const host = document.createElement('div');
   host.setAttribute('data-mf-preview-ui', '1');
   host.style.cssText = 'position:fixed;left:0;right:0;bottom:0;height:64px;z-index:100000;';
@@ -377,8 +744,9 @@ function mountPreviewChrome(
       .map((issue) => {
         const r = issue.rect!;
         const color = issue.severity === 'error' ? '#ef4444' : '#f59e0b';
+        const label = issue.selector ? `${issue.code} · ${issue.selector}` : issue.code;
         return `<div style="position:absolute;left:${r.x}px;top:${r.y}px;width:${r.width}px;height:${r.height}px;border:2px solid ${color};background:${color}22;box-sizing:border-box;">
-          <span style="position:absolute;left:0;top:-20px;background:${color};color:#fff;font:600 11px/18px ui-monospace,monospace;padding:0 6px;border-radius:3px;white-space:nowrap;">${issue.code}</span>
+          <span style="position:absolute;left:0;top:-20px;background:${color};color:#fff;font:600 11px/18px ui-monospace,monospace;padding:0 6px;border-radius:3px;white-space:nowrap;">${label}</span>
         </div>`;
       })
       .join('');
@@ -463,14 +831,17 @@ export function createStage(config: StageConfig): StageHandle {
     fps,
     durationFrames: Math.round(config.durationFrames),
     ...(config.background !== undefined ? { background: config.background } : {}),
-    scenes: (config.scenes ?? []).map((scene) => ({ ...scene })),
+    scenes: (config.scenes ?? []).map((scene) => ({
+      ...scene,
+      ...(scene.transitionIn ? { transitionIn: { ...scene.transitionIn } } : {}),
+    })),
     audio: (config.audio ?? []).map((cue) => ({ ...cue })),
   };
 
   const stageEl = resolveStageElement(config.element);
   const capture = isCaptureMode();
+  const autoTransitions = config.autoTransitions !== false;
 
-  // Lock deterministic stage box dimensions
   stageEl.style.width = `${meta.width}px`;
   stageEl.style.height = `${meta.height}px`;
   stageEl.style.position = 'relative';
@@ -498,7 +869,7 @@ export function createStage(config: StageConfig): StageHandle {
   let playStartFrame = 0;
   let ui: { syncUi: (frame: number, playing: boolean) => void } | undefined;
 
-  const sceneLookup = new Map<string, StageScene>(meta.scenes.map((s) => [s.id, s]));
+  const sceneIndexMap = new Map<string, number>(meta.scenes.map((s, idx) => [s.id, idx]));
 
   const seek = async (rawFrame: number, options?: { transparent?: boolean }): Promise<void> => {
     const frame = clamp(rawFrame, 0, meta.durationFrames);
@@ -539,21 +910,55 @@ export function createStage(config: StageConfig): StageHandle {
     }
     if (activeScene) stageEl.dataset.mfActiveScene = activeScene.id;
 
-    // 2. Update declared [data-mf-scene] containers
+    // 2. Update declared [data-mf-scene] containers + overlapping transitions
+    let exitingScene: { scene: StageScene; holdFrame: number } | undefined;
     const sceneNodes = stageEl.querySelectorAll<HTMLElement>('[data-mf-scene]');
     for (const node of sceneNodes) {
       const id = node.dataset.mfScene ?? '';
-      const def = sceneLookup.get(id);
-      const start = def ? def.startFrame : Number(node.dataset.mfStart ?? 0);
-      const end = def ? def.endFrame : Number(node.dataset.mfEnd ?? meta.durationFrames);
-      const isLast = def && def === meta.scenes[meta.scenes.length - 1];
-      const active = frame >= start && (frame < end || (Boolean(isLast) && frame <= end));
-      const span = Math.max(1, end - start);
-      const nodeLocalFrame = clamp(frame - start, 0, span);
-      const nodeLocalProgress = span > 1 ? clamp(nodeLocalFrame / (span - 1), 0, 1) : 1;
-      node.dataset.mfActive = active ? 'true' : 'false';
-      node.style.setProperty('--mf-local-frame', String(nodeLocalFrame));
-      node.style.setProperty('--mf-local-progress', nodeLocalProgress.toFixed(6));
+      const idx = sceneIndexMap.get(id);
+      if (idx !== undefined) {
+        const state = evaluateSceneActivity(meta.scenes, idx, frame);
+        node.dataset.mfActive = state.active ? 'true' : 'false';
+        node.dataset.mfPhase = state.phase;
+        node.style.setProperty('--mf-local-frame', String(state.localFrame));
+        node.style.setProperty('--mf-local-progress', state.localProgress.toFixed(6));
+        node.style.setProperty('--mf-transition-in', state.transitionInProgress.toFixed(6));
+        node.style.setProperty('--mf-transition-out', state.transitionOutProgress.toFixed(6));
+
+        if (state.phase === 'exiting') {
+          const def = meta.scenes[idx]!;
+          exitingScene = { scene: def, holdFrame: Math.max(def.startFrame, def.endFrame - 1) };
+        }
+
+        if (autoTransitions && !node.hasAttribute('data-mf-custom-transition')) {
+          if (state.phase === 'entering' || state.phase === 'exiting') {
+            const p = state.phase === 'entering' ? state.transitionInProgress : state.transitionOutProgress;
+            const styles = computeTransitionStyles(state.transitionKind, p, state.phase);
+            node.style.opacity = styles.opacity;
+            node.style.transform = styles.transform;
+            node.style.clipPath = styles.clipPath;
+            node.style.zIndex = styles.zIndex;
+            node.dataset.mfTransitionManaged = '1';
+          } else if (node.dataset.mfTransitionManaged === '1') {
+            node.style.opacity = '';
+            node.style.transform = '';
+            node.style.clipPath = '';
+            node.style.zIndex = '';
+            delete node.dataset.mfTransitionManaged;
+          }
+        }
+      } else {
+        const start = Number(node.dataset.mfStart ?? 0);
+        const end = Number(node.dataset.mfEnd ?? meta.durationFrames);
+        const active = frame >= start && frame < end;
+        const span = Math.max(1, end - start);
+        const nodeLocalFrame = clamp(frame - start, 0, span);
+        const nodeLocalProgress = span > 1 ? clamp(nodeLocalFrame / (span - 1), 0, 1) : 1;
+        node.dataset.mfActive = active ? 'true' : 'false';
+        node.dataset.mfPhase = active ? 'active' : 'inactive';
+        node.style.setProperty('--mf-local-frame', String(nodeLocalFrame));
+        node.style.setProperty('--mf-local-progress', nodeLocalProgress.toFixed(6));
+      }
     }
 
     // 3. Deterministically pause & seek all CSS Animations & WAAPI inside the stage
@@ -586,7 +991,27 @@ export function createStage(config: StageConfig): StageHandle {
     }
 
     // 5. Run custom per-frame JS / SVG / WebGL / MotionFlux atoms hook
+    // If an outgoing scene is mid-transition, hydrate its final pose first so random-access seeks stay bit-exact.
     if (config.onFrame) {
+      if (exitingScene && exitingScene.scene.id !== activeScene?.id) {
+        const ex = exitingScene.scene;
+        const exSpan = Math.max(1, ex.endFrame - ex.startFrame);
+        const exLocalF = Math.max(0, exSpan - 1);
+        await config.onFrame({
+          frame: exitingScene.holdFrame,
+          time: exitingScene.holdFrame / meta.fps,
+          progress: meta.durationFrames > 1 ? exitingScene.holdFrame / (meta.durationFrames - 1) : 1,
+          fps: meta.fps,
+          durationFrames: meta.durationFrames,
+          width: meta.width,
+          height: meta.height,
+          scene: ex,
+          localFrame: exLocalF,
+          localTime: exLocalF / meta.fps,
+          localProgress: 1,
+          stage: stageEl,
+        });
+      }
       await config.onFrame({
         frame,
         time,
@@ -629,6 +1054,7 @@ export function createStage(config: StageConfig): StageHandle {
             ...(activeScene ? { sceneId: activeScene.id } : {}),
             target: face.family,
             message: `Font "${face.family}" failed to load.`,
+            fix: 'Ensure local @font-face file paths exist inside the project directory or fall back to system UI/sans-serif stacks.',
           });
         }
       }
@@ -636,16 +1062,28 @@ export function createStage(config: StageConfig): StageHandle {
 
     const allElements = Array.from(stageEl.querySelectorAll('*'));
     let visibleElements = 0;
-    const overlapCandidates: Array<{ el: Element; name: string; rect: AuditRect }> = [];
+    const overlapCandidates: Array<{
+      el: Element;
+      name: string;
+      selector: string;
+      rect: AuditRect;
+      sceneId: string;
+      phase: string;
+    }> = [];
 
     for (const el of allElements) {
       if (el instanceof SVGElement && el.tagName.toLowerCase() !== 'svg') continue;
-      if (!isVisuallyPresent(el, stageEl)) continue;
+      const effOp = effectiveOpacity(el, stageEl);
+      if (effOp <= 0.04) continue;
 
       const domRect = el.getBoundingClientRect();
       if (domRect.width < 1 || domRect.height < 1) continue;
 
       const rect = toStageRect(domRect, stageRect, meta.width, meta.height);
+      const selector = buildSelector(el, stageEl);
+      const ownerSceneEl = el.closest<HTMLElement>('[data-mf-scene]');
+      const ownerSceneId = ownerSceneEl?.dataset.mfScene ?? activeScene?.id ?? '';
+      const ownerPhase = ownerSceneEl?.dataset.mfPhase ?? 'active';
       const allowBleed = hasAncestorAttr(el, 'data-mf-allow-bleed', stageEl)
         || el.getAttribute('data-mf-role') === 'background';
       const style = getComputedStyle(el);
@@ -664,7 +1102,9 @@ export function createStage(config: StageConfig): StageHandle {
           frame,
           ...(activeScene ? { sceneId: activeScene.id } : {}),
           target: describeElement(el),
+          selector,
           message: `Image failed to load (src="${el.getAttribute('src') ?? ''}").`,
+          fix: `Verify "${el.getAttribute('src') ?? ''}" exists relative to index.html or replace with inline SVG.`,
           rect,
         });
       }
@@ -675,13 +1115,19 @@ export function createStage(config: StageConfig): StageHandle {
           frame,
           ...(activeScene ? { sceneId: activeScene.id } : {}),
           target: describeElement(el),
+          selector,
           message: `Video failed to load (code=${el.error.code}).`,
+          fix: 'Ensure video src points to a local H.264/VP9 media file inside the project directory.',
           rect,
         });
       }
 
-      // 2. Clipped outside stage viewport
-      if (!allowBleed && (isTextLeaf || el.hasAttribute('data-mf-role') || el.hasAttribute('data-mf-no-overlap'))) {
+      // 2. Clipped outside stage viewport (skip elements currently sliding/zooming in or out of a scene transition)
+      if (
+        !allowBleed &&
+        ownerPhase === 'active' &&
+        (isTextLeaf || el.hasAttribute('data-mf-role') || el.hasAttribute('data-mf-no-overlap'))
+      ) {
         const tol = 1.5;
         if (rect.x < -tol || rect.y < -tol || rect.x + rect.width > meta.width + tol || rect.y + rect.height > meta.height + tol) {
           issues.push({
@@ -690,13 +1136,15 @@ export function createStage(config: StageConfig): StageHandle {
             frame,
             ...(activeScene ? { sceneId: activeScene.id } : {}),
             target: describeElement(el),
+            selector,
             message: `Element bounds (${rect.x}, ${rect.y}, ${rect.width}×${rect.height}) extend outside stage ${meta.width}×${meta.height}.`,
+            fix: `Constrain "${selector}" width/max-width or translate offsets inside ${meta.width}×${meta.height}, or add data-mf-allow-bleed if background bleed is intentional.`,
             rect,
           });
         }
       }
 
-      // 3. Text box overflow / clipping
+      // 3. Text box overflow, tiny font, safe margin, and WCAG contrast
       if (el instanceof HTMLElement && isTextLeaf) {
         const clipsX = style.overflowX === 'hidden' || style.overflowX === 'clip';
         const clipsY = style.overflowY === 'hidden' || style.overflowY === 'clip';
@@ -707,12 +1155,13 @@ export function createStage(config: StageConfig): StageHandle {
             frame,
             ...(activeScene ? { sceneId: activeScene.id } : {}),
             target: describeElement(el),
+            selector,
             message: `Text overflows its container (${el.scrollWidth}×${el.scrollHeight} > ${el.clientWidth}×${el.clientHeight}).`,
+            fix: `Increase width/height on "${selector}", allow wrapping (remove white-space: nowrap), or reduce font-size.`,
             rect,
           });
         }
 
-        // 4. Tiny unreadable text
         const fontSize = parseFloat(style.fontSize);
         if (Number.isFinite(fontSize) && fontSize > 0 && fontSize < minReadableFont && !hasAncestorAttr(el, 'data-mf-allow-tiny', stageEl)) {
           issues.push({
@@ -721,15 +1170,16 @@ export function createStage(config: StageConfig): StageHandle {
             frame,
             ...(activeScene ? { sceneId: activeScene.id } : {}),
             target: describeElement(el),
+            selector,
             message: `Font size ${fontSize.toFixed(1)}px is below recommended floor ${minReadableFont}px for ${meta.width}×${meta.height}.`,
+            fix: `Raise font-size on "${selector}" to >= ${minReadableFont}px (or add data-mf-allow-tiny for micro-telemetry labels).`,
             rect,
           });
         }
 
-        // 5. Safe area margin warning
         const mx = meta.width * safeMarginRatio;
         const my = meta.height * safeMarginRatio;
-        if (!allowBleed && !hasAncestorAttr(el, 'data-mf-allow-safe-margin', stageEl)) {
+        if (!allowBleed && ownerPhase === 'active' && !hasAncestorAttr(el, 'data-mf-allow-safe-margin', stageEl)) {
           if (rect.x < mx || rect.y < my || rect.x + rect.width > meta.width - mx || rect.y + rect.height > meta.height - my) {
             issues.push({
               code: 'SAFE_AREA_WARNING',
@@ -737,16 +1187,70 @@ export function createStage(config: StageConfig): StageHandle {
               frame,
               ...(activeScene ? { sceneId: activeScene.id } : {}),
               target: describeElement(el),
+              selector,
               message: `Text intrudes into the ${Math.round(safeMarginRatio * 100)}% outer safe margin.`,
+              fix: `Add >= ${Math.round(safeMarginRatio * 100)}% stage padding (${Math.round(my)}px ${Math.round(mx)}px) around "${selector}".`,
               rect,
             });
           }
         }
+
+        // WCAG 2.1 perceived luminance contrast check (only when settled >= 0.65 opacity)
+        if (effOp >= 0.65 && ownerPhase === 'active' && !hasAncestorAttr(el, 'data-mf-allow-low-contrast', stageEl)) {
+          const bgClip = style.backgroundClip || (style as unknown as Record<string, string>).webkitBackgroundClip || '';
+          let fgRgb: [number, number, number] | null = null;
+          if (bgClip === 'text') {
+            const stops = extractColorsFromCssValue(style.backgroundImage);
+            if (stops.length > 0) {
+              fgRgb = [
+                stops.reduce((s, c) => s + c[0], 0) / stops.length,
+                stops.reduce((s, c) => s + c[1], 0) / stops.length,
+                stops.reduce((s, c) => s + c[2], 0) / stops.length,
+              ];
+            }
+          } else {
+            const fgParsed = parseCssColor(style.color);
+            if (fgParsed && fgParsed[3] >= 0.5) {
+              fgRgb = [fgParsed[0], fgParsed[1], fgParsed[2]];
+            }
+          }
+          const bgRgb = fgRgb ? resolveBackdropRgb(el, stageEl) : null;
+          if (fgRgb && bgRgb) {
+            const blendedFg = alphaComposite([fgRgb[0], fgRgb[1], fgRgb[2], effOp], bgRgb);
+            const ratio = wcagContrastRatio(blendedFg, bgRgb);
+            const weight = parseInt(style.fontWeight, 10);
+            const isBold = style.fontWeight === 'bold' || (Number.isFinite(weight) && weight >= 700);
+            const isLarge = Number.isFinite(fontSize) && (fontSize >= 24 || (fontSize >= 18.66 && isBold));
+            const minRatio = isLarge ? 3.0 : 4.5;
+            const errorFloor = isLarge ? 2.0 : 2.6;
+            if (ratio < minRatio) {
+              issues.push({
+                code: 'LOW_CONTRAST_TEXT',
+                severity: ratio < errorFloor ? 'error' : 'warning',
+                frame,
+                ...(activeScene ? { sceneId: activeScene.id } : {}),
+                target: describeElement(el),
+                selector,
+                contrastRatio: ratio,
+                message: `Text contrast ratio ${ratio.toFixed(2)}:1 is below WCAG AA ${minRatio.toFixed(1)}:1.`,
+                fix: `Brighten/darken "${selector}" color or add an opaque/smoked backdrop card so contrast >= ${minRatio.toFixed(1)}:1.`,
+                rect,
+              });
+            }
+          }
+        }
       }
 
-      // 6. Collect overlap candidates
+      // 4. Collect overlap candidates
       if ((isTextLeaf || el.hasAttribute('data-mf-no-overlap')) && !hasAncestorAttr(el, 'data-mf-allow-overlap', stageEl)) {
-        overlapCandidates.push({ el, name: describeElement(el), rect });
+        overlapCandidates.push({
+          el,
+          name: describeElement(el),
+          selector,
+          rect,
+          sceneId: ownerSceneId,
+          phase: ownerPhase,
+        });
       }
     }
 
@@ -756,6 +1260,10 @@ export function createStage(config: StageConfig): StageHandle {
       for (let j = i + 1; j < overlapCandidates.length; j++) {
         const b = overlapCandidates[j]!;
         if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+        // Skip intentional cross-scene handoff overlap while one scene is exiting and the next is entering
+        if (a.sceneId && b.sceneId && a.sceneId !== b.sceneId && (a.phase !== 'active' || b.phase !== 'active')) {
+          continue;
+        }
         const inter = rectIntersectionArea(a.rect, b.rect);
         if (inter <= 0) continue;
         const minArea = Math.min(areaA, b.rect.width * b.rect.height);
@@ -766,8 +1274,10 @@ export function createStage(config: StageConfig): StageHandle {
             frame,
             ...(activeScene ? { sceneId: activeScene.id } : {}),
             target: a.name,
+            selector: a.selector,
             otherTarget: b.name,
             message: `Elements overlap by ${Math.round((inter / minArea) * 100)}% of the smaller box.`,
+            fix: `Use flex/grid gap between "${a.selector}" and "${b.selector}", adjust vertical offsets, or add data-mf-allow-overlap if layered intentionally.`,
             rect: a.rect,
           });
         }
@@ -781,7 +1291,9 @@ export function createStage(config: StageConfig): StageHandle {
         frame,
         ...(activeScene ? { sceneId: activeScene.id } : {}),
         target: 'stage',
+        selector: '[data-mf-stage]',
         message: 'No visible content elements detected on stage at this frame.',
+        fix: 'Ensure at least one [data-mf-scene] or visible foreground element is active at this frame.',
       });
     }
 

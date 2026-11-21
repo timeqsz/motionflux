@@ -84,15 +84,15 @@
 </script>
 ```
 
-## 确定性时间同步
+## 确定性时间同步与无缝镜头转场
 
 每次 `seek(frame)` 会按顺序同步五层时间，保证浏览器预览与逐帧捕获逐像素一致：
 
 1. **CSS 变量**：自动更新 `--mf-frame`、`--mf-time`、`--mf-progress`、`--mf-scene-frame`、`--mf-scene-progress`。
-2. **分镜容器**：`[data-mf-scene="<id>"]` 自动切换 `data-mf-active="true|false"` 并更新 `--mf-local-frame`、`--mf-local-progress`。
+2. **分镜容器与重叠转场**：`[data-mf-scene="<id>"]` 自动切换 `data-mf-active="true|false"` 与 `data-mf-phase="entering|active|exiting|inactive"`，更新 `--mf-local-frame`、`--mf-local-progress`、`--mf-transition-in`、`--mf-transition-out`。在 `scenes` 中为下一镜头配置 `transitionIn: { kind: 'crossfade' | 'wipe-left' | 'wipe-up' | 'slide-left' | 'zoom-through', durationFrames: 18 }` 时，前序镜头会在切点后自动延长保持终态并叠加平滑退场，消除硬切黑缝（完整导演脚本语法见 [Motion.md 规范](../references/motion-md.md)）。
 3. **CSS 动画与 WAAPI**：自动暂停舞台内所有 CSS `@keyframes` 和 `element.animate()` 并精准定位 `currentTime`；加 `data-mf-local-time` 可按所属分镜局部时间从 0 计时。
 4. **内嵌视频**：舞台内 `<video>` 自动按 `data-mf-start-frame`、`data-mf-offset-sec`、`data-mf-rate` 精准 seek 并等待 `seeked`。
-5. **自定义逐帧钩子**：执行 `await onFrame(ctx)`，适合驱动 Three.js / WebGL2 / WebGPU、SVG 路径、Canvas 2D 或 MotionFlux 的 53 个 `.mjs` 原子。
+5. **自定义逐帧钩子**：执行 `await onFrame(ctx)`（另导出 `cameraRig2D` 与 `beatPulse` 运镜/节拍辅助函数），适合驱动 Three.js / WebGL2 / WebGPU、SVG 路径、Canvas 2D 或 MotionFlux 的 53 个 `.mjs` 原子。
 
 ## 内置程序化音效（零外部 API Key）
 
@@ -108,13 +108,14 @@
 | `chime` | 完成提示、Logo 收尾 | `gain`, `pitch`, `durationSec` |
 | `shutter` | 光圈合拢、截图定格、快门切换 | `gain`, `pitch` |
 
-## DOM 几何防穿帮审计（`audit`）
+## 智能视觉防穿帮审计 2.0（`audit`）
 
-CLI 在真实 Chrome 中检查关键帧并输出结构化 JSON 与拼图：
+CLI 在真实 Chrome 中检查关键帧并输出结构化 JSON（每条问题附带精确 CSS `selector` 与 `fix` 修复建议）及联版图：
 
 - `CLIPPED_OUTSIDE_STAGE`（error）：可见内容超出舞台边界。装饰/全屏三维背景允许出血时加 `data-mf-allow-bleed` 或 `data-mf-role="background"`。
 - `TEXT_OVERFLOW`（error）：文字溢出被裁切容器。
-- `ELEMENT_OVERLAP`（error）：独立文本块或 `[data-mf-no-overlap]` 元素意外重叠 > 15%。刻意叠层时加 `data-mf-allow-overlap`。
+- `ELEMENT_OVERLAP`（error）：同镜头内独立文本块或 `[data-mf-no-overlap]` 元素意外重叠 > 15%（跨镜头转场期间自动豁免进出场叠化）。刻意叠层时加 `data-mf-allow-overlap`。
+- `LOW_CONTRAST_TEXT`（error / warning）：文字与合成背景亮度对比度低于 WCAG 2.1 AA 标准（正文 `4.5:1` / 大字 `3.0:1`，极低不可读直接报 `error`；刻意暗纹装饰可标 `data-mf-allow-low-contrast`）。
 - `BROKEN_IMAGE` / `BROKEN_VIDEO` / `FONT_LOAD_ERROR`（error）：素材或字体加载失败。
 - `SAFE_AREA_WARNING` / `TINY_TEXT` / `BLANK_FRAME`（warning）：安全区侵入、字号过小或空帧提醒。
 
@@ -122,7 +123,10 @@ CLI 在真实 Chrome 中检查关键帧并输出结构化 JSON 与拼图：
 
 ```sh
 node scripts/motion.mjs doctor
-node scripts/motion.mjs init work/demo --width 1920 --height 1080 --fps 60 --duration 180
+node scripts/motion.mjs templates
+node scripts/motion.mjs init work/demo --template hardware-3d --fps 60 --duration 240
+node scripts/motion.mjs plan work/demo/Motion.md
+node scripts/motion.mjs compile work/demo/Motion.md --out work/demo-compiled
 node scripts/motion.mjs audit work/demo/index.html --contact work/demo/contact.png --out work/demo/audit.json
 node scripts/motion.mjs frames work/demo/index.html --out work/demo/frames --frames 0,45,90
 node scripts/motion.mjs render work/demo/index.html --out work/demo/out.mp4 --quality cinema --audit

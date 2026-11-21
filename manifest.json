@@ -579,6 +579,11 @@
       "sha256": "22e692128672498f0f33793daa0a13cd0a7aacdbe9b3c2ed54f90e0e5d7dcea7"
     },
     {
+      "path": "references/motion-md.md",
+      "bytes": 5188,
+      "sha256": "597141da1f06bdf8b195af9aa5a4fda61411eee218441605b21f8d7597a1e1d4"
+    },
+    {
       "path": "references/physical-3d.md",
       "bytes": 7056,
       "sha256": "12c4460077410548e8e9d1b6e0a5d5a68ff0566d8a25a7e7bc15718b66d34ee8"
@@ -600,23 +605,23 @@
     },
     {
       "path": "scripts/motion.mjs",
-      "bytes": 249537,
-      "sha256": "48b19877876666acb341e5768e44c58c0b75fa2db72f1b9f5c8ac0b70ea131e0"
+      "bytes": 310096,
+      "sha256": "554d389e2c200cc4196c1332f8717eed4f01dfc30dae625004622fb6e65b0b26"
     },
     {
       "path": "SKILL.md",
-      "bytes": 6220,
-      "sha256": "e972542ac0aa42d9e754a6859eec48840cbb9217f440f05181fd142eadaaa034"
+      "bytes": 6500,
+      "sha256": "7e2fef5714fa369b71aace71466bf7866b4c2803f2f3bf1b4e74f1d84c84635b"
     },
     {
       "path": "stage/README.md",
-      "bytes": 6215,
-      "sha256": "eecd763868977befd4086ac8b579ddcfa3a3a47c555f089e3404b9b814753e0d"
+      "bytes": 7295,
+      "sha256": "4b3e95b724b05f191f2cbcc1e29bba719f3cf857fb32ce6b4cc52d3275830d81"
     },
     {
       "path": "stage/runtime.mjs",
-      "bytes": 28991,
-      "sha256": "c5da9aec308067d609243781bb6fe766a87d9acd195787f7020936fd693ae5eb"
+      "bytes": 45652,
+      "sha256": "ae4c35e67d9468fbb12d9b8c07f6253225d05c790d957c0b5cc3a09b17f5ecf2"
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",

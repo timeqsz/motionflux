@@ -13,12 +13,30 @@ import { buildInstallPlan, detectPackageManagers, runInstallStep } from './env.j
 import { writeDelivery } from './delivery.js';
 import { breakdownPlan, readVideoBreakdown, videoBreakdownPlan } from './breakdown.js';
 import { breakdownSize, panelHeight } from '../../renderer-browser/src/breakdown.js';
-import { auditStage, captureStageFrames, initStageProject, renderStageVideo, startStageServer, synthesizeSfxTrack, SFX_KINDS, type AudioCue } from '../../stage/src/index.js';
+import { auditStage, captureStageFrames, compileMotionMdProject, compileMotionMdToHtml, initStageProject, listStageTemplates, MotionMdValidationError, parseMotionMd, renderStageVideo, saveMotionMdPlan, startStageServer, synthesizeSfxTrack, SFX_KINDS, type AudioCue, type MotionMdDocument } from '../../stage/src/index.js';
 import { spawn, spawnSync } from 'node:child_process';
 
 const resourceRoot = join(dirname(fileURLToPath(import.meta.url)), 'resources');
 const motionfluxRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const isHtmlInput = (path: string | undefined): boolean => Boolean(path && /\.html?$/iu.test(path));
+const isMarkdownInput = (path: string | undefined): boolean => Boolean(path && /\.md$/iu.test(path));
+
+async function withStageEntry<T>(
+  inputPath: string,
+  fn: (htmlPath: string, mdDoc?: MotionMdDocument) => Promise<T>,
+): Promise<T> {
+  if (!isMarkdownInput(inputPath)) return fn(inputPath);
+  const absMd = resolve(inputPath);
+  const doc = parseMotionMd(await readFile(absMd, 'utf8'));
+  const html = compileMotionMdToHtml(doc);
+  const tempHtml = join(dirname(absMd), `.mf-stage-${process.pid}-${Date.now()}.html`);
+  await writeFile(tempHtml, html);
+  try {
+    return await fn(tempHtml, doc);
+  } finally {
+    await rm(tempHtml, { force: true });
+  }
+}
 async function readScene(path: string | undefined): Promise<MotionSpec> {
   if (!path) throw new Error('USAGE: Supply a scene JSON path.');
   const scene: unknown = JSON.parse(await readFile(resolve(path), 'utf8'));
@@ -57,10 +75,10 @@ function parseFrames(list: string | undefined, total: number): number[] {
 }
 interface Options { out?: string; previous?: string; scene?: string; authoring?: string; frame?: number; backend?: string; frames?: string; browser?: string; transparent?: boolean;
   width?: number; height?: number; duration?: number; fps?: number; crf?: number; quality?: string; target?: string; manager?: string; apply?: boolean;
-  text?: string; color?: string; background?: string; title?: string;
+  template?: string; text?: string; color?: string; background?: string; title?: string;
   scale?: number; contact?: string; port?: number; noAudio?: boolean; runAudit?: boolean }
 const numeric = ['frame', 'width', 'height', 'duration', 'fps', 'scale', 'port', 'crf'] as const;
-const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'quality', 'target', 'manager', 'text', 'color', 'background', 'title', 'contact'] as const;
+const textual = ['out', 'previous', 'scene', 'authoring', 'backend', 'frames', 'browser', 'quality', 'target', 'manager', 'template', 'text', 'color', 'background', 'title', 'contact'] as const;
 function parseArgs(args: string[]): { command: string; positional: string[] } & Options {
   const command = args.shift() ?? 'help';
   const positional: string[] = [];
@@ -81,8 +99,10 @@ function parseArgs(args: string[]): { command: string; positional: string[] } & 
     } else if (arg.startsWith('--')) throw new Error(`USAGE: Unknown option ${arg}.`);
     else positional.push(arg);
   }
-  const supported: Record<string, string[]> = { help: [], search: [], patterns: [], compose: ['out'], controls: ['scene'], describe: [], validate: [], study: ['scene', 'out'], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous', 'authoring'],
-    init: ['width', 'height', 'duration', 'fps', 'title'],
+  const supported: Record<string, string[]> = { help: [], templates: [], search: [], patterns: [], compose: ['out'], controls: ['scene'], describe: [], validate: [], study: ['scene', 'out'], sample: ['frame'], preview: ['out'], 'export-html': ['out'], deliver: ['out', 'previous', 'authoring'],
+    init: ['template', 'width', 'height', 'duration', 'fps', 'title'],
+    plan: ['out'],
+    compile: ['out'],
     audit: ['frames', 'out', 'contact', 'browser'],
     sfx: ['out', 'duration', 'fps'],
     serve: ['port'],
@@ -94,7 +114,7 @@ function parseArgs(args: string[]): { command: string; positional: string[] } & 
     setup: ['target', 'manager', 'apply', 'browser'] };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command]!.includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (!['search', 'patterns'].includes(command) && positional.length > (['help', 'doctor', 'setup'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
+  if (!['search', 'patterns'].includes(command) && positional.length > (['help', 'templates', 'doctor', 'setup'].includes(command) ? 0 : 1)) throw new Error('USAGE: Too many positional arguments.');
   return { command, positional, ...options };
 }
 /**
@@ -239,24 +259,29 @@ async function main(): Promise<unknown> {
   const args = parseArgs(process.argv.slice(2));
   const path = args.positional[0];
   switch (args.command) {
-    case 'help': return { version: ENGINE_VERSION, stageVersion: 'stage-1', commands: [
+    case 'help': return { version: ENGINE_VERSION, stageVersion: 'stage-1', motionMdVersion: 'motion-md-1', commands: [
       'doctor [--backend all|js|browser|webgl2|webgpu|ffmpeg] [--browser <path>]  (check full runtime environment)',
       'setup [--target all|browser|ffmpeg] [--manager auto|playwright|brew|apt|dnf|pacman|apk|winget|scoop|choco] [--apply]  (plan or install missing runtime dependencies)',
-      'init <dir> [--width 1920] [--height 1080] [--fps 30] [--duration 150] [--title "…"]  (create HTML/CSS/SVG/WebGL stage project)',
-      'audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/asset audit)',
-      'frames <stage.html | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]',
-      'render <stage.html | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]',
+      'templates  (list built-in Stage & Motion.md commercial templates)',
+      'init <dir> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240] [--title "…"]',
+      'plan <Motion.md> [--out stage.plan.json]  (parse & validate structured Motion.md director script + pacing diagnostics)',
+      'compile <Motion.md> --out <dir>  (compile Motion.md into runnable HTML/CSS/SVG/3D Stage project)',
+      'audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/WCAG contrast audit)',
+      'frames <stage.html | Motion.md | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]',
+      'render <stage.html | Motion.md | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]',
       'sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: ' + SFX_KINDS.join(', ') + ')',
       'serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/stage/* and /__motionflux/atoms/* mounts)',
       'search <query> --json', 'describe <id> --json',
       'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "…"] [--width 960] [--fps 25]',
-    ], delivery: 'HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with deterministic CSS/WAAPI/video/atom seeking, DOM geometry audit, procedural SFX + audio muxing, and full-page Chrome capture to MP4/MOV/WebM/PNG.' };
+    ], delivery: 'Structured Motion.md director compiler + HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with scene transitions, WCAG/DOM visual audit, procedural SFX + audio muxing, and cinema MP4/MOV/WebM/PNG capture.' };
+    case 'templates': return { templates: listStageTemplates() };
     case 'init': {
-      if (!path) throw new Error('USAGE: init <new-directory> [--width 1920] [--height 1080] [--fps 30] [--duration 150]');
+      if (!path) throw new Error('USAGE: init <new-directory> [--template default|saas-launch|hardware-3d|data-story] [--width 1920] [--height 1080] [--fps 60] [--duration 240]');
       const runtimeSource = join(motionfluxRoot, 'stage', 'runtime.mjs');
       const hasRuntime = await stat(runtimeSource).then(() => true, () => false);
       return initStageProject({
         outDir: path,
+        ...(args.template !== undefined ? { template: args.template } : {}),
         ...(args.width !== undefined ? { width: args.width } : {}),
         ...(args.height !== undefined ? { height: args.height } : {}),
         ...(args.fps !== undefined ? { fps: args.fps } : {}),
@@ -265,14 +290,29 @@ async function main(): Promise<unknown> {
         ...(hasRuntime ? { runtimeSourcePath: runtimeSource } : {}),
       });
     }
-    case 'audit': {
-      if (!path) throw new Error('USAGE: audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png]');
-      const report = await auditStage(path, {
-        ...(args.browser ? { browser: args.browser } : {}),
-        motionfluxRoot,
-        ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
-        ...(args.contact ? { contactSheetOut: args.contact } : {}),
+    case 'plan': {
+      if (!path) throw new Error('USAGE: plan <Motion.md> [--out stage.plan.json]');
+      return saveMotionMdPlan(path, args.out);
+    }
+    case 'compile': {
+      if (!path || !args.out) throw new Error('USAGE: compile <Motion.md> --out <directory>');
+      const runtimeSource = join(motionfluxRoot, 'stage', 'runtime.mjs');
+      const hasRuntime = await stat(runtimeSource).then(() => true, () => false);
+      return compileMotionMdProject(path, {
+        outDir: args.out,
+        ...(hasRuntime ? { runtimeSourcePath: runtimeSource } : {}),
       });
+    }
+    case 'audit': {
+      if (!path) throw new Error('USAGE: audit <stage.html | Motion.md> [--frames 0,30,60] [--out report.json] [--contact sheet.png]');
+      const report = await withStageEntry(path, (entryHtml) =>
+        auditStage(entryHtml, {
+          ...(args.browser ? { browser: args.browser } : {}),
+          motionfluxRoot,
+          ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
+          ...(args.contact ? { contactSheetOut: args.contact } : {}),
+        }),
+      );
       if (args.out) await save(args.out, `${JSON.stringify(report, null, 2)}\n`);
       return report;
     }
@@ -476,32 +516,36 @@ async function main(): Promise<unknown> {
       };
     }
     default: {
-      if ((args.command === 'frames' || args.command === 'render') && isHtmlInput(path)) {
+      if ((args.command === 'frames' || args.command === 'render') && (isHtmlInput(path) || isMarkdownInput(path))) {
         if (!args.out) throw new Error('USAGE: Supply --out <output path>.');
         if (args.scale !== undefined && !(args.scale > 0 && args.scale <= 4)) {
           throw new Error('USAGE: --scale must be between 0 and 4 (e.g. 1 or 2).');
         }
         if (args.command === 'frames') {
-          return captureStageFrames(path!, {
-            outDir: args.out,
-            ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
+          return withStageEntry(path!, (entryHtml) =>
+            captureStageFrames(entryHtml, {
+              outDir: args.out!,
+              ...(args.frames ? { frames: parseFrameList(args.frames) } : {}),
+              ...(args.browser ? { browser: args.browser } : {}),
+              motionfluxRoot,
+              transparent: Boolean(args.transparent),
+              ...(args.scale !== undefined ? { scale: args.scale } : {}),
+            }),
+          );
+        }
+        return withStageEntry(path!, (entryHtml, mdDoc) =>
+          renderStageVideo(entryHtml, {
+            outPath: args.out!,
             ...(args.browser ? { browser: args.browser } : {}),
             motionfluxRoot,
             transparent: Boolean(args.transparent),
             ...(args.scale !== undefined ? { scale: args.scale } : {}),
-          });
-        }
-        return renderStageVideo(path!, {
-          outPath: args.out,
-          ...(args.browser ? { browser: args.browser } : {}),
-          motionfluxRoot,
-          transparent: Boolean(args.transparent),
-          ...(args.scale !== undefined ? { scale: args.scale } : {}),
-          ...(args.quality !== undefined ? { quality: args.quality } : {}),
-          ...(args.crf !== undefined ? { crf: args.crf } : {}),
-          noAudio: Boolean(args.noAudio),
-          runAudit: Boolean(args.runAudit),
-        });
+            ...(args.quality !== undefined ? { quality: args.quality } : mdDoc ? { quality: mdDoc.quality } : {}),
+            ...(args.crf !== undefined ? { crf: args.crf } : {}),
+            noAudio: Boolean(args.noAudio),
+            runAudit: Boolean(args.runAudit),
+          }),
+        );
       }
       if (args.command === 'breakdown' && path) {
         const raw: unknown = JSON.parse(await readFile(resolve(path), 'utf8'));
@@ -562,8 +606,16 @@ async function main(): Promise<unknown> {
 }
 main().then((result) => process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`)).catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  const code = error instanceof SceneValidationError ? error.code
+  const code = error instanceof SceneValidationError || error instanceof MotionMdValidationError ? error.code
     : error && typeof error === 'object' && 'code' in error ? String(error.code) : message.match(/^([A-Z_]+):/u)?.[1] ?? 'COMMAND_FAILED';
-  process.stdout.write(`${JSON.stringify({ ok: false, error: { code, message, ...(error instanceof SceneValidationError ? { issues: error.issues } : {}) } }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: false,
+    error: {
+      code,
+      message,
+      ...(error instanceof SceneValidationError ? { issues: error.issues } : {}),
+      ...(error instanceof MotionMdValidationError ? { diagnostics: error.diagnostics } : {}),
+    },
+  }, null, 2)}\n`);
   process.exitCode = 1;
 });

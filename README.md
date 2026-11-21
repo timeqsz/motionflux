@@ -1,8 +1,9 @@
 # MotionFlux
 
-MotionFlux 是一套零依赖、确定性的 **HTML/CSS/SVG/WebGL/WebGPU 动效与视频底座 + 物理 3D 机械光学套件 + 53 个二维动效原子 + 参考视频拆解 Skill**。
+MotionFlux 是一套零依赖、确定性的 **`Motion.md` 导演分镜编译器 + HTML/CSS/SVG/WebGL/WebGPU 动效舞台底座 + 物理 3D 机械光学套件 + 53 个二维动效原子 + 参考视频拆解 Skill**。
 
-- **Stage 底座**（[stage/README.md](stage/README.md)）：用完整浏览器渲染能力（现代排版、CSS/SVG/`backdrop-filter`、图片/视频、WebGL2/WebGPU/Three.js）编写动效，支持确定性逐帧捕获（CDP 全页截图）、交互式预览条、**自动 DOM 几何防穿帮审计（裁切/溢出/重叠/坏资源检测）**，以及**零外部 API Key 的程序化音效与多轨音频混音**。
+- **`Motion.md` 导演分镜与商业模板**（[references/motion-md.md](references/motion-md.md)）：用结构化 Markdown 定义帧预算、无缝镜头转场（`crossfade` / `wipe-left` / `slide-left` / `zoom-through`）、3D 机位、程序化音效节拍与阅读负荷预算；内置 `saas-launch`、`hardware-3d`、`data-story` 等商业模板。
+- **Stage 底座与智能审计 2.0**（[stage/README.md](stage/README.md)）：用完整浏览器渲染能力（现代排版、CSS/SVG/`backdrop-filter`、图片/视频、WebGL2/WebGPU/Three.js）编写动效，支持确定性逐帧捕获（CDP 全页截图）、交互式预览条、**WCAG 对比度 + DOM 几何防穿帮审计（附精确 CSS `selector` 与 `fix` 修复建议）**，以及**零外部 API Key 的程序化音效与多轨音频混音**。
 - **物理 3D 摄影棚与精密机械光学套件**（[atoms/studio.md](atoms/studio.md) · [references/physical-3d.md](references/physical-3d.md)）：单文件自包含 `atoms/studio.mjs`（内置 Three.js 0.180），提供余弦柔光渐变+吸光黑旗 PMREM 环境、16 种切线法线/各向异性金属与增透镀膜玻璃材质、真渐开线齿轮/擒纵轮/阿基米德游丝/滚花旋钮/弧形光圈叶片 CAD 生成器，以及 4x MSAA 电影镜头光学后处理。
 - **运行环境自检与自动安装**（[references/install.md](references/install.md)）：内置 `doctor`（Node 22+、浏览器、WebGL2、WebGPU、FFmpeg 全量诊断）、`setup [--apply]`（默认 Dry-Run 预览，免 `sudo` 用户态优先安装）与裸机引导脚本 `scripts/env.sh` / `scripts/env.ps1`。
 - **53 个独立二维原子**（[atoms/README.md](atoms/README.md) · [原子清单](assets/catalog.md)）：零依赖纯函数 `.mjs`，可在 Stage 中直接 `import`，也可单独拷进任何宿主工程。

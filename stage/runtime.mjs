@@ -1,4 +1,12 @@
 // packages/stage/src/runtime.ts
+var TRANSITION_KINDS = [
+  "cut",
+  "crossfade",
+  "wipe-left",
+  "wipe-up",
+  "zoom-through",
+  "slide-left"
+];
 function clamp(value, min = 0, max = 1) {
   return value < min ? min : value > max ? max : value;
 }
@@ -58,6 +66,218 @@ function spring(tSec, options = {}) {
 function stagger(index, stepFrames, startFrame = 0) {
   return startFrame + index * stepFrames;
 }
+function cameraRig2D(options = {}) {
+  const x = options.panX ?? 0;
+  const y = options.panY ?? 0;
+  const z = options.zoom ?? 1;
+  const r = options.rotateDeg ?? 0;
+  return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${z.toFixed(4)}) rotate(${r.toFixed(2)}deg)`;
+}
+function beatPulse(frame, beatFrame, decayFrames = 18) {
+  if (frame < beatFrame) return 0;
+  return Math.exp(-(frame - beatFrame) / Math.max(1, decayFrames * 0.35));
+}
+function evaluateSceneActivity(scenes, index, frame) {
+  const scene = scenes[index];
+  if (!scene) {
+    return {
+      active: false,
+      phase: "inactive",
+      localFrame: 0,
+      localProgress: 0,
+      transitionKind: "cut",
+      transitionInProgress: 1,
+      transitionOutProgress: 0
+    };
+  }
+  const isLast = index === scenes.length - 1;
+  const nextScene = scenes[index + 1];
+  const span = Math.max(1, scene.endFrame - scene.startFrame);
+  const inSpec = scene.transitionIn;
+  const inKind = inSpec?.kind ?? "cut";
+  const inDur = inKind !== "cut" ? Math.max(0, Math.min(span, inSpec?.durationFrames ?? 0)) : 0;
+  const outSpec = nextScene && Math.abs(nextScene.startFrame - scene.endFrame) <= 1 ? nextScene.transitionIn : void 0;
+  const outKind = outSpec?.kind ?? "cut";
+  const nextSpan = nextScene ? Math.max(1, nextScene.endFrame - nextScene.startFrame) : 0;
+  const outDur = outKind !== "cut" ? Math.max(0, Math.min(nextSpan, outSpec?.durationFrames ?? 0)) : 0;
+  const inBody = frame >= scene.startFrame && (frame < scene.endFrame || isLast && frame <= scene.endFrame);
+  const inExit = outDur > 0 && frame >= scene.endFrame && frame < scene.endFrame + outDur;
+  if (inBody) {
+    const localFrame2 = clamp(frame - scene.startFrame, 0, span);
+    const localProgress2 = span > 1 ? clamp(localFrame2 / (span - 1), 0, 1) : 1;
+    if (inDur > 0 && frame < scene.startFrame + inDur) {
+      return {
+        active: true,
+        phase: "entering",
+        localFrame: localFrame2,
+        localProgress: localProgress2,
+        transitionKind: inKind,
+        transitionInProgress: clamp((frame - scene.startFrame) / inDur, 0, 1),
+        transitionOutProgress: 0
+      };
+    }
+    return {
+      active: true,
+      phase: "active",
+      localFrame: localFrame2,
+      localProgress: localProgress2,
+      transitionKind: "cut",
+      transitionInProgress: 1,
+      transitionOutProgress: 0
+    };
+  }
+  if (inExit) {
+    const holdFrame = Math.max(0, span - 1);
+    return {
+      active: true,
+      phase: "exiting",
+      localFrame: holdFrame,
+      localProgress: 1,
+      transitionKind: outKind,
+      transitionInProgress: 1,
+      transitionOutProgress: clamp((frame - scene.endFrame) / outDur, 0, 1)
+    };
+  }
+  const localFrame = clamp(frame - scene.startFrame, 0, span);
+  const localProgress = span > 1 ? clamp(localFrame / (span - 1), 0, 1) : 1;
+  return {
+    active: false,
+    phase: "inactive",
+    localFrame,
+    localProgress,
+    transitionKind: "cut",
+    transitionInProgress: frame < scene.startFrame ? 0 : 1,
+    transitionOutProgress: 0
+  };
+}
+function computeTransitionStyles(kind, progress, role) {
+  const p = clamp(progress, 0, 1);
+  const smooth = easeInOutCubic(p);
+  const out = easeOutCubic(p);
+  if (kind === "crossfade") {
+    return role === "entering" ? { opacity: smooth.toFixed(4), transform: "", clipPath: "", zIndex: "2" } : { opacity: (1 - smooth).toFixed(4), transform: "", clipPath: "", zIndex: "1" };
+  }
+  if (kind === "wipe-left") {
+    return role === "entering" ? {
+      opacity: "1",
+      transform: "",
+      clipPath: `inset(0 ${(100 * (1 - smooth)).toFixed(2)}% 0 0)`,
+      zIndex: "2"
+    } : {
+      opacity: lerp(1, 0.86, smooth).toFixed(4),
+      transform: `scale(${lerp(1, 0.985, smooth).toFixed(4)})`,
+      clipPath: "",
+      zIndex: "1"
+    };
+  }
+  if (kind === "wipe-up") {
+    return role === "entering" ? {
+      opacity: "1",
+      transform: "",
+      clipPath: `inset(${(100 * (1 - smooth)).toFixed(2)}% 0 0 0)`,
+      zIndex: "2"
+    } : {
+      opacity: lerp(1, 0.86, smooth).toFixed(4),
+      transform: `scale(${lerp(1, 0.985, smooth).toFixed(4)})`,
+      clipPath: "",
+      zIndex: "1"
+    };
+  }
+  if (kind === "slide-left") {
+    return role === "entering" ? {
+      opacity: "1",
+      transform: `translate3d(${(100 * (1 - out)).toFixed(2)}%, 0, 0)`,
+      clipPath: "",
+      zIndex: "2"
+    } : {
+      opacity: lerp(1, 0.45, out).toFixed(4),
+      transform: `translate3d(${(-24 * out).toFixed(2)}%, 0, 0) scale(${lerp(1, 0.96, out).toFixed(4)})`,
+      clipPath: "",
+      zIndex: "1"
+    };
+  }
+  if (kind === "zoom-through") {
+    return role === "entering" ? {
+      opacity: smooth.toFixed(4),
+      transform: `scale(${lerp(0.88, 1, out).toFixed(4)})`,
+      clipPath: "",
+      zIndex: "2"
+    } : {
+      opacity: (1 - smooth).toFixed(4),
+      transform: `scale(${lerp(1, 1.15, smooth).toFixed(4)})`,
+      clipPath: "",
+      zIndex: "1"
+    };
+  }
+  return { opacity: "", transform: "", clipPath: "", zIndex: "" };
+}
+function parseCssColor(input) {
+  if (!input) return null;
+  const str = input.trim().toLowerCase();
+  if (!str || str === "transparent" || str === "none") return [0, 0, 0, 0];
+  const hex = str.match(/^#([0-9a-f]{3,8})$/u);
+  if (hex) {
+    const h = hex[1];
+    if (h.length === 3 || h.length === 4) {
+      const r = parseInt(h[0] + h[0], 16);
+      const g = parseInt(h[1] + h[1], 16);
+      const b = parseInt(h[2] + h[2], 16);
+      const a = h.length === 4 ? parseInt(h[3] + h[3], 16) / 255 : 1;
+      return [r, g, b, a];
+    }
+    if (h.length === 6 || h.length === 8) {
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+      return [r, g, b, a];
+    }
+  }
+  const rgb = str.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,/\s]+([\d.%]+))?\s*\)$/u);
+  if (rgb) {
+    const r = clamp(Number(rgb[1]), 0, 255);
+    const g = clamp(Number(rgb[2]), 0, 255);
+    const b = clamp(Number(rgb[3]), 0, 255);
+    let a = 1;
+    if (rgb[4] !== void 0) {
+      a = rgb[4].endsWith("%") ? clamp(Number(rgb[4].slice(0, -1)) / 100, 0, 1) : clamp(Number(rgb[4]), 0, 1);
+    }
+    return [r, g, b, a];
+  }
+  return null;
+}
+function extractColorsFromCssValue(value) {
+  if (!value || value === "none") return [];
+  const matches = value.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)/gu) ?? [];
+  const out = [];
+  for (const m of matches) {
+    const parsed = parseCssColor(m);
+    if (parsed && parsed[3] > 0.02) out.push(parsed);
+  }
+  return out;
+}
+function relativeLuminance(r, g, b) {
+  const lin = (v) => {
+    const s = clamp(v / 255, 0, 1);
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+function wcagContrastRatio(fg, bg) {
+  const l1 = relativeLuminance(fg[0], fg[1], fg[2]);
+  const l2 = relativeLuminance(bg[0], bg[1], bg[2]);
+  const bright = Math.max(l1, l2);
+  const dark = Math.min(l1, l2);
+  return Math.round((bright + 0.05) / (dark + 0.05) * 100) / 100;
+}
+function alphaComposite(top, bottom) {
+  const a = clamp(top[3], 0, 1);
+  return [
+    top[0] * a + bottom[0] * (1 - a),
+    top[1] * a + bottom[1] * (1 - a),
+    top[2] * a + bottom[2] * (1 - a)
+  ];
+}
 function isCaptureMode() {
   if (typeof window === "undefined") return false;
   if (window.__MOTIONFLUX_CAPTURE__) return true;
@@ -99,6 +319,35 @@ function describeElement(el) {
   const base = `${tag}${id}${cls}${role ? `[${role}]` : ""}`;
   return snippet ? `${base} ("${snippet}")` : base;
 }
+function buildSelector(el, stopAt) {
+  const mfId = el.getAttribute("data-mf-id");
+  if (mfId) return `[data-mf-id="${mfId}"]`;
+  if (el.id) return `#${el.id}`;
+  const parts = [];
+  let cur = el;
+  while (cur && parts.length < 3) {
+    const curMfId = cur.getAttribute("data-mf-id");
+    if (curMfId) {
+      parts.unshift(`[data-mf-id="${curMfId}"]`);
+      break;
+    }
+    const curScene = cur.getAttribute("data-mf-scene");
+    if (curScene) {
+      parts.unshift(`[data-mf-scene="${curScene}"]`);
+      break;
+    }
+    if (cur.id) {
+      parts.unshift(`#${cur.id}`);
+      break;
+    }
+    const tag = cur.tagName.toLowerCase();
+    const cls = typeof cur.className === "string" ? cur.className.trim().split(/\s+/u).filter(Boolean).slice(0, 2).map((c) => `.${c}`).join("") : "";
+    parts.unshift(`${tag}${cls}`);
+    if (cur === stopAt) break;
+    cur = cur.parentElement;
+  }
+  return parts.join(" > ");
+}
 function hasAncestorAttr(el, attr, stopAt) {
   let cur = el;
   while (cur) {
@@ -108,16 +357,51 @@ function hasAncestorAttr(el, attr, stopAt) {
   }
   return false;
 }
-function isVisuallyPresent(el, stopAt) {
+function effectiveOpacity(el, stopAt) {
+  let acc = 1;
   let cur = el;
   while (cur) {
     const style = getComputedStyle(cur);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    if (parseFloat(style.opacity) <= 0.04) return false;
+    if (style.display === "none" || style.visibility === "hidden") return 0;
+    const op = parseFloat(style.opacity);
+    if (Number.isFinite(op)) acc *= clamp(op, 0, 1);
+    if (acc <= 0.04) return 0;
     if (cur === stopAt) break;
     cur = cur.parentElement;
   }
-  return true;
+  return acc;
+}
+function resolveBackdropRgb(el, stageEl) {
+  const layers = [];
+  let cur = el;
+  while (cur) {
+    const st = getComputedStyle(cur);
+    const bg = parseCssColor(st.backgroundColor);
+    if (bg && bg[3] > 0.01) {
+      layers.push(bg);
+    } else if (st.backgroundImage && st.backgroundImage !== "none") {
+      const stops = extractColorsFromCssValue(st.backgroundImage);
+      if (stops.length > 0) {
+        const avgR = stops.reduce((s, c) => s + c[0], 0) / stops.length;
+        const avgG = stops.reduce((s, c) => s + c[1], 0) / stops.length;
+        const avgB = stops.reduce((s, c) => s + c[2], 0) / stops.length;
+        const avgA = stops.reduce((s, c) => s + c[3], 0) / stops.length;
+        layers.push([avgR, avgG, avgB, avgA]);
+      }
+    }
+    if (cur === stageEl) break;
+    cur = cur.parentElement;
+  }
+  if (layers.length === 0 && typeof document !== "undefined" && document.body) {
+    const bodyBg = parseCssColor(getComputedStyle(document.body).backgroundColor);
+    if (bodyBg && bodyBg[3] > 0.01) layers.push(bodyBg);
+  }
+  if (layers.length === 0) return null;
+  let base = [11, 13, 18];
+  for (let i = layers.length - 1; i >= 0; i--) {
+    base = alphaComposite(layers[i], base);
+  }
+  return base;
 }
 function hasDirectText(el) {
   for (const node of el.childNodes) {
@@ -255,8 +539,9 @@ function mountPreviewChrome(stageEl, meta, api) {
     const boxes = report.issues.filter((issue) => issue.rect).map((issue) => {
       const r = issue.rect;
       const color = issue.severity === "error" ? "#ef4444" : "#f59e0b";
+      const label = issue.selector ? `${issue.code} \xB7 ${issue.selector}` : issue.code;
       return `<div style="position:absolute;left:${r.x}px;top:${r.y}px;width:${r.width}px;height:${r.height}px;border:2px solid ${color};background:${color}22;box-sizing:border-box;">
-          <span style="position:absolute;left:0;top:-20px;background:${color};color:#fff;font:600 11px/18px ui-monospace,monospace;padding:0 6px;border-radius:3px;white-space:nowrap;">${issue.code}</span>
+          <span style="position:absolute;left:0;top:-20px;background:${color};color:#fff;font:600 11px/18px ui-monospace,monospace;padding:0 6px;border-radius:3px;white-space:nowrap;">${label}</span>
         </div>`;
     }).join("");
     overlayCanvas.innerHTML = `
@@ -333,11 +618,15 @@ function createStage(config) {
     fps,
     durationFrames: Math.round(config.durationFrames),
     ...config.background !== void 0 ? { background: config.background } : {},
-    scenes: (config.scenes ?? []).map((scene) => ({ ...scene })),
+    scenes: (config.scenes ?? []).map((scene) => ({
+      ...scene,
+      ...scene.transitionIn ? { transitionIn: { ...scene.transitionIn } } : {}
+    })),
     audio: (config.audio ?? []).map((cue) => ({ ...cue }))
   };
   const stageEl = resolveStageElement(config.element);
   const capture = isCaptureMode();
+  const autoTransitions = config.autoTransitions !== false;
   stageEl.style.width = `${meta.width}px`;
   stageEl.style.height = `${meta.height}px`;
   stageEl.style.position = "relative";
@@ -361,7 +650,7 @@ function createStage(config) {
   let playStartWall = 0;
   let playStartFrame = 0;
   let ui;
-  const sceneLookup = new Map(meta.scenes.map((s) => [s.id, s]));
+  const sceneIndexMap = new Map(meta.scenes.map((s, idx) => [s.id, idx]));
   const seek = async (rawFrame, options) => {
     const frame = clamp(rawFrame, 0, meta.durationFrames);
     currentFrame = frame;
@@ -397,20 +686,52 @@ function createStage(config) {
       document.documentElement.style.setProperty(k, v);
     }
     if (activeScene) stageEl.dataset.mfActiveScene = activeScene.id;
+    let exitingScene;
     const sceneNodes = stageEl.querySelectorAll("[data-mf-scene]");
     for (const node of sceneNodes) {
       const id = node.dataset.mfScene ?? "";
-      const def = sceneLookup.get(id);
-      const start = def ? def.startFrame : Number(node.dataset.mfStart ?? 0);
-      const end = def ? def.endFrame : Number(node.dataset.mfEnd ?? meta.durationFrames);
-      const isLast = def && def === meta.scenes[meta.scenes.length - 1];
-      const active = frame >= start && (frame < end || Boolean(isLast) && frame <= end);
-      const span = Math.max(1, end - start);
-      const nodeLocalFrame = clamp(frame - start, 0, span);
-      const nodeLocalProgress = span > 1 ? clamp(nodeLocalFrame / (span - 1), 0, 1) : 1;
-      node.dataset.mfActive = active ? "true" : "false";
-      node.style.setProperty("--mf-local-frame", String(nodeLocalFrame));
-      node.style.setProperty("--mf-local-progress", nodeLocalProgress.toFixed(6));
+      const idx = sceneIndexMap.get(id);
+      if (idx !== void 0) {
+        const state = evaluateSceneActivity(meta.scenes, idx, frame);
+        node.dataset.mfActive = state.active ? "true" : "false";
+        node.dataset.mfPhase = state.phase;
+        node.style.setProperty("--mf-local-frame", String(state.localFrame));
+        node.style.setProperty("--mf-local-progress", state.localProgress.toFixed(6));
+        node.style.setProperty("--mf-transition-in", state.transitionInProgress.toFixed(6));
+        node.style.setProperty("--mf-transition-out", state.transitionOutProgress.toFixed(6));
+        if (state.phase === "exiting") {
+          const def = meta.scenes[idx];
+          exitingScene = { scene: def, holdFrame: Math.max(def.startFrame, def.endFrame - 1) };
+        }
+        if (autoTransitions && !node.hasAttribute("data-mf-custom-transition")) {
+          if (state.phase === "entering" || state.phase === "exiting") {
+            const p = state.phase === "entering" ? state.transitionInProgress : state.transitionOutProgress;
+            const styles = computeTransitionStyles(state.transitionKind, p, state.phase);
+            node.style.opacity = styles.opacity;
+            node.style.transform = styles.transform;
+            node.style.clipPath = styles.clipPath;
+            node.style.zIndex = styles.zIndex;
+            node.dataset.mfTransitionManaged = "1";
+          } else if (node.dataset.mfTransitionManaged === "1") {
+            node.style.opacity = "";
+            node.style.transform = "";
+            node.style.clipPath = "";
+            node.style.zIndex = "";
+            delete node.dataset.mfTransitionManaged;
+          }
+        }
+      } else {
+        const start = Number(node.dataset.mfStart ?? 0);
+        const end = Number(node.dataset.mfEnd ?? meta.durationFrames);
+        const active = frame >= start && frame < end;
+        const span = Math.max(1, end - start);
+        const nodeLocalFrame = clamp(frame - start, 0, span);
+        const nodeLocalProgress = span > 1 ? clamp(nodeLocalFrame / (span - 1), 0, 1) : 1;
+        node.dataset.mfActive = active ? "true" : "false";
+        node.dataset.mfPhase = active ? "active" : "inactive";
+        node.style.setProperty("--mf-local-frame", String(nodeLocalFrame));
+        node.style.setProperty("--mf-local-progress", nodeLocalProgress.toFixed(6));
+      }
     }
     if (typeof stageEl.getAnimations === "function") {
       const animations = stageEl.getAnimations({ subtree: true });
@@ -437,6 +758,25 @@ function createStage(config) {
       await Promise.all(videos.map((v) => seekVideoElement(v, frame, meta.fps)));
     }
     if (config.onFrame) {
+      if (exitingScene && exitingScene.scene.id !== activeScene?.id) {
+        const ex = exitingScene.scene;
+        const exSpan = Math.max(1, ex.endFrame - ex.startFrame);
+        const exLocalF = Math.max(0, exSpan - 1);
+        await config.onFrame({
+          frame: exitingScene.holdFrame,
+          time: exitingScene.holdFrame / meta.fps,
+          progress: meta.durationFrames > 1 ? exitingScene.holdFrame / (meta.durationFrames - 1) : 1,
+          fps: meta.fps,
+          durationFrames: meta.durationFrames,
+          width: meta.width,
+          height: meta.height,
+          scene: ex,
+          localFrame: exLocalF,
+          localTime: exLocalF / meta.fps,
+          localProgress: 1,
+          stage: stageEl
+        });
+      }
       await config.onFrame({
         frame,
         time,
@@ -473,7 +813,8 @@ function createStage(config) {
             frame,
             ...activeScene ? { sceneId: activeScene.id } : {},
             target: face.family,
-            message: `Font "${face.family}" failed to load.`
+            message: `Font "${face.family}" failed to load.`,
+            fix: "Ensure local @font-face file paths exist inside the project directory or fall back to system UI/sans-serif stacks."
           });
         }
       }
@@ -483,10 +824,15 @@ function createStage(config) {
     const overlapCandidates = [];
     for (const el of allElements) {
       if (el instanceof SVGElement && el.tagName.toLowerCase() !== "svg") continue;
-      if (!isVisuallyPresent(el, stageEl)) continue;
+      const effOp = effectiveOpacity(el, stageEl);
+      if (effOp <= 0.04) continue;
       const domRect = el.getBoundingClientRect();
       if (domRect.width < 1 || domRect.height < 1) continue;
       const rect = toStageRect(domRect, stageRect, meta.width, meta.height);
+      const selector = buildSelector(el, stageEl);
+      const ownerSceneEl = el.closest("[data-mf-scene]");
+      const ownerSceneId = ownerSceneEl?.dataset.mfScene ?? activeScene?.id ?? "";
+      const ownerPhase = ownerSceneEl?.dataset.mfPhase ?? "active";
       const allowBleed = hasAncestorAttr(el, "data-mf-allow-bleed", stageEl) || el.getAttribute("data-mf-role") === "background";
       const style = getComputedStyle(el);
       const isTextLeaf = hasDirectText(el);
@@ -501,7 +847,9 @@ function createStage(config) {
           frame,
           ...activeScene ? { sceneId: activeScene.id } : {},
           target: describeElement(el),
+          selector,
           message: `Image failed to load (src="${el.getAttribute("src") ?? ""}").`,
+          fix: `Verify "${el.getAttribute("src") ?? ""}" exists relative to index.html or replace with inline SVG.`,
           rect
         });
       }
@@ -512,11 +860,13 @@ function createStage(config) {
           frame,
           ...activeScene ? { sceneId: activeScene.id } : {},
           target: describeElement(el),
+          selector,
           message: `Video failed to load (code=${el.error.code}).`,
+          fix: "Ensure video src points to a local H.264/VP9 media file inside the project directory.",
           rect
         });
       }
-      if (!allowBleed && (isTextLeaf || el.hasAttribute("data-mf-role") || el.hasAttribute("data-mf-no-overlap"))) {
+      if (!allowBleed && ownerPhase === "active" && (isTextLeaf || el.hasAttribute("data-mf-role") || el.hasAttribute("data-mf-no-overlap"))) {
         const tol = 1.5;
         if (rect.x < -tol || rect.y < -tol || rect.x + rect.width > meta.width + tol || rect.y + rect.height > meta.height + tol) {
           issues.push({
@@ -525,7 +875,9 @@ function createStage(config) {
             frame,
             ...activeScene ? { sceneId: activeScene.id } : {},
             target: describeElement(el),
+            selector,
             message: `Element bounds (${rect.x}, ${rect.y}, ${rect.width}\xD7${rect.height}) extend outside stage ${meta.width}\xD7${meta.height}.`,
+            fix: `Constrain "${selector}" width/max-width or translate offsets inside ${meta.width}\xD7${meta.height}, or add data-mf-allow-bleed if background bleed is intentional.`,
             rect
           });
         }
@@ -540,7 +892,9 @@ function createStage(config) {
             frame,
             ...activeScene ? { sceneId: activeScene.id } : {},
             target: describeElement(el),
+            selector,
             message: `Text overflows its container (${el.scrollWidth}\xD7${el.scrollHeight} > ${el.clientWidth}\xD7${el.clientHeight}).`,
+            fix: `Increase width/height on "${selector}", allow wrapping (remove white-space: nowrap), or reduce font-size.`,
             rect
           });
         }
@@ -552,13 +906,15 @@ function createStage(config) {
             frame,
             ...activeScene ? { sceneId: activeScene.id } : {},
             target: describeElement(el),
+            selector,
             message: `Font size ${fontSize.toFixed(1)}px is below recommended floor ${minReadableFont}px for ${meta.width}\xD7${meta.height}.`,
+            fix: `Raise font-size on "${selector}" to >= ${minReadableFont}px (or add data-mf-allow-tiny for micro-telemetry labels).`,
             rect
           });
         }
         const mx = meta.width * safeMarginRatio;
         const my = meta.height * safeMarginRatio;
-        if (!allowBleed && !hasAncestorAttr(el, "data-mf-allow-safe-margin", stageEl)) {
+        if (!allowBleed && ownerPhase === "active" && !hasAncestorAttr(el, "data-mf-allow-safe-margin", stageEl)) {
           if (rect.x < mx || rect.y < my || rect.x + rect.width > meta.width - mx || rect.y + rect.height > meta.height - my) {
             issues.push({
               code: "SAFE_AREA_WARNING",
@@ -566,14 +922,66 @@ function createStage(config) {
               frame,
               ...activeScene ? { sceneId: activeScene.id } : {},
               target: describeElement(el),
+              selector,
               message: `Text intrudes into the ${Math.round(safeMarginRatio * 100)}% outer safe margin.`,
+              fix: `Add >= ${Math.round(safeMarginRatio * 100)}% stage padding (${Math.round(my)}px ${Math.round(mx)}px) around "${selector}".`,
               rect
             });
           }
         }
+        if (effOp >= 0.65 && ownerPhase === "active" && !hasAncestorAttr(el, "data-mf-allow-low-contrast", stageEl)) {
+          const bgClip = style.backgroundClip || style.webkitBackgroundClip || "";
+          let fgRgb = null;
+          if (bgClip === "text") {
+            const stops = extractColorsFromCssValue(style.backgroundImage);
+            if (stops.length > 0) {
+              fgRgb = [
+                stops.reduce((s, c) => s + c[0], 0) / stops.length,
+                stops.reduce((s, c) => s + c[1], 0) / stops.length,
+                stops.reduce((s, c) => s + c[2], 0) / stops.length
+              ];
+            }
+          } else {
+            const fgParsed = parseCssColor(style.color);
+            if (fgParsed && fgParsed[3] >= 0.5) {
+              fgRgb = [fgParsed[0], fgParsed[1], fgParsed[2]];
+            }
+          }
+          const bgRgb = fgRgb ? resolveBackdropRgb(el, stageEl) : null;
+          if (fgRgb && bgRgb) {
+            const blendedFg = alphaComposite([fgRgb[0], fgRgb[1], fgRgb[2], effOp], bgRgb);
+            const ratio = wcagContrastRatio(blendedFg, bgRgb);
+            const weight = parseInt(style.fontWeight, 10);
+            const isBold = style.fontWeight === "bold" || Number.isFinite(weight) && weight >= 700;
+            const isLarge = Number.isFinite(fontSize) && (fontSize >= 24 || fontSize >= 18.66 && isBold);
+            const minRatio = isLarge ? 3 : 4.5;
+            const errorFloor = isLarge ? 2 : 2.6;
+            if (ratio < minRatio) {
+              issues.push({
+                code: "LOW_CONTRAST_TEXT",
+                severity: ratio < errorFloor ? "error" : "warning",
+                frame,
+                ...activeScene ? { sceneId: activeScene.id } : {},
+                target: describeElement(el),
+                selector,
+                contrastRatio: ratio,
+                message: `Text contrast ratio ${ratio.toFixed(2)}:1 is below WCAG AA ${minRatio.toFixed(1)}:1.`,
+                fix: `Brighten/darken "${selector}" color or add an opaque/smoked backdrop card so contrast >= ${minRatio.toFixed(1)}:1.`,
+                rect
+              });
+            }
+          }
+        }
       }
       if ((isTextLeaf || el.hasAttribute("data-mf-no-overlap")) && !hasAncestorAttr(el, "data-mf-allow-overlap", stageEl)) {
-        overlapCandidates.push({ el, name: describeElement(el), rect });
+        overlapCandidates.push({
+          el,
+          name: describeElement(el),
+          selector,
+          rect,
+          sceneId: ownerSceneId,
+          phase: ownerPhase
+        });
       }
     }
     for (let i = 0; i < overlapCandidates.length; i++) {
@@ -582,6 +990,9 @@ function createStage(config) {
       for (let j = i + 1; j < overlapCandidates.length; j++) {
         const b = overlapCandidates[j];
         if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+        if (a.sceneId && b.sceneId && a.sceneId !== b.sceneId && (a.phase !== "active" || b.phase !== "active")) {
+          continue;
+        }
         const inter = rectIntersectionArea(a.rect, b.rect);
         if (inter <= 0) continue;
         const minArea = Math.min(areaA, b.rect.width * b.rect.height);
@@ -592,8 +1003,10 @@ function createStage(config) {
             frame,
             ...activeScene ? { sceneId: activeScene.id } : {},
             target: a.name,
+            selector: a.selector,
             otherTarget: b.name,
             message: `Elements overlap by ${Math.round(inter / minArea * 100)}% of the smaller box.`,
+            fix: `Use flex/grid gap between "${a.selector}" and "${b.selector}", adjust vertical offsets, or add data-mf-allow-overlap if layered intentionally.`,
             rect: a.rect
           });
         }
@@ -606,7 +1019,9 @@ function createStage(config) {
         frame,
         ...activeScene ? { sceneId: activeScene.id } : {},
         target: "stage",
-        message: "No visible content elements detected on stage at this frame."
+        selector: "[data-mf-stage]",
+        message: "No visible content elements detected on stage at this frame.",
+        fix: "Ensure at least one [data-mf-scene] or visible foreground element is active at this frame."
       });
     }
     return {
@@ -679,14 +1094,23 @@ function createStage(config) {
   return handle;
 }
 export {
+  TRANSITION_KINDS,
+  beatPulse,
+  cameraRig2D,
   clamp,
+  computeTransitionStyles,
   createStage,
   easeInOutCubic,
   easeOutBack,
   easeOutCubic,
   easeOutExpo,
+  evaluateSceneActivity,
+  extractColorsFromCssValue,
   lerp,
+  parseCssColor,
+  relativeLuminance,
   remap,
   spring,
-  stagger
+  stagger,
+  wcagContrastRatio
 };

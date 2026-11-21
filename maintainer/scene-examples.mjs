@@ -29,7 +29,7 @@ export async function writeSceneExamples() {
     return [0,0,0,0];
   });
   await writeFile(`${directory}/assets/orbit-mark.png`, artwork);
-  await build({ entryPoints: ['maintainer/modules/three-orbit.mjs'], outfile: `${directory}/assets/three-orbit.mjs`, bundle: true,
+  await build({ absWorkingDir: process.cwd(), entryPoints: ['maintainer/modules/three-orbit.mjs'], outfile: `${directory}/assets/three-orbit.mjs`, bundle: true,
     format: 'esm', target: 'es2022', minify: true, legalComments: 'inline',
     banner: { js: `/* Three.js license\n${await readFile('node_modules/three/LICENSE', 'utf8')}*/` } });
   const hash = data => createHash('sha256').update(data).digest('hex');
