@@ -575,8 +575,8 @@
     },
     {
       "path": "references/install.md",
-      "bytes": 3055,
-      "sha256": "22e692128672498f0f33793daa0a13cd0a7aacdbe9b3c2ed54f90e0e5d7dcea7"
+      "bytes": 4406,
+      "sha256": "c72cd683cbe3098835c106ac25e8710b1b9cbf139a25e761849134387c7636fc"
     },
     {
       "path": "references/mcp.md",
@@ -610,8 +610,8 @@
     },
     {
       "path": "scripts/motion.mjs",
-      "bytes": 347332,
-      "sha256": "d0139155b176e918949917408b8ebbd004e8bf56a827f320f6ef16fcdf877b91"
+      "bytes": 347443,
+      "sha256": "6bea8c8f8074a9425f4d86a4736a318ecc0f0731fcaecbb616581c2acc2e2bee"
     },
     {
       "path": "SKILL.md",

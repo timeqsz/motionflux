@@ -57,4 +57,16 @@ node scripts/motion.mjs setup --apply
 
 - 浏览器路径：`--browser /path/to/chrome` 或 `MOTIONFLUX_BROWSER_PATH=/path/to/chrome`
 - Playwright 缓存根目录：`PLAYWRIGHT_BROWSERS_PATH=/path/to/ms-playwright`
-- FFmpeg 路径：`MOTIONFLUX_FFMPEG_PATH=/path/to/ffmpeg`（同目录的 `ffprobe` 会自动联动识别）
+- FFmpeg 路径：`MOTIONFLUX_FFMPEG_PATH=/path/to/ffmpeg`（同目录的 `ffprobe` 会自动联动识别）；未设置时会自动扫描 `PATH`、`/opt/homebrew/bin`、`/usr/local/bin`、`/usr/bin` 等常见目录。
+
+---
+
+## 4. 在受限沙箱（AI Agent 终端 / 容器 / CI）中运行
+
+MotionFlux 在 macOS / Linux 上通过**匿名管道**（`--remote-debugging-pipe`）驱动无头 Chrome，不占用任何 TCP 端口；本机 `127.0.0.1` 被禁止连接时，舞台文件改由 CDP `Fetch` 直接从磁盘分发，无需本地 HTTP 服务。
+
+若外层已经存在操作系统级沙箱（例如 macOS Seatbelt、无特权容器），Chrome 自身的进程沙箱会因嵌套而启动失败。此时 `audit` / `frames` / `render` 会**自动回退**到兼容模式，并在结果 JSON 中标注 `"gpu": "software-fallback"`（正常为 `"hardware"`）。回退模式的取舍：
+
+- **渲染后端**：改用 Chrome 内置 SwiftShader 软件 WebGL2，画面与硬件 GPU 一致，但三维场景逐帧渲染明显更慢；正式成片建议在无外层沙箱的普通终端里导出。
+- **进程隔离**：回退会以 `--no-sandbox` 启动 Chrome（仍处于外层沙箱之内）。只对你自己或可信来源的舞台 HTML 使用；不要在回退模式下渲染来路不明的网页。
+- **大体积视频素材**：无本地 HTTP 服务时，`<video>` 素材会被整体读入内存再交给浏览器，超大素材请在普通终端中渲染。

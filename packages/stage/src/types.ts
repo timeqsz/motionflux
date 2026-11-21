@@ -127,6 +127,7 @@ export interface StageAuditReport {
   issues: AuditIssue[];
   contactSheet?: string;
   browser: string;
+  gpu?: 'hardware' | 'software-fallback';
 }
 
 export interface StageVideoReport {

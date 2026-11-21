@@ -4242,6 +4242,7 @@ async function openStagePage(entryHtmlPath, options) {
     };
     return {
       meta,
+      gpu: cdp.sandboxedFallback ? "software-fallback" : "hardware",
       evaluate,
       seek,
       screenshot,
@@ -4371,7 +4372,8 @@ async function auditStage(entryHtmlPath, options = {}) {
       frames: results,
       issues: allIssues,
       ...contactSheetPath ? { contactSheet: contactSheetPath } : {},
-      browser
+      browser,
+      gpu: page.gpu
     };
   } finally {
     await page.close();
@@ -4589,6 +4591,7 @@ async function renderStageVideo(entryHtmlPath, options) {
         written && written.frames === page.meta.durationFrames && written.width === width && written.height === height && Math.abs(written.durationSeconds - durationSec) < 0.1 && written.alpha === transparent && written.hasAudio === hasExpectedAudio
       ),
       audioSources: audioPlan?.sourceCount ?? 0,
+      gpu: page.gpu,
       ...auditSummary ? { audit: auditSummary } : {},
       browser
     };

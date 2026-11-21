@@ -31,6 +31,8 @@ export function selectDefaultAuditFrames(meta: StageMeta): number[] {
 
 interface OpenedStagePage {
   meta: StageMeta;
+  /** 'hardware' = native GPU with Chrome's own sandbox; 'software-fallback' = SwiftShader + --no-sandbox (nested OS sandbox detected). */
+  gpu: 'hardware' | 'software-fallback';
   evaluate: (expression: string) => Promise<unknown>;
   seek: (frame: number, transparent: boolean) => Promise<void>;
   screenshot: (transparent: boolean) => Promise<Buffer>;
@@ -198,6 +200,7 @@ async function openStagePage(
 
     return {
       meta,
+      gpu: cdp.sandboxedFallback ? 'software-fallback' : 'hardware',
       evaluate,
       seek,
       screenshot,
@@ -353,6 +356,7 @@ export async function auditStage(
       issues: allIssues,
       ...(contactSheetPath ? { contactSheet: contactSheetPath } : {}),
       browser,
+      gpu: page.gpu,
     };
   } finally {
     await page.close();
@@ -494,6 +498,7 @@ export async function renderStageVideo(
   written: StageVideoReport | string;
   verified: boolean;
   audioSources: number;
+  gpu: 'hardware' | 'software-fallback';
   audit?: { passed: boolean; errors: number; warnings: number };
   browser: string;
 }> {
@@ -654,6 +659,7 @@ export async function renderStageVideo(
           written.hasAudio === hasExpectedAudio,
       ),
       audioSources: audioPlan?.sourceCount ?? 0,
+      gpu: page.gpu,
       ...(auditSummary ? { audit: auditSummary } : {}),
       browser,
     };
