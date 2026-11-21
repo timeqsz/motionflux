@@ -110,6 +110,8 @@ export default atom;` },
   }
   await build({ absWorkingDir: root, entryPoints: [resolve(root, 'packages/renderer-browser/src/draw.ts')], outfile: resolve(out, 'draw.mjs'), bundle: true, format: 'esm', platform: 'browser', target: 'es2022', legalComments: 'none',
     banner: { js: '// MotionFlux 动效原子的 Canvas 2D 绘制脚本，独立文件，没有任何依赖。\n//   import { drawAtom } from \'./draw.mjs\';\n//   drawAtom(ctx, out, { x, y, color });   // out 是任意一个原子的返回值\n// 像素滤镜（模糊、辉光、溶解、故障、色散等）也在这里实现。' } });
+  await build({ absWorkingDir: root, entryPoints: [resolve(root, 'packages/renderer-browser/src/studio.ts')], outfile: resolve(out, 'studio.mjs'), bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true, legalComments: 'none',
+    banner: { js: '// MotionFlux 物理棚拍与精密机械光学套件 · studio.mjs（内置 Three.js 0.180.0，MIT 许可，见 ../references/three-license.txt）。\n//   import { THREE, createStudioRig, createInvoluteGearGeometry, projectedBounds } from \'./studio.mjs\';\n// 完整用法见同目录的 studio.md。' } });
   const ordered = [...capabilities].sort((a, b) => a.cell[1] - b.cell[1] || a.cell[0] - b.cell[0]);
   await writeFile(resolve(out, 'index.mjs'), `// 全部 ${capabilities.length} 个动效原子，按 ID 取用。只需要其中几个时，直接导入对应的单个文件更轻。\n${ordered.map((entry, i) => `import a${i} from './${entry.id}.mjs';`).join('\n')}\nexport { drawAtom, drawSubject } from './draw.mjs';\nexport const atoms = {\n${ordered.map((entry, i) => `  '${entry.id}': a${i},`).join('\n')}\n};\n`);
   return ordered;

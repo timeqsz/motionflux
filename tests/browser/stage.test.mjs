@@ -29,6 +29,9 @@ test('local stage server serves project files, /__motionflux/ mounts, byte range
       const atom = await fetch(`${server.url}/__motionflux/atoms/prop.move.mjs`);
       assert.equal(atom.status, 200);
 
+      const studio = await fetch(`${server.url}/__motionflux/atoms/studio.mjs`);
+      assert.equal(studio.status, 200);
+
       const ranged = await fetch(`${server.url}/data.bin`, { headers: { range: 'bytes=4-9' } });
       assert.equal(ranged.status, 206);
       assert.equal(await ranged.text(), '456789');
@@ -189,6 +192,78 @@ test('DOM auditor detects clipping, overlap, text overflow, broken image, and CS
     const p15 = await readFile(join(f0Dir, 'frame-000015.png'));
     assert.ok(!p0.equals(p15), 'CSS @keyframes animation must advance deterministically between frame 0 and frame 15');
     assert.ok((await stat(join(f0Dir, 'frame-000015.png'))).size > 100);
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+});
+
+test('Stage + /__motionflux/atoms/studio.mjs renders 3D PBR CAD scene with HTML overlay, passes audit, and encodes cinema MP4', async () => {
+  const work = await mkdtemp(join(tmpdir(), 'motionflux-browser-studio3d-'));
+  try {
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    #stage { background: #07090d; color: #f4f6fb; font-family: system-ui, sans-serif; }
+    #studio { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .hud { position: absolute; left: 48px; top: 44px; z-index: 2; }
+    .hud h1 { font-size: 30px; letter-spacing: 0.08em; }
+  </style>
+</head>
+<body>
+  <div id="stage" data-mf-stage>
+    <canvas id="studio" width="640" height="360" data-mf-allow-bleed></canvas>
+    <div class="hud"><h1 data-mf-id="hud-title">CALIBRE 01</h1></div>
+  </div>
+  <script type="module">
+    import { createStage } from '/__motionflux/stage/runtime.mjs';
+    import { THREE, createStudioRig, createStudioBackdrop, createInvoluteGearGeometry } from '/__motionflux/atoms/studio.mjs';
+
+    const canvas = document.getElementById('studio');
+    const studio = createStudioRig({ canvas, width: 640, height: 360, shadowBounds: 2.5, seed: 7 });
+    studio.scene.add(createStudioBackdrop({ y: -0.6, radius: 7 }).mesh);
+    const gear = new THREE.Mesh(
+      createInvoluteGearGeometry({ teeth: 48, pitchRadius: 0.55, spokes: 5, thickness: 0.05 }),
+      studio.materials.roseGold,
+    );
+    studio.scene.add(gear);
+    await studio.renderer.compileAsync(studio.scene, studio.camera);
+
+    createStage({
+      width: 640,
+      height: 360,
+      fps: 30,
+      durationFrames: 12,
+      scenes: [{ id: 'main', startFrame: 0, endFrame: 12 }],
+      audio: [{ atFrame: 0, sfx: 'tick', gain: 0.4 }],
+      onFrame({ frame }) {
+        gear.rotation.y = frame * 0.06;
+        studio.camera.position.set(0, 1.1, 2.1);
+        studio.camera.lookAt(0, 0, 0);
+        studio.render({ frame });
+      },
+    });
+  </script>
+</body>
+</html>`;
+    const entry = join(work, 'index.html');
+    await writeFile(entry, html);
+
+    const outMp4 = join(work, 'studio.mp4');
+    const renderOut = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [cli, 'render', entry, '--out', outMp4, '--quality', 'cinema', '--audit'],
+        { encoding: 'utf8' },
+      ),
+    );
+    assert.equal(renderOut.ok, true);
+    assert.equal(renderOut.result.quality, 'cinema');
+    assert.equal(renderOut.result.verified, true);
+    assert.equal(renderOut.result.audit.passed, true, `audit issues: ${JSON.stringify(renderOut.result.audit)}`);
+    assert.ok(renderOut.result.bytes > 1000);
   } finally {
     await rm(work, { recursive: true, force: true });
   }

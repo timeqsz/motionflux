@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // packages/cli/src/index.ts
-import { readFile, writeFile as writeFile4, mkdir as mkdir4, mkdtemp as mkdtemp3, rm as rm4, stat as stat4 } from "node:fs/promises";
+import { readFile, writeFile as writeFile5, mkdir as mkdir4, mkdtemp as mkdtemp3, rm as rm4, stat as stat4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { dirname as dirname4, resolve as resolve6, join as join6, extname as extname3 } from "node:path";
+import { dirname as dirname4, resolve as resolve6, join as join7, extname as extname3 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash as createHash2 } from "node:crypto";
 
@@ -2642,38 +2642,211 @@ ${safeLicense ? `<details><summary>\u5B57\u4F53\u8BB8\u53EF\u4E0E\u8D44\u6E90\u8
 }
 
 // packages/cli/src/capture.ts
-import { spawn, spawnSync } from "node:child_process";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join as join2 } from "node:path";
 import { pathToFileURL } from "node:url";
-var candidates = [
+
+// packages/cli/src/env.ts
+import { spawn, spawnSync } from "node:child_process";
+import { access, readdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+var home = () => homedir();
+var staticBrowserCandidates = () => [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
   "/Applications/Chromium.app/Contents/MacOS/Chromium",
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+  join(home(), "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+  join(home(), "Applications/Chromium.app/Contents/MacOS/Chromium"),
   "/usr/bin/google-chrome",
   "/usr/bin/google-chrome-stable",
   "/usr/bin/chromium",
   "/usr/bin/chromium-browser",
+  "/usr/bin/microsoft-edge",
   "/snap/bin/chromium",
+  "/var/lib/flatpak/exports/bin/com.google.Chrome",
+  "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  ...process.env["LOCALAPPDATA"] ? [
+    join(process.env["LOCALAPPDATA"], "Google\\Chrome\\Application\\chrome.exe"),
+    join(process.env["LOCALAPPDATA"], "Chromium\\Application\\chrome.exe"),
+    join(process.env["LOCALAPPDATA"], "Microsoft\\Edge\\Application\\msedge.exe")
+  ] : []
 ];
-async function findBrowser(explicit) {
-  for (const path2 of [explicit, process.env.MOTIONFLUX_BROWSER_PATH, ...candidates]) {
-    if (path2 && await access(path2).then(() => true, () => false)) return path2;
+var pathBinaries = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "msedge"];
+function resolveOnPath(binary) {
+  const locator = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(locator, [binary], { encoding: "utf8" });
+  if (result.status !== 0) return void 0;
+  const first = result.stdout.split(/\r?\n/u).map((line) => line.trim()).find(Boolean);
+  return first || void 0;
+}
+async function exists(path2) {
+  return Boolean(path2 && await access(path2).then(() => true, () => false));
+}
+async function playwrightChromiumCandidates() {
+  const roots = [
+    process.env["PLAYWRIGHT_BROWSERS_PATH"],
+    process.platform === "darwin" ? join(home(), "Library/Caches/ms-playwright") : process.platform === "win32" ? join(process.env["LOCALAPPDATA"] ?? join(home(), "AppData/Local"), "ms-playwright") : join(home(), ".cache/ms-playwright")
+  ].filter((item) => Boolean(item));
+  const found = [];
+  for (const root of roots) {
+    const entries = await readdir(root).catch(() => []);
+    const dirs = entries.filter((name) => name.startsWith("chromium-")).sort((a, b) => b.localeCompare(a, void 0, { numeric: true }));
+    for (const dir of dirs) {
+      const base2 = join(root, dir);
+      const rels = process.platform === "darwin" ? [
+        "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+      ] : process.platform === "win32" ? ["chrome-win64/chrome.exe", "chrome-win/chrome.exe"] : ["chrome-linux64/chrome", "chrome-linux/chrome"];
+      for (const rel of rels) found.push(join(base2, rel));
+    }
+  }
+  return found;
+}
+async function discoverBrowser(explicit) {
+  if (explicit) return await exists(explicit) ? explicit : void 0;
+  if (process.env["MOTIONFLUX_BROWSER_PATH"] && await exists(process.env["MOTIONFLUX_BROWSER_PATH"])) {
+    return process.env["MOTIONFLUX_BROWSER_PATH"];
+  }
+  for (const candidate of staticBrowserCandidates()) {
+    if (await exists(candidate)) return candidate;
+  }
+  for (const bin of pathBinaries) {
+    const resolved = resolveOnPath(bin);
+    if (resolved && await exists(resolved)) return resolved;
+  }
+  for (const pw of await playwrightChromiumCandidates()) {
+    if (await exists(pw)) return pw;
   }
   return void 0;
 }
+function detectPackageManagers() {
+  const checks = process.platform === "darwin" ? [
+    ["brew", "brew"],
+    ["playwright", "npx"]
+  ] : process.platform === "win32" ? [
+    ["winget", "winget"],
+    ["scoop", "scoop"],
+    ["choco", "choco"],
+    ["playwright", "npx"]
+  ] : [
+    ["apt", "apt-get"],
+    ["dnf", "dnf"],
+    ["pacman", "pacman"],
+    ["apk", "apk"],
+    ["brew", "brew"],
+    ["playwright", "npx"]
+  ];
+  return checks.filter(([, bin]) => Boolean(resolveOnPath(bin))).map(([id4]) => id4);
+}
+function withPrivilege(argv) {
+  if (process.platform === "win32" || typeof process.getuid === "function" && process.getuid() === 0) {
+    return { argv, requiresPrivilege: false };
+  }
+  return { argv: ["sudo", "-n", ...argv], requiresPrivilege: true };
+}
+function buildInstallPlan(missing, availableManagers, preferredManager = "auto") {
+  const validManagers = ["auto", "brew", "apt", "dnf", "pacman", "apk", "winget", "scoop", "choco", "playwright"];
+  if (!validManagers.includes(preferredManager)) {
+    throw new Error(`USAGE: --manager must be one of ${validManagers.join(", ")}; got "${preferredManager}".`);
+  }
+  const pick2 = (...choices) => {
+    if (preferredManager !== "auto") {
+      const explicit = preferredManager;
+      return choices.includes(explicit) && availableManagers.includes(explicit) ? explicit : void 0;
+    }
+    return choices.find((m) => availableManagers.includes(m));
+  };
+  const steps = [];
+  const blocked = [];
+  for (const component of missing) {
+    if (component === "browser") {
+      const mgr = process.platform === "win32" ? pick2("winget", "scoop", "choco", "playwright") : pick2("playwright", "brew", "apt", "dnf", "pacman", "apk");
+      if (!mgr) {
+        blocked.push({
+          component,
+          reason: preferredManager === "auto" ? "No supported installer (npx, brew, apt-get, dnf, pacman, apk, winget, scoop, choco) was found on PATH." : `Manager "${preferredManager}" is either not installed or cannot install ${component}.`
+        });
+        continue;
+      }
+      const spec = mgr === "playwright" ? { argv: ["npx", "-y", "playwright", "install", "chromium"] } : mgr === "brew" ? { argv: ["brew", "install", "--cask", "chromium"] } : mgr === "winget" ? { argv: ["winget", "install", "--id", "Google.Chrome", "-e", "--accept-source-agreements", "--accept-package-agreements"] } : mgr === "scoop" ? { argv: ["scoop", "install", "chromium"] } : mgr === "choco" ? { argv: ["choco", "install", "googlechrome", "-y"] } : mgr === "apt" ? withPrivilege(["apt-get", "install", "-y", "chromium"]) : mgr === "dnf" ? withPrivilege(["dnf", "install", "-y", "chromium"]) : mgr === "pacman" ? withPrivilege(["pacman", "-S", "--noconfirm", "chromium"]) : withPrivilege(["apk", "add", "chromium"]);
+      steps.push({
+        component,
+        manager: mgr,
+        command: spec.argv.join(" "),
+        argv: spec.argv,
+        ...spec.requiresPrivilege ? { requiresPrivilege: true } : {}
+      });
+    } else if (component === "ffmpeg") {
+      const mgr = pick2("brew", "winget", "scoop", "choco", "apt", "dnf", "pacman", "apk");
+      if (!mgr) {
+        blocked.push({
+          component,
+          reason: preferredManager === "playwright" ? "Playwright only installs browsers; use --manager auto or a system package manager (brew, apt, winget, etc.) for ffmpeg." : preferredManager === "auto" ? "No system package manager (brew, apt-get, dnf, pacman, apk, winget, scoop, choco) was found on PATH to install ffmpeg." : `Manager "${preferredManager}" is not available on PATH.`
+        });
+        continue;
+      }
+      const spec = mgr === "brew" ? { argv: ["brew", "install", "ffmpeg"] } : mgr === "winget" ? { argv: ["winget", "install", "--id", "Gyan.FFmpeg", "-e", "--accept-source-agreements", "--accept-package-agreements"] } : mgr === "scoop" ? { argv: ["scoop", "install", "ffmpeg"] } : mgr === "choco" ? { argv: ["choco", "install", "ffmpeg", "-y"] } : mgr === "apt" ? withPrivilege(["apt-get", "install", "-y", "ffmpeg"]) : mgr === "dnf" ? withPrivilege(["dnf", "install", "-y", "ffmpeg"]) : mgr === "pacman" ? withPrivilege(["pacman", "-S", "--noconfirm", "ffmpeg"]) : withPrivilege(["apk", "add", "ffmpeg"]);
+      steps.push({
+        component,
+        manager: mgr,
+        command: spec.argv.join(" "),
+        argv: spec.argv,
+        ...spec.requiresPrivilege ? { requiresPrivilege: true } : {}
+      });
+    }
+  }
+  return { steps, blocked };
+}
+async function runInstallStep(step) {
+  const [cmd, ...rest] = step.argv;
+  return new Promise((done) => {
+    const child = spawn(cmd, rest, { stdio: ["ignore", "pipe", "pipe"] });
+    let log = "";
+    child.stdout.on("data", (chunk) => {
+      log += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      log += chunk;
+    });
+    child.once("error", (err) => done({ ok: false, code: null, output: err.message }));
+    child.once("close", (code) => {
+      const tail = log.trim().split(/\r?\n/u).slice(-8).join("\n");
+      done({ ok: code === 0, code, output: tail });
+    });
+  });
+}
+
+// packages/cli/src/capture.ts
+async function findBrowser(explicit) {
+  return discoverBrowser(explicit);
+}
 var ffmpegPath = () => process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg";
 function toolVersion(command, flag = "-version") {
-  const result = spawnSync(command, [flag], { encoding: "utf8" });
+  const result = spawnSync2(command, [flag], { encoding: "utf8" });
   return result.status === 0 ? result.stdout.split("\n")[0].trim() : void 0;
 }
+function gpuLaunchFlags() {
+  if (process.platform === "darwin") {
+    return ["--enable-webgl", "--enable-unsafe-webgpu", "--use-angle=metal", "--ignore-gpu-blocklist"];
+  }
+  if (process.platform === "linux") {
+    return ["--enable-webgl", "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--ignore-gpu-blocklist"];
+  }
+  return ["--enable-webgl", "--enable-unsafe-webgpu", "--ignore-gpu-blocklist"];
+}
 async function launch(browser) {
-  const profile = await mkdtemp(join(tmpdir(), "motionflux-browser-"));
-  const child = spawn(browser, [
+  const profile = await mkdtemp(join2(tmpdir(), "motionflux-browser-"));
+  const child = spawn2(browser, [
     "--headless=new",
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
@@ -2682,6 +2855,7 @@ async function launch(browser) {
     "--disable-extensions",
     "--hide-scrollbars",
     "--mute-audio",
+    ...gpuLaunchFlags(),
     "about:blank"
   ], { stdio: ["ignore", "ignore", "pipe"] });
   const cleanup = async () => {
@@ -2729,6 +2903,7 @@ async function launch(browser) {
       pending.clear();
     };
     return {
+      profile,
       send: (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
         const id4 = ++nextId;
         pending.set(id4, { resolve: resolveCall, reject });
@@ -2743,6 +2918,60 @@ async function launch(browser) {
   } catch (error) {
     await cleanup();
     throw error;
+  }
+}
+async function probeWebGL2(browser) {
+  const session = await launch(browser);
+  try {
+    const { targetId } = await session.send("Target.createTarget", { url: "about:blank" });
+    const { sessionId } = await session.send("Target.attachToTarget", { targetId, flatten: true });
+    const reply = await session.send("Runtime.evaluate", {
+      returnByValue: true,
+      expression: `(() => {
+        const c = document.createElement('canvas');
+        const gl = c.getContext('webgl2');
+        if (!gl) return { available: false, reason: 'WebGL2 context creation returned null.' };
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        return {
+          available: true,
+          glVersion: String(gl.getParameter(gl.VERSION)),
+          renderer: String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)),
+        };
+      })()`
+    }, sessionId);
+    return reply.result?.value ?? { available: false, reason: "Empty WebGL2 probe response." };
+  } finally {
+    await session.close();
+  }
+}
+async function probeWebGPU(browser) {
+  const session = await launch(browser);
+  try {
+    const probeHtml = join2(session.profile, "webgpu-probe.html");
+    await writeFile(probeHtml, "<!doctype html><title>probe</title>");
+    const { targetId } = await session.send("Target.createTarget", { url: pathToFileURL(probeHtml).href });
+    const { sessionId } = await session.send("Target.attachToTarget", { targetId, flatten: true });
+    await new Promise((wait) => setTimeout(wait, 120));
+    const reply = await session.send("Runtime.evaluate", {
+      returnByValue: true,
+      awaitPromise: true,
+      expression: `(async () => {
+        if (typeof navigator === 'undefined' || !('gpu' in navigator) || !navigator.gpu) {
+          return { available: false, reason: 'navigator.gpu is not exposed in this browser.' };
+        }
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return { available: false, reason: 'navigator.gpu.requestAdapter() returned null.' };
+        const info = adapter.info ?? {};
+        return {
+          available: true,
+          vendor: String(info.vendor || 'unknown'),
+          architecture: String(info.architecture || info.device || 'webgpu'),
+        };
+      })()`
+    }, sessionId);
+    return reply.result?.value ?? { available: false, reason: "Empty WebGPU probe response." };
+  } finally {
+    await session.close();
   }
 }
 async function captureFrames(htmlPath, frames, browser, transparent, onFrame) {
@@ -2772,14 +3001,24 @@ async function captureFrames(htmlPath, frames, browser, transparent, onFrame) {
   }
 }
 var videoFormats = {
-  mp4: { alpha: false, evenSize: true, encoder: () => ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart"] },
+  mp4: { alpha: false, evenSize: true, encoder: (_transparent, quality = "standard", crf) => ["-c:v", "libx264", ...quality === "cinema" ? ["-preset", "slow"] : [], "-crf", String(crf ?? (quality === "cinema" ? 15 : 18)), "-pix_fmt", "yuv420p", "-movflags", "+faststart"] },
   mov: { alpha: true, evenSize: false, encoder: (transparent) => ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", transparent ? "yuva444p10le" : "yuv444p10le"] },
-  webm: { alpha: true, evenSize: true, encoder: (transparent) => ["-c:v", "libvpx-vp9", "-pix_fmt", transparent ? "yuva420p" : "yuv420p", "-b:v", "0", "-crf", "24"] },
+  webm: { alpha: true, evenSize: true, encoder: (transparent, quality = "standard", crf) => ["-c:v", "libvpx-vp9", "-pix_fmt", transparent ? "yuva420p" : "yuv420p", "-b:v", "0", "-crf", String(crf ?? (quality === "cinema" ? 16 : 24))] },
   // GIF has 256 colours per frame, so encoding has to build a palette; that quantization is the only processing.
   gif: { alpha: false, evenSize: false, encoder: () => ["-filter_complex", "split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle", "-loop", "0"] }
 };
-async function encodeVideo(out, format, transparent, fps, feed) {
-  const child = spawn(ffmpegPath(), [
+function videoEncoderArgs(format, transparent, options = {}) {
+  const quality = options.quality ?? "standard";
+  if (quality !== "standard" && quality !== "cinema") throw new Error(`USAGE: --quality must be standard or cinema; got "${quality}".`);
+  if (options.crf !== void 0) {
+    if (!Number.isInteger(options.crf) || options.crf < 0 || options.crf > 51) throw new Error(`USAGE: --crf must be a whole number from 0 to 51; got ${options.crf}.`);
+    if (format !== "mp4" && format !== "webm") throw new Error(`USAGE: --crf applies to .mp4 and .webm; .${format} uses its own lossless/palette encoder.`);
+  }
+  return videoFormats[format].encoder(transparent, quality, options.crf);
+}
+async function encodeVideo(out, format, transparent, fps, feed, options = {}) {
+  const encoderArgs = videoEncoderArgs(format, transparent, options);
+  const child = spawn2(ffmpegPath(), [
     "-y",
     "-loglevel",
     "error",
@@ -2789,7 +3028,7 @@ async function encodeVideo(out, format, transparent, fps, feed) {
     `${fps.numerator}/${fps.denominator}`,
     "-i",
     "-",
-    ...videoFormats[format].encoder(transparent),
+    ...encoderArgs,
     out
   ], { stdio: ["pipe", "ignore", "pipe"] });
   let log = "";
@@ -2815,6 +3054,7 @@ async function encodeVideo(out, format, transparent, fps, feed) {
       child.stdin.write(png, (error) => error ? reject(encoderError ?? new Error(`ENCODE_FAILED: ${error.message}`)) : written());
     }));
   } catch (error) {
+    child.stdin.destroy();
     child.kill();
     await finished.catch(() => void 0);
     throw encoderError ?? error;
@@ -2824,7 +3064,7 @@ async function encodeVideo(out, format, transparent, fps, feed) {
 }
 function probeVideo(path2) {
   const probe = (process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg").replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
-  const result = spawnSync(probe, [
+  const result = spawnSync2(probe, [
     "-v",
     "error",
     "-count_frames",
@@ -2844,8 +3084,8 @@ function probeVideo(path2) {
 
 // packages/cli/src/delivery.ts
 import { createHash } from "node:crypto";
-import { mkdir, rm as rm2, writeFile } from "node:fs/promises";
-import { dirname, join as join2, resolve } from "node:path";
+import { mkdir, rm as rm2, writeFile as writeFile2 } from "node:fs/promises";
+import { dirname, join as join3, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 var hash = (data) => createHash("sha256").update(data).digest("hex");
 var sceneHash = (scene) => hash(JSON.stringify(scene));
@@ -2957,11 +3197,11 @@ async function writeDelivery(input) {
   }
   try {
     for (const [path2, data] of files) {
-      const destination = join2(directory, path2);
+      const destination = join3(directory, path2);
       await mkdir(dirname(destination), { recursive: true });
-      await writeFile(destination, data);
+      await writeFile2(destination, data);
     }
-    await writeFile(join2(directory, "delivery.json"), `${JSON.stringify(report, null, 2)}
+    await writeFile2(join3(directory, "delivery.json"), `${JSON.stringify(report, null, 2)}
 `);
   } catch (error) {
     await rm2(directory, { recursive: true, force: true });
@@ -2969,10 +3209,10 @@ async function writeDelivery(input) {
   }
   return {
     directory,
-    preview: join2(directory, "preview.html"),
-    scene: join2(directory, "scene.json"),
-    ...authoring ? { authoring: join2(directory, "authoring.json") } : {},
-    report: join2(directory, "delivery.json"),
+    preview: join3(directory, "preview.html"),
+    scene: join3(directory, "scene.json"),
+    ...authoring ? { authoring: join3(directory, "authoring.json") } : {},
+    report: join3(directory, "delivery.json"),
     files: files.size + 1,
     changes: report.revision?.changes.length ?? 0,
     videoDelivered: false,
@@ -3423,7 +3663,7 @@ async function buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, f
 import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { extname, join as join3, normalize, resolve as resolve3, sep } from "node:path";
+import { extname, join as join4, normalize, resolve as resolve3, sep } from "node:path";
 var MIME = {
   ".html": "text/html; charset=utf-8",
   ".htm": "text/html; charset=utf-8",
@@ -3484,7 +3724,7 @@ async function startStageServer(projectDir, options = {}) {
       }
       let info = await stat(filePath).catch(() => void 0);
       if (info?.isDirectory()) {
-        filePath = join3(filePath, "index.html");
+        filePath = join4(filePath, "index.html");
         info = await stat(filePath).catch(() => void 0);
       }
       if (!info || !info.isFile()) {
@@ -3544,13 +3784,13 @@ async function startStageServer(projectDir, options = {}) {
 }
 
 // packages/stage/src/capture.ts
-import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
-import { mkdir as mkdir2, mkdtemp as mkdtemp2, rm as rm3, stat as stat2, writeFile as writeFile2 } from "node:fs/promises";
+import { spawn as spawn3, spawnSync as spawnSync3 } from "node:child_process";
+import { mkdir as mkdir2, mkdtemp as mkdtemp2, rm as rm3, stat as stat2, writeFile as writeFile3 } from "node:fs/promises";
 import { tmpdir as tmpdir2 } from "node:os";
-import { basename, dirname as dirname3, extname as extname2, join as join4, resolve as resolve4 } from "node:path";
+import { basename, dirname as dirname3, extname as extname2, join as join5, resolve as resolve4 } from "node:path";
 async function launchChrome(browser) {
-  const profile = await mkdtemp2(join4(tmpdir2(), "motionflux-stage-browser-"));
-  const child = spawn2(
+  const profile = await mkdtemp2(join5(tmpdir2(), "motionflux-stage-browser-"));
+  const child = spawn3(
     browser,
     [
       "--headless=new",
@@ -3563,6 +3803,7 @@ async function launchChrome(browser) {
       "--mute-audio",
       "--autoplay-policy=no-user-gesture-required",
       "--font-render-hinting=none",
+      ...gpuLaunchFlags(),
       "about:blank"
     ],
     { stdio: ["ignore", "ignore", "pipe"] }
@@ -3773,10 +4014,10 @@ async function renderContactSheetPng(browser, tiles, meta) {
     img{display:block;object-fit:contain;background:#000}
   </style><div class="grid">${cardsHtml}</div>`;
   const cdp = await launchChrome(browser);
-  const work = await mkdtemp2(join4(tmpdir2(), "motionflux-contact-"));
+  const work = await mkdtemp2(join5(tmpdir2(), "motionflux-contact-"));
   try {
-    const file = join4(work, "sheet.html");
-    await writeFile2(file, html);
+    const file = join5(work, "sheet.html");
+    await writeFile3(file, html);
     const server = await startStageServer(work);
     try {
       const { targetId } = await cdp.send("Target.createTarget", { url: `${server.url}/sheet.html` });
@@ -3837,7 +4078,7 @@ async function auditStage(entryHtmlPath, options = {}) {
       const sheetPng = await renderContactSheetPng(browser, tiles, page.meta);
       contactSheetPath = resolve4(options.contactSheetOut);
       await mkdir2(dirname3(contactSheetPath), { recursive: true });
-      await writeFile2(contactSheetPath, sheetPng);
+      await writeFile3(contactSheetPath, sheetPng);
     }
     const allIssues = results.flatMap((r) => r.issues);
     const errors = allIssues.filter((i) => i.severity === "error").length;
@@ -3881,8 +4122,8 @@ async function captureStageFrames(entryHtmlPath, options) {
     for (const frame of targetFrames) {
       await page.seek(frame, transparent);
       const png = await page.screenshot(transparent);
-      const file = join4(outDir, `frame-${String(frame).padStart(6, "0")}.png`);
-      await writeFile2(file, png);
+      const file = join5(outDir, `frame-${String(frame).padStart(6, "0")}.png`);
+      await writeFile3(file, png);
       files.push(file);
     }
     return {
@@ -3903,7 +4144,7 @@ async function captureStageFrames(entryHtmlPath, options) {
 }
 function probeStageVideo(path2) {
   const probe = (process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg").replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
-  const result = spawnSync2(
+  const result = spawnSync3(
     probe,
     [
       "-v",
@@ -3945,6 +4186,10 @@ async function renderStageVideo(entryHtmlPath, options) {
   if (transparent && !videoFormats[format].alpha) {
     throw new Error("ALPHA_UNSUPPORTED: H.264 MP4 cannot carry transparency. Use .mov or .webm with --transparent, or frames for PNGs.");
   }
+  const encoderArgs = videoEncoderArgs(format, transparent, {
+    ...options.quality !== void 0 ? { quality: options.quality } : {},
+    ...options.crf !== void 0 ? { crf: options.crf } : {}
+  });
   if (!toolVersion(ffmpegPath())) {
     throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use frames or audit without it.");
   }
@@ -3959,7 +4204,7 @@ async function renderStageVideo(entryHtmlPath, options) {
     transparent,
     scale
   });
-  const work = await mkdtemp2(join4(tmpdir2(), "motionflux-stage-audio-"));
+  const work = await mkdtemp2(join5(tmpdir2(), "motionflux-stage-audio-"));
   try {
     const width = Math.round(page.meta.width * scale);
     const height = Math.round(page.meta.height * scale);
@@ -3983,13 +4228,13 @@ async function renderStageVideo(entryHtmlPath, options) {
     const cues = options.noAudio ? [] : page.meta.audio;
     if (cues.some(isProceduralCue)) {
       const { wav } = synthesizeSfxTrack(cues, durationSec, page.meta.fps);
-      sfxWavPath = join4(work, "sfx.wav");
-      await writeFile2(sfxWavPath, wav);
+      sfxWavPath = join5(work, "sfx.wav");
+      await writeFile3(sfxWavPath, wav);
     }
     const audioPlan = cues.length > 0 ? await buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, page.meta.fps) : void 0;
     const out = resolve4(options.outPath);
     await mkdir2(dirname3(out), { recursive: true });
-    const audioCodecArgs = !audioPlan ? ["-an"] : format === "webm" ? ["-c:a", "libopus", "-b:a", "160k"] : format === "mov" ? ["-c:a", "pcm_s16le"] : ["-c:a", "aac", "-b:a", "192k"];
+    const audioCodecArgs = !audioPlan ? ["-an"] : format === "webm" ? ["-c:a", "libopus", "-b:a", options.quality === "cinema" ? "224k" : "160k"] : format === "mov" ? ["-c:a", "pcm_s16le"] : ["-c:a", "aac", "-b:a", options.quality === "cinema" ? "256k" : "192k"];
     const ffmpegArgs = [
       "-y",
       "-loglevel",
@@ -4002,12 +4247,12 @@ async function renderStageVideo(entryHtmlPath, options) {
       "-",
       ...audioPlan ? audioPlan.inputArgs : [],
       ...audioPlan ? ["-filter_complex", audioPlan.filterComplex, "-map", "0:v:0", "-map", audioPlan.audioMap] : [],
-      ...videoFormats[format].encoder(transparent),
+      ...encoderArgs,
       ...audioCodecArgs,
       "-shortest",
       out
     ];
-    const child = spawn2(ffmpegPath(), ffmpegArgs, { stdio: ["pipe", "ignore", "pipe"] });
+    const child = spawn3(ffmpegPath(), ffmpegArgs, { stdio: ["pipe", "ignore", "pipe"] });
     let log = "";
     child.stderr.on("data", (chunk) => {
       log += chunk;
@@ -4052,6 +4297,7 @@ async function renderStageVideo(entryHtmlPath, options) {
     return {
       path: out,
       type: `video/${format === "mov" ? "quicktime" : format}`,
+      quality: options.quality ?? "standard",
       bytes: (await stat2(out)).size,
       expected: {
         frames: page.meta.durationFrames,
@@ -4076,8 +4322,8 @@ async function renderStageVideo(entryHtmlPath, options) {
 }
 
 // packages/stage/src/scaffold.ts
-import { cp, mkdir as mkdir3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
-import { join as join5, resolve as resolve5 } from "node:path";
+import { cp, mkdir as mkdir3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
+import { join as join6, resolve as resolve5 } from "node:path";
 async function initStageProject(options) {
   const width = Math.round(options.width ?? 1920);
   const height = Math.round(options.height ?? 1080);
@@ -4094,12 +4340,12 @@ async function initStageProject(options) {
     throw new Error("USAGE: --duration must be 1\u201336000 frames.");
   }
   const outDir = resolve5(options.outDir);
-  const existing = await stat3(join5(outDir, "index.html")).catch(() => void 0);
+  const existing = await stat3(join6(outDir, "index.html")).catch(() => void 0);
   if (existing) {
-    throw new Error(`TARGET_EXISTS: ${join5(outDir, "index.html")} already exists. Choose a new directory.`);
+    throw new Error(`TARGET_EXISTS: ${join6(outDir, "index.html")} already exists. Choose a new directory.`);
   }
   await mkdir3(outDir, { recursive: true });
-  const runtimeTarget = join5(outDir, "runtime.mjs");
+  const runtimeTarget = join6(outDir, "runtime.mjs");
   if (options.runtimeSourcePath) {
     await cp(options.runtimeSourcePath, runtimeTarget);
   }
@@ -4244,8 +4490,8 @@ async function initStageProject(options) {
 </body>
 </html>
 `;
-  const entry = join5(outDir, "index.html");
-  await writeFile3(entry, html);
+  const entry = join6(outDir, "index.html");
+  await writeFile4(entry, html);
   return {
     directory: outDir,
     entry,
@@ -4258,8 +4504,8 @@ async function initStageProject(options) {
 }
 
 // packages/cli/src/index.ts
-import { spawn as spawn3, spawnSync as spawnSync3 } from "node:child_process";
-var resourceRoot = join6(dirname4(fileURLToPath(import.meta.url)), "resources");
+import { spawn as spawn4, spawnSync as spawnSync4 } from "node:child_process";
+var resourceRoot = join7(dirname4(fileURLToPath(import.meta.url)), "resources");
 var motionfluxRoot = resolve6(dirname4(fileURLToPath(import.meta.url)), "..");
 var isHtmlInput = (path2) => Boolean(path2 && /\.html?$/iu.test(path2));
 async function readScene(path2) {
@@ -4279,7 +4525,7 @@ async function assetBytes(scene, scenePath) {
 }
 async function save(path2, data) {
   await mkdir4(dirname4(resolve6(path2)), { recursive: true });
-  await writeFile4(resolve6(path2), data);
+  await writeFile5(resolve6(path2), data);
 }
 function parseFrameList(list) {
   return list.split(",").flatMap((part) => {
@@ -4298,8 +4544,8 @@ function parseFrames(list, total2) {
   if (outside !== void 0) throw new Error(`USAGE: frame ${outside} is outside the scene; valid frames are 0\u2013${total2 - 1}.`);
   return frames;
 }
-var numeric = ["frame", "width", "height", "duration", "fps", "scale", "port"];
-var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "text", "color", "background", "title", "contact"];
+var numeric = ["frame", "width", "height", "duration", "fps", "scale", "port", "crf"];
+var textual = ["out", "previous", "scene", "authoring", "backend", "frames", "browser", "quality", "target", "manager", "text", "color", "background", "title", "contact"];
 function parseArgs(args) {
   const command = args.shift() ?? "help";
   const positional = [];
@@ -4318,6 +4564,10 @@ function parseArgs(args) {
     }
     if (arg === "--audit") {
       options.runAudit = true;
+      continue;
+    }
+    if (arg === "--apply") {
+      options.apply = true;
       continue;
     }
     const isNumber = numeric.includes(key);
@@ -4351,13 +4601,14 @@ function parseArgs(args) {
     serve: ["port"],
     scaffold: ["out", "width", "height", "duration", "fps", "text", "color", "background"],
     frames: ["out", "frames", "browser", "transparent", "scale"],
-    render: ["out", "browser", "transparent", "scale", "noAudio", "runAudit"],
+    render: ["out", "browser", "transparent", "scale", "quality", "crf", "noAudio", "runAudit"],
     breakdown: ["out", "browser", "title", "width", "fps"],
-    doctor: ["backend", "browser"]
+    doctor: ["backend", "browser"],
+    setup: ["target", "manager", "apply", "browser"]
   };
   if (!supported[command]) throw new Error(`UNSUPPORTED_COMMAND: ${command}. Use help to see implemented commands.`);
   for (const key of Object.keys(options)) if (!supported[command].includes(key)) throw new Error(`USAGE: --${key} is not supported by ${command}.`);
-  if (!["search", "patterns"].includes(command) && positional.length > (["help", "doctor"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
+  if (!["search", "patterns"].includes(command) && positional.length > (["help", "doctor", "setup"].includes(command) ? 0 : 1)) throw new Error("USAGE: Too many positional arguments.");
   return { command, positional, ...options };
 }
 async function scaffold(id4, options) {
@@ -4435,11 +4686,11 @@ async function renderBreakdown(scene, html, plan, args) {
   const count = Math.max(1, Math.floor(seconds2 * fps + 1e-9));
   const frames = Array.from({ length: count }, (_, k) => k * sceneFps / fps);
   const size2 = breakdownSize(plan, scene.canvas);
-  const work = await mkdtemp3(join6(tmpdir3(), "motionflux-breakdown-"));
-  const page = join6(work, "breakdown.html");
+  const work = await mkdtemp3(join7(tmpdir3(), "motionflux-breakdown-"));
+  const page = join7(work, "breakdown.html");
   const out = resolve6(args.out);
   try {
-    await writeFile4(page, html);
+    await writeFile5(page, html);
     await mkdir4(dirname4(out), { recursive: true });
     await encodeVideo(out, format, false, { numerator: fps, denominator: 1 }, (write) => captureFrames(page, frames, browser, false, (_frame, png) => write(png)));
   } finally {
@@ -4481,7 +4732,7 @@ async function renderVideoBreakdown(file, args) {
     throw new Error(`SOURCE_MISSING: ${video} does not exist. source.video is relative to the breakdown file.`);
   });
   const probe = ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
-  const probed = spawnSync3(probe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", video], { encoding: "utf8" });
+  const probed = spawnSync4(probe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", video], { encoding: "utf8" });
   if (probed.status !== 0) throw new Error(`SOURCE_UNREADABLE: ffprobe could not read ${video}.`);
   const meta = JSON.parse(probed.stdout);
   const source = meta.streams[0];
@@ -4498,19 +4749,19 @@ async function renderVideoBreakdown(file, args) {
   const panel = panelHeight(plan) + panelHeight(plan) % 2;
   const browser = await findBrowser(args.browser);
   if (!browser) throw new Error("BROWSER_MISSING: breakdown draws the timeline in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-  const work = await mkdtemp3(join6(tmpdir3(), "motionflux-breakdown-"));
+  const work = await mkdtemp3(join7(tmpdir3(), "motionflux-breakdown-"));
   const out = resolve6(args.out);
   try {
-    const script = await readFile(join6(resourceRoot, "breakdown-panel.js"), "utf8");
-    const page = join6(work, "panel.html");
-    await writeFile4(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
-    await mkdir4(join6(work, "panel"));
-    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile4(join6(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
+    const script = await readFile(join7(resourceRoot, "breakdown-panel.js"), "utf8");
+    const page = join7(work, "panel.html");
+    await writeFile5(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
+    await mkdir4(join7(work, "panel"));
+    await captureFrames(page, Array.from({ length: count }, (_, i) => i), browser, false, (frame, png) => writeFile5(join7(work, "panel", `${String(frame).padStart(6, "0")}.png`), png));
     await mkdir4(dirname4(out), { recursive: true });
     const stack = `[0:v]fps=${fps},scale=${width}:${pictureHeight}:flags=lanczos,setsar=1[clip];[clip][1:v]vstack=inputs=2`;
     const encode = format === "gif" ? ["-filter_complex", `${stack},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle`, "-loop", "0"] : format === "mp4" ? ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart"] : ["-filter_complex", `${stack},format=yuv420p`, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "28"];
     const result = await new Promise((done) => {
-      const child = spawn3(ffmpegPath(), [
+      const child = spawn4(ffmpegPath(), [
         "-y",
         "-v",
         "error",
@@ -4523,7 +4774,7 @@ async function renderVideoBreakdown(file, args) {
         "-framerate",
         String(fps),
         "-i",
-        join6(work, "panel", "%06d.png"),
+        join7(work, "panel", "%06d.png"),
         ...encode,
         "-an",
         "-frames:v",
@@ -4568,20 +4819,21 @@ async function main() {
   switch (args.command) {
     case "help":
       return { version: ENGINE_VERSION, stageVersion: "stage-1", commands: [
+        "doctor [--backend all|js|browser|webgl2|webgpu|ffmpeg] [--browser <path>]  (check full runtime environment)",
+        "setup [--target all|browser|ffmpeg] [--manager auto|playwright|brew|apt|dnf|pacman|apk|winget|scoop|choco] [--apply]  (plan or install missing runtime dependencies)",
         'init <dir> [--width 1920] [--height 1080] [--fps 30] [--duration 150] [--title "\u2026"]  (create HTML/CSS/SVG/WebGL stage project)',
         "audit <stage.html> [--frames 0,30,60] [--out report.json] [--contact sheet.png] [--browser <path>]  (DOM overflow/overlap/asset audit)",
         "frames <stage.html | scene.json> --out <dir> [--frames 0,30,60] [--transparent] [--scale 1|2]",
-        "render <stage.html | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--no-audio] [--audit]",
+        "render <stage.html | scene.json> --out clip.mp4|.mov|.webm [--transparent] [--scale 1|2] [--quality standard|cinema] [--crf 0-51] [--no-audio] [--audit]",
         "sfx <audio.json> --out track.wav [--duration 5] [--fps 30]  (synthesize procedural SFX WAV; kinds: " + SFX_KINDS.join(", ") + ")",
-        "serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/ mounts)",
+        "serve <dir | stage.html> [--port 4178]  (local preview server with /__motionflux/stage/* and /__motionflux/atoms/* mounts)",
         "search <query> --json",
         "describe <id> --json",
-        'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "\u2026"] [--width 960] [--fps 25]',
-        "doctor --backend js|browser|ffmpeg"
-      ], delivery: "HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) with deterministic CSS/WAAPI/video/atom seeking, DOM geometry audit, procedural SFX + audio muxing, and full-page Chrome capture to MP4/MOV/WebM/PNG. Legacy MotionSpec JSON commands remain supported." };
+        'breakdown <scene.json | breakdown.json> --out breakdown.gif|.mp4|.webm [--title "\u2026"] [--width 960] [--fps 25]'
+      ], delivery: "HTML/CSS/SVG/WebGL Stage runtime (stage/runtime.mjs) + 3D PBR/CAD studio kit (atoms/studio.mjs) with deterministic CSS/WAAPI/video/atom seeking, DOM geometry audit, procedural SFX + audio muxing, and full-page Chrome capture to MP4/MOV/WebM/PNG." };
     case "init": {
       if (!path2) throw new Error("USAGE: init <new-directory> [--width 1920] [--height 1080] [--fps 30] [--duration 150]");
-      const runtimeSource = join6(motionfluxRoot, "stage", "runtime.mjs");
+      const runtimeSource = join7(motionfluxRoot, "stage", "runtime.mjs");
       const hasRuntime = await stat4(runtimeSource).then(() => true, () => false);
       return initStageProject({
         outDir: path2,
@@ -4615,7 +4867,7 @@ async function main() {
       const { wav, proceduralCount } = synthesizeSfxTrack(cues, durationSec, fps);
       const out = resolve6(args.out);
       await mkdir4(dirname4(out), { recursive: true });
-      await writeFile4(out, wav);
+      await writeFile5(out, wav);
       return { path: out, bytes: wav.length, durationSeconds: durationSec, sampleRate: 48e3, channels: 2, proceduralCount };
     }
     case "serve": {
@@ -4639,7 +4891,7 @@ async function main() {
     case "search":
       return { capabilities: searchCapabilities(args.positional.join(" ")) };
     case "patterns": {
-      const indexPath = join6(dirname4(resourceRoot), "../assets/patterns/index.json");
+      const indexPath = join7(dirname4(resourceRoot), "../assets/patterns/index.json");
       const index = JSON.parse(await readFile(indexPath, "utf8"));
       const terms = args.positional.join(" ").normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
       return { match: "all-keywords; suitability is decided by the agent", patterns: index.patterns.filter((pattern) => terms.every((term) => JSON.stringify(pattern).normalize("NFKC").toLowerCase().includes(term))) };
@@ -4657,7 +4909,7 @@ async function main() {
       const src = `assets/product${extname3(brief.product.src).toLowerCase()}`;
       const { scene, authoring } = composePattern(brief, { type: "image", src, sha256: brief.product.sha256 });
       const assets = { [src]: bytes.toString("base64") };
-      const runtime = await readFile(join6(resourceRoot, "standalone.js"), "utf8");
+      const runtime = await readFile(join7(resourceRoot, "standalone.js"), "utf8");
       const html = createStandaloneHtml(scene, runtime, assets, "");
       return writeDelivery({ scene, assets, html, out: args.out, authoring });
     }
@@ -4679,23 +4931,126 @@ async function main() {
       return capability;
     }
     case "doctor": {
-      const backend = args.backend ?? "js";
+      const backend = args.backend ?? "all";
+      const jsOk = Number(process.versions.node.split(".")[0]) >= 22;
+      if (backend === "js") {
+        return {
+          backend,
+          available: jsOk,
+          node: process.version,
+          version: ENGINE_VERSION,
+          capabilities: capabilities.length,
+          browser: "Open generated HTML in a browser with Canvas 2D, FontFace and Web Crypto support."
+        };
+      }
       if (backend === "browser") {
-        const browser = await findBrowser(args.browser);
-        return browser ? { backend, available: true, path: browser, version: toolVersion(browser, "--version") ?? "unknown" } : { backend, available: false, reason: "No Chrome, Chromium or Edge was found. Install one, or pass --browser <path> or set MOTIONFLUX_BROWSER_PATH." };
+        const browser2 = await findBrowser(args.browser);
+        return browser2 ? { backend, available: true, path: browser2, version: toolVersion(browser2, "--version") ?? "unknown" } : { backend, available: false, reason: "No Chrome, Chromium or Edge was found. Run `node scripts/motion.mjs setup --target browser --apply` or pass --browser <path>." };
+      }
+      if (backend === "webgl2") {
+        const browser2 = await findBrowser(args.browser);
+        if (!browser2) return { backend, available: false, reason: "No Chrome, Chromium or Edge was found to test WebGL2." };
+        const probe = await probeWebGL2(browser2);
+        return { backend, browser: browser2, ...probe };
+      }
+      if (backend === "webgpu") {
+        const browser2 = await findBrowser(args.browser);
+        if (!browser2) return { backend, available: false, reason: "No Chrome, Chromium or Edge was found to test WebGPU." };
+        const probe = await probeWebGPU(browser2);
+        return { backend, browser: browser2, ...probe };
       }
       if (backend === "ffmpeg") {
         const version = toolVersion(ffmpegPath());
-        return version ? { backend, available: true, version, probe: toolVersion(ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1")) !== void 0 } : { backend, available: false, reason: "ffmpeg was not found on PATH. Install it or set MOTIONFLUX_FFMPEG_PATH. The frames command still works without it." };
+        return version ? { backend, available: true, version, probe: toolVersion(ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1")) !== void 0 } : { backend, available: false, reason: "ffmpeg was not found on PATH. Run `node scripts/motion.mjs setup --target ffmpeg --apply` or set MOTIONFLUX_FFMPEG_PATH." };
       }
-      if (backend !== "js") return { backend, available: false, reason: "Adapter not implemented; no optional host tools were required or invoked." };
+      if (backend !== "all") return { backend, available: false, reason: "Adapter not implemented; valid backends are all, js, browser, webgl2, webgpu, ffmpeg." };
+      const browser = await findBrowser(args.browser);
+      const ffVer = toolVersion(ffmpegPath());
+      const hasProbe = ffVer ? toolVersion(ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1")) !== void 0 : false;
+      const managers = detectPackageManagers();
+      const missing = [];
+      if (!browser) missing.push("browser");
+      if (!ffVer) missing.push("ffmpeg");
+      const plan = missing.length > 0 ? buildInstallPlan(missing, managers) : { steps: [], blocked: [] };
       return {
-        backend,
-        available: Number(process.versions.node.split(".")[0]) >= 22,
-        node: process.version,
+        backend: "all",
+        available: jsOk && Boolean(browser) && Boolean(ffVer),
+        platform: process.platform,
+        arch: process.arch,
         version: ENGINE_VERSION,
-        capabilities: capabilities.length,
-        browser: "Open generated HTML in a browser with Canvas 2D, FontFace and Web Crypto support."
+        stageVersion: "stage-1",
+        node: { available: jsOk, version: process.version, required: ">=22", capabilities: capabilities.length },
+        browser: browser ? { available: true, path: browser, version: toolVersion(browser, "--version") ?? "unknown" } : { available: false, reason: "No Chrome, Chromium or Edge was found." },
+        ffmpeg: ffVer ? { available: true, path: ffmpegPath(), version: ffVer, probe: hasProbe } : { available: false, reason: "ffmpeg was not found on PATH." },
+        ready: {
+          specAndPreview: jsOk,
+          framesAndAudit: jsOk && Boolean(browser),
+          videoAndBreakdown: jsOk && Boolean(browser) && Boolean(ffVer)
+        },
+        packageManagers: managers,
+        missing,
+        ...missing.length > 0 ? {
+          installPlan: plan.steps.map(({ component, manager, command, requiresPrivilege }) => ({
+            component,
+            manager,
+            command,
+            ...requiresPrivilege ? { requiresPrivilege: true } : {}
+          })),
+          ...plan.blocked.length > 0 ? { blocked: plan.blocked } : {},
+          hint: "Run `node scripts/motion.mjs setup --apply` to install missing components."
+        } : {}
+      };
+    }
+    case "setup": {
+      const target = args.target ?? "all";
+      if (!["all", "browser", "ffmpeg"].includes(target)) {
+        throw new Error(`USAGE: --target must be all, browser or ffmpeg; got "${target}".`);
+      }
+      const browser = await findBrowser(args.browser);
+      const ffVer = toolVersion(ffmpegPath());
+      const wanted = target === "all" ? ["browser", "ffmpeg"] : [target];
+      const missing = wanted.filter((item) => item === "browser" ? !browser : !ffVer);
+      const managers = detectPackageManagers();
+      const { steps, blocked } = buildInstallPlan(missing, managers, args.manager ?? "auto");
+      if (!args.apply) {
+        return {
+          applied: false,
+          alreadyReady: missing.length === 0,
+          target,
+          missing,
+          packageManagers: managers,
+          steps: steps.map(({ component, manager, command, requiresPrivilege }) => ({
+            component,
+            manager,
+            command,
+            ...requiresPrivilege ? { requiresPrivilege: true } : {}
+          })),
+          ...blocked.length > 0 ? { blocked } : {},
+          hint: missing.length === 0 ? "All requested runtime dependencies are already installed." : "Review the installation plan above, then re-run with --apply to install."
+        };
+      }
+      if (blocked.length > 0) {
+        throw new Error(`SETUP_BLOCKED: ${blocked.map((b) => `${b.component}: ${b.reason}`).join(" ")}`);
+      }
+      const executed = [];
+      for (const step of steps) {
+        const res = await runInstallStep(step);
+        executed.push({ component: step.component, manager: step.manager, command: step.command, code: res.code, output: res.output });
+        if (!res.ok) {
+          throw new Error(
+            `SETUP_FAILED: "${step.command}" exited with code ${res.code ?? "null"}.${step.requiresPrivilege ? " Elevated permission may be required." : ""} ${res.output}`.trim()
+          );
+        }
+      }
+      const nextBrowser = await findBrowser(args.browser);
+      const nextFf = toolVersion(ffmpegPath());
+      return {
+        applied: true,
+        target,
+        executed,
+        verified: (target === "ffmpeg" || Boolean(nextBrowser)) && (target === "browser" || Boolean(nextFf)),
+        browser: nextBrowser ? { available: true, path: nextBrowser, version: toolVersion(nextBrowser, "--version") ?? "unknown" } : { available: false },
+        ffmpeg: nextFf ? { available: true, version: nextFf } : { available: false }
       };
     }
     default: {
@@ -4720,6 +5075,8 @@ async function main() {
           motionfluxRoot,
           transparent: Boolean(args.transparent),
           ...args.scale !== void 0 ? { scale: args.scale } : {},
+          ...args.quality !== void 0 ? { quality: args.quality } : {},
+          ...args.crf !== void 0 ? { crf: args.crf } : {},
           noAudio: Boolean(args.noAudio),
           runAudit: Boolean(args.runAudit)
         });
@@ -4733,7 +5090,7 @@ async function main() {
       const assets = await assetBytes(scene, resolve6(path2));
       if (args.command === "validate") return { valid: true, assetsVerified: Object.keys(assets).length, lock: versionLock(scene) };
       if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
-      const [runtime, license] = await Promise.all([readFile(join6(resourceRoot, "standalone.js"), "utf8"), readFile(join6(resourceRoot, "OFL.txt"), "utf8")]);
+      const [runtime, license] = await Promise.all([readFile(join7(resourceRoot, "standalone.js"), "utf8"), readFile(join7(resourceRoot, "OFL.txt"), "utf8")]);
       const plan = args.command === "breakdown" ? breakdownPlan(scene, { width: Math.round(args.width ?? Math.min(960, scene.canvas.width)), ...args.title ? { title: args.title } : {} }) : void 0;
       if (plan && (plan.width < 160 || plan.width > 3840)) throw new Error("USAGE: --width must be 160\u20133840 px.");
       const html = createStandaloneHtml(scene, runtime, assets, args.command === "deliver" ? "" : license, plan ? { breakdown: plan } : {});
@@ -4747,38 +5104,41 @@ async function main() {
         const size2 = { width: scene.canvas.width, height: scene.canvas.height };
         const transparent = Boolean(args.transparent);
         const format = extname3(args.out).slice(1).toLowerCase();
+        const encodeOptions = { ...args.quality !== void 0 ? { quality: args.quality } : {}, ...args.crf !== void 0 ? { crf: args.crf } : {} };
         if (args.command === "render") {
           if (!(format in videoFormats) || format === "gif") throw new Error("USAGE: render picks the format from --out: .mp4 (H.264), .mov (ProRes 4444) or .webm (VP9). GIF is written by breakdown.");
           if (transparent && !videoFormats[format].alpha) throw new Error("ALPHA_UNSUPPORTED: H.264 MP4 cannot carry transparency. Use .mov or .webm with --transparent, or the frames command for PNGs.");
           if (videoFormats[format].evenSize && (size2.width % 2 || size2.height % 2)) throw new Error(`VIDEO_SIZE: .${format} needs even dimensions; the canvas is ${size2.width}\xD7${size2.height}.`);
+          videoEncoderArgs(format, transparent, encodeOptions);
           if (!toolVersion(ffmpegPath())) throw new Error("FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use the frames command for a PNG sequence instead.");
         }
         const browser = await findBrowser(args.browser);
         if (!browser) throw new Error("BROWSER_MISSING: frames and render draw in a Chrome, Chromium or Edge you already have. None was found; pass --browser <path> or set MOTIONFLUX_BROWSER_PATH.");
-        const work = await mkdtemp3(join6(tmpdir3(), "motionflux-render-"));
-        const page = join6(work, "scene.html");
+        const work = await mkdtemp3(join7(tmpdir3(), "motionflux-render-"));
+        const page = join7(work, "scene.html");
         try {
-          await writeFile4(page, html);
+          await writeFile5(page, html);
           const out = resolve6(args.out);
           if (args.command === "frames") {
             const frames = parseFrames(args.frames, scene.durationFrames);
             const files = [];
             await mkdir4(out, { recursive: true });
             await captureFrames(page, frames, browser, transparent, async (frame, png) => {
-              const file = join6(out, `frame-${String(frame).padStart(6, "0")}.png`);
-              await writeFile4(file, png);
+              const file = join7(out, `frame-${String(frame).padStart(6, "0")}.png`);
+              await writeFile5(file, png);
               files.push(file);
             });
             return { directory: out, type: "png-sequence", pattern: "frame-%06d.png", frames: files.length, files: files.length <= 24 ? files : [files[0], "\u2026", files.at(-1)], ...size2, fps: scene.fps, alpha: transparent, videoDelivered: false, browser, lock: versionLock(scene) };
           }
           await mkdir4(dirname4(out), { recursive: true });
           const all = parseFrames(void 0, scene.durationFrames);
-          await encodeVideo(out, format, transparent, scene.fps, (write) => captureFrames(page, all, browser, transparent, (_frame, png) => write(png)));
+          await encodeVideo(out, format, transparent, scene.fps, (write) => captureFrames(page, all, browser, transparent, (_frame, png) => write(png)), encodeOptions);
           const written = probeVideo(out);
           const expectedSeconds = all.length * scene.fps.denominator / scene.fps.numerator;
           return {
             path: out,
             type: `video/${format === "mov" ? "quicktime" : format}`,
+            quality: args.quality ?? "standard",
             bytes: (await stat4(out)).size,
             expected: { frames: all.length, durationSeconds: expectedSeconds, ...size2, alpha: transparent },
             written: written ?? "ffprobe not available; the file was not read back",

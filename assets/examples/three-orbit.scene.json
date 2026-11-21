@@ -16,7 +16,7 @@
     "orbit": {
       "type": "module",
       "src": "assets/three-orbit.mjs",
-      "sha256": "aee3bdfbaa23122fd82da8235e0ac4bf2d830c07b5a9872476e68e5dad0a741b"
+      "sha256": "8119852410188542e3a6d936088b0132cb6024561eac2a2f6ae39a6b0a012344"
     }
   },
   "nodes": [

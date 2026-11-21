@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { mkdir, cp, readFile, writeFile, rm, readdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeAtoms } from './atoms.mjs';
 import { archiveSkill } from './skill-archive.mjs';
@@ -72,11 +72,15 @@ await writeFile('VERSION.json', JSON.stringify({ ...provenance, version, atoms2d
 // A small installable ZIP excludes development sources, dependency folders and build caches.
 const stage = 'dist/skill';
 await mkdir(stage, { recursive: true });
-const releaseFiles = ['SKILL.md', 'LICENSE', 'VERSION.json', 'assets/catalog.md', 'assets/catalog-index.json',
-  'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs',
-  'atoms/README.md', 'atoms/index.mjs', 'atoms/draw.mjs',
+const releaseFiles = ['SKILL.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'VERSION.json', 'assets/catalog.md', 'assets/catalog-index.json',
+  'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs', 'scripts/env.sh', 'scripts/env.ps1',
+  'references/install.md', 'references/physical-3d.md', 'references/three-license.txt',
+  'atoms/README.md', 'atoms/index.mjs', 'atoms/draw.mjs', 'atoms/studio.md', 'atoms/studio.mjs',
   ...capabilities.flatMap(({ id }) => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
-for (const name of releaseFiles) await cp(name, `${stage}/${name}`);
+for (const name of releaseFiles) {
+  await mkdir(dirname(`${stage}/${name}`), { recursive: true });
+  await cp(name, `${stage}/${name}`);
+}
 const archive = await archiveSkill(stage, 'dist/downloads', { name: 'motionflux', version, atoms2d: capabilities.length });
 await cp(`${stage}/manifest.json`, 'manifest.json');
 await cp(`dist/downloads/${archive}`, 'dist/downloads/motionflux.zip');

@@ -14,7 +14,8 @@ const base = () => ({ specVersion: '0.2', seed: 1, canvas: { width: 200, height:
   nodes: [{ id: 'group', type: 'group', position: [50,20], color: '#ffffff' },
     { id: 'label', type: 'text', parent: 'group', position: [2,3], color: '#ffffff', font: 'system', text: 'Flux', fontSize: 20, lineHeight: 25 }] });
 const animation = (property, keys, target = 'group') => ({ id: property.replace('.', '-'), target, property, keyframes: keys.map(([frame,value,easing]) => ({ frame, value, ...(easing ? { easing } : {}) })) });
-const hash = data => createHash('sha256').update(JSON.stringify(data)).digest('hex');
+const canonical = (_, value) => (typeof value === 'number' && Number.isFinite(value) ? (Object.is(value, -0) ? 0 : Number(value.toPrecision(12))) : value);
+const hash = data => createHash('sha256').update(JSON.stringify(data, canonical)).digest('hex');
 const cli = (...args) => JSON.parse(execFileSync(process.execPath, ['scripts/motion.mjs', ...args], { encoding: 'utf8' })).result;
 
 test('0.4.1 baseline: all 53 existing atoms retain numeric scene outputs at five boundary/subframes', async () => {

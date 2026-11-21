@@ -7,6 +7,7 @@
 | `<原子 ID>.mjs` | 一个原子的全部代码。ES 模块，**没有任何 import**，可以单独拷走。 |
 | `<原子 ID>.md` | 这个原子的参数表、调用示例、返回值说明。 |
 | `draw.mjs` | 把任意原子的返回值画到 Canvas 2D 上，像素滤镜也在这里。独立文件，无依赖。 |
+| `studio.mjs` | 自包含三维物理摄影棚、16 种金属/光学 PBR 材质与精密机械 CAD 几何套件（内置 Three.js 0.180），见 [studio.md](studio.md)。 |
 | `index.mjs` | 一次导入全部原子：`import { atoms, drawAtom } from './index.mjs'`，再用 `atoms['prop.move']` 取。 |
 
 要哪个原子，先看 [../assets/catalog.md](../assets/catalog.md) 的清单，再读对应的 `<ID>.md`。

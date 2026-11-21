@@ -5,7 +5,7 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { buildAudioMuxPlan, synthesizeSfxTrack, isProceduralCue } from './audio.js';
 import { startStageServer } from './server.js';
 import type { FrameAuditResult, StageAuditReport, StageMeta, StageVideoReport } from './types.js';
-import { ffmpegPath, findBrowser, toolVersion, videoFormats, type VideoFormat } from '../../cli/src/capture.js';
+import { ffmpegPath, findBrowser, gpuLaunchFlags, toolVersion, videoEncoderArgs, videoFormats, type VideoFormat } from '../../cli/src/capture.js';
 
 interface CdpSession {
   send(method: string, params?: object, sessionId?: string): Promise<Record<string, unknown>>;
@@ -27,6 +27,7 @@ async function launchChrome(browser: string): Promise<CdpSession> {
       '--mute-audio',
       '--autoplay-policy=no-user-gesture-required',
       '--font-render-hinting=none',
+      ...gpuLaunchFlags(),
       'about:blank',
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
@@ -508,12 +509,15 @@ export async function renderStageVideo(
     motionfluxRoot?: string;
     transparent?: boolean;
     scale?: number;
+    quality?: string;
+    crf?: number;
     noAudio?: boolean;
     runAudit?: boolean;
   },
 ): Promise<{
   path: string;
   type: string;
+  quality: string;
   bytes: number;
   expected: { frames: number; durationSeconds: number; width: number; height: number; alpha: boolean; audio: boolean };
   written: StageVideoReport | string;
@@ -530,6 +534,10 @@ export async function renderStageVideo(
   if (transparent && !videoFormats[format].alpha) {
     throw new Error('ALPHA_UNSUPPORTED: H.264 MP4 cannot carry transparency. Use .mov or .webm with --transparent, or frames for PNGs.');
   }
+  const encoderArgs = videoEncoderArgs(format, transparent, {
+    ...(options.quality !== undefined ? { quality: options.quality } : {}),
+    ...(options.crf !== undefined ? { crf: options.crf } : {}),
+  });
   if (!toolVersion(ffmpegPath())) {
     throw new Error('FFMPEG_MISSING: ffmpeg was not found. Install it or set MOTIONFLUX_FFMPEG_PATH; use frames or audit without it.');
   }
@@ -585,10 +593,10 @@ export async function renderStageVideo(
     const audioCodecArgs = !audioPlan
       ? ['-an']
       : format === 'webm'
-        ? ['-c:a', 'libopus', '-b:a', '160k']
+        ? ['-c:a', 'libopus', '-b:a', options.quality === 'cinema' ? '224k' : '160k']
         : format === 'mov'
           ? ['-c:a', 'pcm_s16le']
-          : ['-c:a', 'aac', '-b:a', '192k'];
+          : ['-c:a', 'aac', '-b:a', options.quality === 'cinema' ? '256k' : '192k'];
 
     const ffmpegArgs: string[] = [
       '-y',
@@ -598,7 +606,7 @@ export async function renderStageVideo(
       '-i', '-',
       ...(audioPlan ? audioPlan.inputArgs : []),
       ...(audioPlan ? ['-filter_complex', audioPlan.filterComplex, '-map', '0:v:0', '-map', audioPlan.audioMap] : []),
-      ...videoFormats[format].encoder(transparent),
+      ...encoderArgs,
       ...audioCodecArgs,
       '-shortest',
       out,
@@ -654,6 +662,7 @@ export async function renderStageVideo(
     return {
       path: out,
       type: `video/${format === 'mov' ? 'quicktime' : format}`,
+      quality: options.quality ?? 'standard',
       bytes: (await stat(out)).size,
       expected: {
         frames: page.meta.durationFrames,

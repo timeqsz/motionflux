@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFile, mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -49,19 +50,30 @@ try {
   assert.equal(catalog.length, 53);
   assert.equal(manifest.atoms2d, catalog.length);
   const ids = catalog.map(entry => entry.id).sort();
-  const expected = ['SKILL.md', 'LICENSE', 'VERSION.json', 'manifest.json', 'assets/catalog.md', 'assets/catalog-index.json',
-    'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs',
-    'atoms/README.md', 'atoms/draw.mjs', 'atoms/index.mjs', ...ids.flatMap(id => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
+  const expected = ['SKILL.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'VERSION.json', 'manifest.json', 'assets/catalog.md', 'assets/catalog-index.json',
+    'stage/README.md', 'stage/runtime.mjs', 'scripts/motion.mjs', 'scripts/env.sh', 'scripts/env.ps1',
+    'references/install.md', 'references/physical-3d.md', 'references/three-license.txt',
+    'atoms/README.md', 'atoms/draw.mjs', 'atoms/index.mjs', 'atoms/studio.md', 'atoms/studio.mjs',
+    ...ids.flatMap(id => [`atoms/${id}.md`, `atoms/${id}.mjs`])];
   assert.deepEqual([...entries.keys()].sort(), expected.map(path => `motionflux/${path}`).sort());
   const stageMod = await import(pathToFileURL(join(root, 'stage/runtime.mjs')).href);
   assert.equal(typeof stageMod.createStage, 'function');
   assert.equal(typeof stageMod.spring, 'function');
   assert.ok(Math.abs(stageMod.spring(2) - 1) < 0.01);
+  const studioMod = await import(pathToFileURL(join(root, 'atoms/studio.mjs')).href);
+  assert.equal(typeof studioMod.createStudioRig, 'function');
+  assert.equal(typeof studioMod.createInvoluteGearGeometry, 'function');
   const { atoms, drawAtom } = await import(pathToFileURL(join(root, 'atoms/index.mjs')).href);
   assert.deepEqual(Object.keys(atoms).sort(), ids);
   assert.equal(typeof drawAtom, 'function');
   const offset = frame => atoms['prop.move']({ frame, durationFrames: 30, params: { fromPx: 0, toPx: 120 } }).position[0];
   assert.deepEqual([offset(30), offset(0), offset(15), offset(30)], [120, 0, 60, 120]);
+  const doctorOut = JSON.parse(execFileSync(process.execPath, [join(root, 'scripts/motion.mjs'), 'doctor', '--backend', 'js'], { encoding: 'utf8' }));
+  assert.equal(doctorOut.ok, true);
+  assert.equal(doctorOut.result.available, true);
+  const setupOut = JSON.parse(execFileSync(process.execPath, [join(root, 'scripts/motion.mjs'), 'setup', '--browser', '/nonexistent/chrome'], { encoding: 'utf8' }));
+  assert.equal(setupOut.ok, true);
+  assert.equal(setupOut.result.applied, false);
   console.log(JSON.stringify({ verified: true, atoms: ids.length, files: entries.size, zipBytes: zip.length, sha256: metadata.sha256 }));
 } finally {
   await rm(temp, { recursive: true, force: true });

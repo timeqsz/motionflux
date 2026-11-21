@@ -365,8 +365,18 @@
     },
     {
       "path": "atoms/README.md",
-      "bytes": 9765,
-      "sha256": "c835023af9589843c8ca2cfd6e9b172e7f754e557130ff73e0a170ea14e1c29a"
+      "bytes": 9939,
+      "sha256": "286e9f14396e7c4108306a3aeb2b8674e7b83a38d76e8de81c865c6019affd07"
+    },
+    {
+      "path": "atoms/studio.md",
+      "bytes": 8256,
+      "sha256": "af331efebc3c9ca01e24f71a06b0bd1cb9635a62b4108abed3721b07a0e94de9"
+    },
+    {
+      "path": "atoms/studio.mjs",
+      "bytes": 742751,
+      "sha256": "1c09058be69ed937d54b9e6237e9ad61d2824a43dec4c469c5c8df00e0af9585"
     },
     {
       "path": "atoms/text.chars.md",
@@ -564,24 +574,54 @@
       "sha256": "c24a55883299dfc2cb4ca8c454f7caaa25f665d9e8d9c0250c1f1051e93829ed"
     },
     {
+      "path": "references/install.md",
+      "bytes": 3055,
+      "sha256": "22e692128672498f0f33793daa0a13cd0a7aacdbe9b3c2ed54f90e0e5d7dcea7"
+    },
+    {
+      "path": "references/physical-3d.md",
+      "bytes": 7056,
+      "sha256": "12c4460077410548e8e9d1b6e0a5d5a68ff0566d8a25a7e7bc15718b66d34ee8"
+    },
+    {
+      "path": "references/three-license.txt",
+      "bytes": 1081,
+      "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
+    },
+    {
+      "path": "scripts/env.ps1",
+      "bytes": 2788,
+      "sha256": "270d2cb9e4f6b9a6fbe4c04dcac031c2b0eabff32cadf0172fe9787734b57864"
+    },
+    {
+      "path": "scripts/env.sh",
+      "bytes": 4668,
+      "sha256": "cbe0935512fa0f61de4c2bb96dd801c332290ce49bb42d2cfd1a2ca1e4e71602"
+    },
+    {
       "path": "scripts/motion.mjs",
-      "bytes": 230791,
-      "sha256": "40854e93d433ba5dd8534c840ce0be365d296c1f6f1953c5c6c1df0bfe58e88f"
+      "bytes": 249537,
+      "sha256": "48b19877876666acb341e5768e44c58c0b75fa2db72f1b9f5c8ac0b70ea131e0"
     },
     {
       "path": "SKILL.md",
-      "bytes": 4297,
-      "sha256": "c7fdadf046105c48cec3ce8b9c12de6468ca2f8fa384ed1385127fdfde1895ea"
+      "bytes": 6220,
+      "sha256": "e972542ac0aa42d9e754a6859eec48840cbb9217f440f05181fd142eadaaa034"
     },
     {
       "path": "stage/README.md",
-      "bytes": 4306,
-      "sha256": "fe062ed86556fc9d976d27f0881cde07adf2b322f58421e7d7ae762d4dbaccf7"
+      "bytes": 6215,
+      "sha256": "eecd763868977befd4086ac8b579ddcfa3a3a47c555f089e3404b9b814753e0d"
     },
     {
       "path": "stage/runtime.mjs",
       "bytes": 28991,
       "sha256": "c5da9aec308067d609243781bb6fe766a87d9acd195787f7020936fd693ae5eb"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "bytes": 1511,
+      "sha256": "1e50c7626d8fcc6eb143b02f6749f114a63c720349d24ed9d50b5376bf591d1c"
     },
     {
       "path": "VERSION.json",
