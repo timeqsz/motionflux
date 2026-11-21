@@ -733,6 +733,7 @@ export function compileMotionMdToHtml(
   const studioImport = options.studioImportPath ?? '/__motionflux/atoms/studio.mjs';
   const isVerticalLayout = doc.height >= doc.width;
   const isTallPortrait = doc.height > doc.width * 1.15;
+  const uiScale = Number(Math.min(1, Math.min(doc.width, doc.height) / 700).toFixed(4));
   const rigX = isVerticalLayout ? 0 : 0.56;
   const rigY = isVerticalLayout ? 0.34 : -0.02;
   const opticsY = isVerticalLayout ? 0.36 : 0.04;
@@ -1049,7 +1050,7 @@ export function compileMotionMdToHtml(
       pointer-events: auto;
     }
     .mf-eyebrow {
-      font-size: 18px;
+      font-size: ${Math.max(13, Math.round(18 * uiScale))}px;
       font-weight: 650;
       letter-spacing: 0.16em;
       text-transform: uppercase;
@@ -1058,9 +1059,9 @@ export function compileMotionMdToHtml(
     .mf-badge {
       display: inline-flex;
       align-self: flex-start;
-      padding: 6px 14px;
+      padding: ${Math.round(6 * uiScale)}px ${Math.round(14 * uiScale)}px;
       border-radius: 999px;
-      font-size: 15px;
+      font-size: ${Math.max(13, Math.round(15 * uiScale))}px;
       font-weight: 600;
       background: var(--mf-card-bg);
       border: 1px solid var(--mf-card-border);
@@ -1068,7 +1069,7 @@ export function compileMotionMdToHtml(
     }
     .mf-h1 {
       margin: 0;
-      font-size: clamp(54px, 4.8vw, 88px);
+      font-size: clamp(${Math.round(54 * uiScale)}px, 4.8vw, ${Math.round(88 * uiScale)}px);
       line-height: 1.08;
       letter-spacing: -0.03em;
       font-weight: 750;
@@ -1077,14 +1078,14 @@ export function compileMotionMdToHtml(
     }
     .mf-h1-left {
       margin: 0;
-      font-size: clamp(46px, 3.8vw, 70px);
+      font-size: clamp(${Math.round(46 * uiScale)}px, 3.8vw, ${Math.round(70 * uiScale)}px);
       line-height: 1.1;
       letter-spacing: -0.025em;
       font-weight: 750;
     }
     .mf-h2 {
       margin: 0;
-      font-size: clamp(42px, 3.6vw, 64px);
+      font-size: clamp(${Math.round(42 * uiScale)}px, 3.6vw, ${Math.round(64 * uiScale)}px);
       line-height: 1.12;
       letter-spacing: -0.025em;
       font-weight: 720;
@@ -1092,14 +1093,14 @@ export function compileMotionMdToHtml(
     }
     .mf-h2-left {
       margin: 0;
-      font-size: clamp(38px, 3.2vw, 56px);
+      font-size: clamp(${Math.round(38 * uiScale)}px, 3.2vw, ${Math.round(56 * uiScale)}px);
       line-height: 1.14;
       letter-spacing: -0.02em;
       font-weight: 720;
     }
     .mf-sub {
       margin: 0;
-      font-size: 25px;
+      font-size: ${Math.max(14, Math.round(25 * uiScale))}px;
       line-height: 1.48;
       color: var(--mf-muted);
       max-width: 760px;
@@ -1112,7 +1113,7 @@ export function compileMotionMdToHtml(
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 22px;
+      gap: ${Math.round(22 * uiScale)}px;
       text-align: center;
     }
     .mf-hero-stack .mf-badge { align-self: center; }
@@ -1123,34 +1124,34 @@ export function compileMotionMdToHtml(
     }
     .mf-studio-hud {
       width: ${isVerticalLayout ? '100%' : '46%'};
-      padding: ${isVerticalLayout ? '28px 32px' : '36px 40px'};
-      border-radius: 24px;
+      padding: ${isVerticalLayout ? `${Math.round(28 * uiScale)}px ${Math.round(32 * uiScale)}px` : `${Math.round(36 * uiScale)}px ${Math.round(40 * uiScale)}px`};
+      border-radius: ${Math.round(24 * uiScale)}px;
       background: var(--mf-card-bg);
       border: 1px solid var(--mf-card-border);
       backdrop-filter: blur(18px);
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: ${Math.round(18 * uiScale)}px;
     }
     .mf-studio-metrics {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 14px;
-      margin-top: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(${Math.round(110 * uiScale)}px, 1fr));
+      gap: ${Math.round(14 * uiScale)}px;
+      margin-top: ${Math.round(8 * uiScale)}px;
     }
     .mf-mini-stat {
-      padding: 14px 16px;
-      border-radius: 14px;
+      padding: ${Math.round(14 * uiScale)}px ${Math.round(16 * uiScale)}px;
+      border-radius: ${Math.round(14 * uiScale)}px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--mf-card-border);
     }
     .mf-mini-val {
-      font-size: 24px;
+      font-size: ${Math.max(15, Math.round(24 * uiScale))}px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
     }
     .mf-mini-lbl {
-      font-size: 15px;
+      font-size: ${Math.max(13, Math.round(15 * uiScale))}px;
       color: var(--mf-muted);
       margin-top: 4px;
     }

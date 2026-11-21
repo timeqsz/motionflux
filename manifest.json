@@ -375,8 +375,8 @@
     },
     {
       "path": "atoms/studio.mjs",
-      "bytes": 742751,
-      "sha256": "1c09058be69ed937d54b9e6237e9ad61d2824a43dec4c469c5c8df00e0af9585"
+      "bytes": 742880,
+      "sha256": "05e6f172875028c4817ade9f57525fbcca0b833c50fd4805981fd8e67daa8daf"
     },
     {
       "path": "atoms/text.chars.md",
@@ -610,8 +610,8 @@
     },
     {
       "path": "scripts/motion.mjs",
-      "bytes": 340789,
-      "sha256": "d882e6e24c3327ed00d81e8a001b1a0eb4a315eb9c855a0821a6116f6d0ca553"
+      "bytes": 347332,
+      "sha256": "d0139155b176e918949917408b8ebbd004e8bf56a827f320f6ef16fcdf877b91"
     },
     {
       "path": "SKILL.md",

@@ -1170,13 +1170,24 @@ export function createStudioRig(options: StudioRigOptions = {}) {
   const bg = options.background ?? 0x050608;
   const shadowBounds = options.shadowBounds ?? 3.2;
 
-  const renderer = new THREE.WebGLRenderer({
-    ...(options.canvas ? { canvas: options.canvas } : {}),
-    antialias: true,
-    alpha,
-    powerPreference: 'high-performance',
-    preserveDrawingBuffer: true,
-  });
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({
+      ...(options.canvas ? { canvas: options.canvas } : {}),
+      antialias: true,
+      alpha,
+      powerPreference: 'high-performance',
+      preserveDrawingBuffer: true,
+    });
+  } catch {
+    renderer = new THREE.WebGLRenderer({
+      ...(options.canvas ? { canvas: options.canvas } : {}),
+      antialias: false,
+      alpha,
+      powerPreference: 'default',
+      preserveDrawingBuffer: true,
+    });
+  }
   renderer.setPixelRatio(1);
   renderer.setSize(width, height, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;

@@ -72,9 +72,9 @@ function buildMotionMdForTemplate(
   durationFrames: number,
 ): string {
   if (template === 'hardware-3d') {
-    const f1 = Math.max(20, Math.round(durationFrames * 0.55));
-    const f2 = Math.max(20, durationFrames - f1);
-    const trans = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.3)));
+    const f1 = Math.max(2, Math.min(Math.max(2, durationFrames - 2), Math.round(durationFrames * 0.55)));
+    const f2 = Math.max(2, durationFrames - f1);
+    const trans = Math.max(1, Math.min(Math.max(1, f2 - 1), Math.round(fps * 0.3)));
     return `---
 title: ${title}
 width: ${width}
@@ -113,11 +113,11 @@ quality: cinema
   }
 
   if (template === 'saas-launch') {
-    const f1 = Math.max(15, Math.round(durationFrames * 0.34));
-    const f2 = Math.max(15, Math.round(durationFrames * 0.36));
-    const f3 = Math.max(15, durationFrames - f1 - f2);
-    const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
-    const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+    const f1 = Math.max(2, Math.round(durationFrames * 0.34));
+    const f2 = Math.max(2, Math.round(durationFrames * 0.36));
+    const f3 = Math.max(2, durationFrames - f1 - f2);
+    const t2 = Math.max(1, Math.min(Math.max(1, f2 - 1), Math.round(fps * 0.28)));
+    const t3 = Math.max(1, Math.min(Math.max(1, f3 - 1), Math.round(fps * 0.28)));
     return `---
 title: ${title}
 width: ${width}
@@ -160,11 +160,11 @@ quality: cinema
   }
 
   if (template === 'data-story') {
-    const f1 = Math.max(15, Math.round(durationFrames * 0.32));
-    const f2 = Math.max(15, Math.round(durationFrames * 0.38));
-    const f3 = Math.max(15, durationFrames - f1 - f2);
-    const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
-    const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+    const f1 = Math.max(2, Math.round(durationFrames * 0.32));
+    const f2 = Math.max(2, Math.round(durationFrames * 0.38));
+    const f3 = Math.max(2, durationFrames - f1 - f2);
+    const t2 = Math.max(1, Math.min(Math.max(1, f2 - 1), Math.round(fps * 0.28)));
+    const t3 = Math.max(1, Math.min(Math.max(1, f3 - 1), Math.round(fps * 0.28)));
     return `---
 title: ${title}
 width: ${width}

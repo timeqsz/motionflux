@@ -47,6 +47,63 @@ export interface StageServer {
   close(): Promise<void>;
 }
 
+export interface ResolvedStageResource {
+  status: number;
+  contentType: string;
+  filePath?: string;
+  size?: number;
+  bodyText?: string;
+}
+
+/**
+ * Safely map a Stage request path (`/index.html`, `/__motionflux/stage/*`, `/__motionflux/atoms/*`)
+ * to its local file on disk with path-traversal protection. Shared by both the local HTTP server
+ * and the zero-socket CDP `Fetch.enable` virtual server fallback.
+ */
+export async function resolveStageResource(
+  rawUrlOrPath: string,
+  projectDir: string,
+  motionfluxRoot?: string,
+): Promise<ResolvedStageResource> {
+  const absProject = resolve(projectDir);
+  const absMfRoot = motionfluxRoot ? resolve(motionfluxRoot) : undefined;
+  let pathname = '/';
+  try {
+    pathname = rawUrlOrPath.startsWith('http://') || rawUrlOrPath.startsWith('https://')
+      ? decodeURIComponent(new URL(rawUrlOrPath).pathname)
+      : decodeURIComponent(rawUrlOrPath.split('?')[0] ?? '/');
+  } catch {
+    return { status: 400, contentType: 'text/plain; charset=utf-8', bodyText: 'Bad request' };
+  }
+
+  let filePath: string | undefined;
+  if (absMfRoot && pathname.startsWith('/__motionflux/')) {
+    const sub = pathname.slice('/__motionflux/'.length);
+    if (sub.startsWith('stage/') || sub.startsWith('atoms/')) {
+      filePath = safeJoin(absMfRoot, sub);
+    }
+  } else {
+    const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/u, '');
+    filePath = safeJoin(absProject, rel);
+  }
+
+  if (!filePath) {
+    return { status: 403, contentType: 'text/plain; charset=utf-8', bodyText: 'Forbidden' };
+  }
+
+  let info = await stat(filePath).catch(() => undefined);
+  if (info?.isDirectory()) {
+    filePath = join(filePath, 'index.html');
+    info = await stat(filePath).catch(() => undefined);
+  }
+  if (!info || !info.isFile()) {
+    return { status: 404, contentType: 'text/plain; charset=utf-8', bodyText: `Not found: ${pathname}` };
+  }
+
+  const contentType = MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+  return { status: 200, contentType, filePath, size: info.size };
+}
+
 /**
  * Start a local-only HTTP server for serving HTML Stage compositions without `file://` ESM/CORS restrictions.
  * Automatically mounts `/__motionflux/stage/*` and `/__motionflux/atoms/*` from `motionfluxRoot` when provided.
@@ -60,38 +117,14 @@ export async function startStageServer(
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
-      const rawUrl = req.url ?? '/';
-      const pathname = decodeURIComponent(rawUrl.split('?')[0] ?? '/');
-      let filePath: string | undefined;
-
-      if (absMfRoot && pathname.startsWith('/__motionflux/')) {
-        const sub = pathname.slice('/__motionflux/'.length);
-        if (sub.startsWith('stage/') || sub.startsWith('atoms/')) {
-          filePath = safeJoin(absMfRoot, sub);
-        }
-      } else {
-        const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/u, '');
-        filePath = safeJoin(absProject, rel);
-      }
-
-      if (!filePath) {
-        res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-        res.end('Forbidden');
+      const resolved = await resolveStageResource(req.url ?? '/', absProject, absMfRoot);
+      if (resolved.status !== 200 || !resolved.filePath || resolved.size === undefined) {
+        res.writeHead(resolved.status, { 'content-type': resolved.contentType });
+        res.end(resolved.bodyText ?? '');
         return;
       }
 
-      let info = await stat(filePath).catch(() => undefined);
-      if (info?.isDirectory()) {
-        filePath = join(filePath, 'index.html');
-        info = await stat(filePath).catch(() => undefined);
-      }
-      if (!info || !info.isFile()) {
-        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-        res.end(`Not found: ${pathname}`);
-        return;
-      }
-
-      const contentType = MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+      const { filePath, contentType, size } = resolved;
       const rangeHeader = req.headers.range;
       res.setHeader('access-control-allow-origin', '*');
       res.setHeader('cache-control', 'no-store');
@@ -100,16 +133,16 @@ export async function startStageServer(
       if (rangeHeader && /^bytes=\d*-\d*$/u.test(rangeHeader)) {
         const [startStr, endStr] = rangeHeader.replace(/^bytes=/u, '').split('-');
         const start = startStr ? Number(startStr) : 0;
-        const end = endStr ? Math.min(Number(endStr), info.size - 1) : info.size - 1;
-        if (start > end || start >= info.size) {
-          res.writeHead(416, { 'content-range': `bytes */${info.size}` });
+        const end = endStr ? Math.min(Number(endStr), size - 1) : size - 1;
+        if (start > end || start >= size) {
+          res.writeHead(416, { 'content-range': `bytes */${size}` });
           res.end();
           return;
         }
         res.writeHead(206, {
           'content-type': contentType,
           'content-length': String(end - start + 1),
-          'content-range': `bytes ${start}-${end}/${info.size}`,
+          'content-range': `bytes ${start}-${end}/${size}`,
         });
         createReadStream(filePath, { start, end }).pipe(res);
         return;
@@ -117,7 +150,7 @@ export async function startStageServer(
 
       res.writeHead(200, {
         'content-type': contentType,
-        'content-length': String(info.size),
+        'content-length': String(size),
       });
       createReadStream(filePath).pipe(res);
     } catch (error) {

@@ -298,7 +298,7 @@ export async function buildAudioMuxPlan(
 
   if (sfxWavPath) {
     inputArgs.push('-i', sfxWavPath);
-    filters.push(`[${nextInput}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${durationSec.toFixed(4)}[a_sfx]`);
+    filters.push(`[${nextInput}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${durationSec.toFixed(6)}[a_sfx]`);
     labels.push('[a_sfx]');
     nextInput++;
   }
@@ -347,9 +347,9 @@ export async function buildAudioMuxPlan(
   if (labels.length === 0) return undefined;
 
   if (labels.length === 1) {
-    filters.push(`${labels[0]}apad=whole_dur=${durationSec.toFixed(4)},atrim=0:${durationSec.toFixed(4)},alimiter=limit=0.95[a_out]`);
+    filters.push(`${labels[0]}apad=whole_dur=${durationSec.toFixed(6)},atrim=0:${durationSec.toFixed(6)},alimiter=limit=0.95[a_out]`);
   } else {
-    filters.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:normalize=0,apad=whole_dur=${durationSec.toFixed(4)},atrim=0:${durationSec.toFixed(4)},alimiter=limit=0.95[a_out]`);
+    filters.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:normalize=0,apad=whole_dur=${durationSec.toFixed(6)},atrim=0:${durationSec.toFixed(6)},alimiter=limit=0.95[a_out]`);
   }
 
   return {

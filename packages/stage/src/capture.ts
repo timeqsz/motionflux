@@ -1,113 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { buildAudioMuxPlan, synthesizeSfxTrack, isProceduralCue } from './audio.js';
-import { startStageServer } from './server.js';
+import { resolveStageResource, startStageServer, type StageServer } from './server.js';
 import type { FrameAuditResult, StageAuditReport, StageMeta, StageVideoReport } from './types.js';
-import { ffmpegPath, findBrowser, gpuLaunchFlags, toolVersion, videoEncoderArgs, videoFormats, type VideoFormat } from '../../cli/src/capture.js';
-
-interface CdpSession {
-  send(method: string, params?: object, sessionId?: string): Promise<Record<string, unknown>>;
-  close(): Promise<void>;
-}
-
-async function launchChrome(browser: string): Promise<CdpSession> {
-  const profile = await mkdtemp(join(tmpdir(), 'motionflux-stage-browser-'));
-  const child = spawn(
-    browser,
-    [
-      '--headless=new',
-      '--remote-debugging-port=0',
-      `--user-data-dir=${profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-extensions',
-      '--hide-scrollbars',
-      '--mute-audio',
-      '--autoplay-policy=no-user-gesture-required',
-      '--font-render-hinting=none',
-      ...gpuLaunchFlags(),
-      'about:blank',
-    ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
-  );
-
-  const cleanup = async () => {
-    child.kill();
-    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  };
-
-  try {
-    const endpoint = await new Promise<string>((resolveEndpoint, reject) => {
-      let log = '';
-      const timer = setTimeout(
-        () => reject(new Error(`BROWSER_START: ${browser} did not open a DevTools endpoint within 20 s.`)),
-        20000,
-      );
-      child.stderr.on('data', (chunk: Buffer) => {
-        log += chunk;
-        const match = log.match(/DevTools listening on (ws:\/\/\S+)/u);
-        if (match) {
-          clearTimeout(timer);
-          resolveEndpoint(match[1]!);
-        }
-      });
-      child.once('error', (error) => {
-        clearTimeout(timer);
-        reject(new Error(`BROWSER_START: ${error.message}`));
-      });
-      child.once('exit', (code) => {
-        clearTimeout(timer);
-        reject(new Error(`BROWSER_START: ${browser} exited with code ${code} before it was ready.`));
-      });
-    });
-
-    const socket = new WebSocket(endpoint);
-    await new Promise<void>((opened, reject) => {
-      socket.onopen = () => opened();
-      socket.onerror = () => reject(new Error('BROWSER_START: Could not connect to the DevTools endpoint.'));
-    });
-
-    const pending = new Map<number, { resolve(value: Record<string, unknown>): void; reject(error: Error): void }>();
-    let nextId = 0;
-    socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data)) as {
-        id?: number;
-        result?: Record<string, unknown>;
-        error?: { message: string };
-      };
-      const waiting = message.id === undefined ? undefined : pending.get(message.id);
-      if (!waiting) return;
-      pending.delete(message.id!);
-      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`));
-      else waiting.resolve(message.result ?? {});
-    };
-    socket.onclose = () => {
-      for (const waiting of pending.values()) {
-        waiting.reject(new Error('BROWSER_PROTOCOL: The browser closed the connection.'));
-      }
-      pending.clear();
-    };
-
-    return {
-      send: (method, params = {}, sessionId) =>
-        new Promise((resolveCall, reject) => {
-          const id = ++nextId;
-          pending.set(id, { resolve: resolveCall, reject });
-          socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-        }),
-      close: async () => {
-        socket.onclose = null;
-        socket.close();
-        await cleanup();
-      },
-    };
-  } catch (error) {
-    await cleanup();
-    throw error;
-  }
-}
+import { ffmpegPath, findBrowser, launchCdpBrowser, toolVersion, videoEncoderArgs, videoFormats, type VideoFormat } from '../../cli/src/capture.js';
 
 export function selectDefaultAuditFrames(meta: StageMeta): number[] {
   const maxFrame = Math.max(0, meta.durationFrames - 1);
@@ -146,16 +45,84 @@ async function openStagePage(
   const absEntry = resolve(entryHtmlPath);
   const projectDir = dirname(absEntry);
   const entryName = basename(absEntry);
-  const server = await startStageServer(projectDir, {
-    ...(options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}),
-  });
-  const cdp = await launchChrome(options.browser);
+
+  const cdp = await launchCdpBrowser(options.browser);
   const scale = options.scale ?? 1;
 
+  // Prefer local HTTP server when unsandboxed (supports streaming <video> byte ranges);
+  // in outer OS/Agent sandboxes (or when 127.0.0.1 listen is denied), serve all Stage & atom
+  // modules directly over the zero-socket CDP Fetch pipe so 127.0.0.1 TCP is never needed.
+  let server: StageServer | undefined;
+  if (!cdp.sandboxedFallback) {
+    try {
+      server = await startStageServer(projectDir, {
+        ...(options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}),
+      });
+    } catch (err) {
+      const code = err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code) : '';
+      if (code !== 'EPERM' && code !== 'EACCES') {
+        await cdp.close().catch(() => undefined);
+        throw err;
+      }
+    }
+  }
+
   try {
-    const targetUrl = `${server.url}/${encodeURIComponent(entryName)}?capture=1`;
-    const { targetId } = (await cdp.send('Target.createTarget', { url: targetUrl })) as { targetId: string };
+    const baseUrl = server ? server.url : 'http://motionflux.stage';
+    const targetUrl = `${baseUrl}/${encodeURIComponent(entryName)}?capture=1`;
+    const { targetId } = (await cdp.send('Target.createTarget', { url: 'about:blank' })) as { targetId: string };
     const { sessionId } = (await cdp.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
+
+    let pageInitError: string | undefined;
+    cdp.onEvent('Runtime.exceptionThrown', (params) => {
+      const details = params.exceptionDetails as { text?: string; exception?: { description?: string } } | undefined;
+      if (!pageInitError && details) {
+        pageInitError = details.exception?.description ?? details.text ?? 'Uncaught page error';
+      }
+    });
+    await cdp.send('Runtime.enable', {}, sessionId);
+
+    if (!server) {
+      cdp.onEvent('Fetch.requestPaused', (params, sid) => {
+        const reqId = String(params.requestId ?? '');
+        const reqObj = (params.request ?? {}) as { url?: string };
+        const reqUrl = String(reqObj.url ?? '');
+        void (async () => {
+          const resolved = await resolveStageResource(reqUrl, projectDir, options.motionfluxRoot);
+          if (resolved.status !== 200 || !resolved.filePath) {
+            await cdp.send(
+              'Fetch.fulfillRequest',
+              {
+                requestId: reqId,
+                responseCode: resolved.status,
+                responseHeaders: [{ name: 'content-type', value: resolved.contentType }],
+                body: Buffer.from(resolved.bodyText ?? '', 'utf8').toString('base64'),
+              },
+              sid,
+            );
+            return;
+          }
+          const bytes = await readFile(resolved.filePath);
+          await cdp.send(
+            'Fetch.fulfillRequest',
+            {
+              requestId: reqId,
+              responseCode: 200,
+              responseHeaders: [
+                { name: 'content-type', value: resolved.contentType },
+                { name: 'access-control-allow-origin', value: '*' },
+                { name: 'cache-control', value: 'no-store' },
+              ],
+              body: bytes.toString('base64'),
+            },
+            sid,
+          );
+        })().catch(() => undefined);
+      });
+      await cdp.send('Fetch.enable', { patterns: [{ urlPattern: 'http://motionflux.stage/*' }] }, sessionId);
+    }
+
+    await cdp.send('Page.navigate', { url: targetUrl }, sessionId);
 
     const evaluate = async (expression: string): Promise<unknown> => {
       const reply = (await cdp.send(
@@ -176,6 +143,9 @@ async function openStagePage(
     for (;;) {
       const present = (await evaluate(`Boolean(window.__motionflux && window.__motionflux.version === 'stage-1')`)) as boolean;
       if (present) break;
+      if (pageInitError) {
+        throw new Error(`STAGE_INIT_ERROR: ${pageInitError}`);
+      }
       if (Date.now() > deadline) {
         throw new Error('STAGE_NOT_READY: Page did not expose window.__motionflux (stage-1) within 60 s.');
       }
@@ -234,12 +204,12 @@ async function openStagePage(
       auditFrame,
       close: async () => {
         await cdp.close();
-        await server.close();
+        if (server) await server.close();
       },
     };
   } catch (error) {
     await cdp.close().catch(() => undefined);
-    await server.close().catch(() => undefined);
+    if (server) await server.close().catch(() => undefined);
     throw error;
   }
 }
@@ -284,33 +254,34 @@ async function renderContactSheetPng(
     img{display:block;object-fit:contain;background:#000}
   </style><div class="grid">${cardsHtml}</div>`;
 
-  const cdp = await launchChrome(browser);
+  const cdp = await launchCdpBrowser(browser);
   const work = await mkdtemp(join(tmpdir(), 'motionflux-contact-'));
   try {
     const file = join(work, 'sheet.html');
     await writeFile(file, html);
-    const server = await startStageServer(work);
-    try {
-      const { targetId } = (await cdp.send('Target.createTarget', { url: `${server.url}/sheet.html` })) as { targetId: string };
-      const { sessionId } = (await cdp.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
-      await cdp.send(
-        'Emulation.setDeviceMetricsOverride',
-        { width: sheetW, height: sheetH, deviceScaleFactor: 1, mobile: false },
-        sessionId,
-      );
-      await cdp.send(
+    const { targetId } = (await cdp.send('Target.createTarget', { url: pathToFileURL(file).href })) as { targetId: string };
+    const { sessionId } = (await cdp.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
+    await cdp.send(
+      'Emulation.setDeviceMetricsOverride',
+      { width: sheetW, height: sheetH, deviceScaleFactor: 1, mobile: false },
+      sessionId,
+    );
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      const loaded = (await cdp.send(
         'Runtime.evaluate',
         {
-          expression: `Promise.all(Array.from(document.images).map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = r; i.onerror = r; })))`,
-          awaitPromise: true,
+          returnByValue: true,
+          expression: `Boolean(document.body && document.querySelectorAll('img').length === ${tiles.length} && Array.from(document.images).every(i => i.complete && i.naturalWidth > 0))`,
         },
         sessionId,
-      );
-      const res = (await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true }, sessionId)) as { data: string };
-      return Buffer.from(res.data, 'base64');
-    } finally {
-      await server.close();
+      )) as { result?: { value?: boolean } };
+      if (loaded.result?.value) break;
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 40));
     }
+    const res = (await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true }, sessionId)) as { data: string };
+    return Buffer.from(res.data, 'base64');
   } finally {
     await cdp.close();
     await rm(work, { recursive: true, force: true });
@@ -457,7 +428,7 @@ export async function captureStageFrames(
 }
 
 export function probeStageVideo(path: string): StageVideoReport | undefined {
-  const probe = (process.env.MOTIONFLUX_FFMPEG_PATH ?? 'ffmpeg').replace(/ffmpeg(\.exe)?$/u, 'ffprobe$1');
+  const probe = ffmpegPath().replace(/ffmpeg(\.exe)?$/u, 'ffprobe$1');
   const result = spawnSync(
     probe,
     [
@@ -608,7 +579,7 @@ export async function renderStageVideo(
       ...(audioPlan ? ['-filter_complex', audioPlan.filterComplex, '-map', '0:v:0', '-map', audioPlan.audioMap] : []),
       ...encoderArgs,
       ...audioCodecArgs,
-      '-shortest',
+      '-frames:v', String(page.meta.durationFrames),
       out,
     ];
 

@@ -97,12 +97,31 @@ test('CLI doctor (all), CLI setup (dry-run) and scripts/env.sh report structured
   assert.ok(setupPlan.result.missing.includes('browser'));
 
   if (process.platform !== 'win32') {
-    const shCheck = JSON.parse(execFileSync('sh', ['scripts/env.sh', 'check'], { encoding: 'utf8' }));
+    const shellBin = process.platform === 'darwin' ? '/bin/zsh' : '/bin/sh';
+    const shCheck = JSON.parse(execFileSync(shellBin, ['scripts/env.sh', 'check'], { encoding: 'utf8' }));
     assert.equal(shCheck.ok, true);
     assert.equal(shCheck.result.node.available, true);
 
-    const shPlan = JSON.parse(execFileSync('sh', ['scripts/env.sh', 'plan'], { encoding: 'utf8' }));
+    const shPlan = JSON.parse(execFileSync(shellBin, ['scripts/env.sh', 'plan'], { encoding: 'utf8' }));
     assert.equal(shPlan.ok, true);
     assert.equal(shPlan.result.applied, false);
   }
+});
+
+test('discoverFfmpegSync and virtual Stage resource resolver handle explicit paths and /__motionflux/ mounts', async () => {
+  const { discoverFfmpegSync } = await loadEnv();
+  assert.equal(discoverFfmpegSync('/custom/bin/ffmpeg'), '/custom/bin/ffmpeg');
+  assert.ok(typeof discoverFfmpegSync() === 'string' && discoverFfmpegSync().length > 0);
+
+  const stagePkg = await import(new URL('../packages/stage/dist/index.js', import.meta.url).href);
+  const root = new URL('../', import.meta.url).pathname;
+  const okRuntime = await stagePkg.resolveStageResource('http://motionflux.stage/__motionflux/stage/runtime.mjs', root, root);
+  assert.equal(okRuntime.status, 200);
+  assert.match(okRuntime.contentType, /javascript/);
+
+  const okStudio = await stagePkg.resolveStageResource('http://motionflux.stage/__motionflux/atoms/studio.mjs', root, root);
+  assert.equal(okStudio.status, 200);
+
+  const blocked = await stagePkg.resolveStageResource('http://motionflux.stage/__motionflux/package.json', root, root);
+  assert.equal(blocked.status, 403);
 });

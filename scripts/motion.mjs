@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // packages/cli/src/index.ts
-import { readFile as readFile3, writeFile as writeFile8, mkdir as mkdir7, mkdtemp as mkdtemp4, rm as rm5, stat as stat6 } from "node:fs/promises";
+import { readFile as readFile4, writeFile as writeFile8, mkdir as mkdir7, mkdtemp as mkdtemp4, rm as rm5, stat as stat6 } from "node:fs/promises";
 import { tmpdir as tmpdir4 } from "node:os";
 import { dirname as dirname6, resolve as resolve9, join as join10, extname as extname3 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2650,6 +2650,7 @@ import { pathToFileURL } from "node:url";
 
 // packages/cli/src/env.ts
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { access, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -2728,6 +2729,24 @@ async function discoverBrowser(explicit) {
     if (await exists(pw)) return pw;
   }
   return void 0;
+}
+function discoverFfmpegSync(explicit) {
+  const custom = explicit ?? process.env["MOTIONFLUX_FFMPEG_PATH"];
+  if (custom) return custom;
+  const onPath = resolveOnPath("ffmpeg");
+  if (onPath && existsSync(onPath)) return onPath;
+  const candidates = [
+    "/opt/homebrew/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/usr/bin/ffmpeg",
+    "/snap/bin/ffmpeg",
+    "C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe",
+    join(home(), "scoop\\shims\\ffmpeg.exe")
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return "ffmpeg";
 }
 function detectPackageManagers() {
   const checks = process.platform === "darwin" ? [
@@ -2830,7 +2849,7 @@ async function runInstallStep(step) {
 async function findBrowser(explicit) {
   return discoverBrowser(explicit);
 }
-var ffmpegPath = () => process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg";
+var ffmpegPath = () => discoverFfmpegSync();
 function toolVersion(command, flag = "-version") {
   const result = spawnSync2(command, [flag], { encoding: "utf8" });
   return result.status === 0 ? result.stdout.split("\n")[0].trim() : void 0;
@@ -2844,29 +2863,158 @@ function gpuLaunchFlags() {
   }
   return ["--enable-webgl", "--enable-unsafe-webgpu", "--ignore-gpu-blocklist"];
 }
-async function launch(browser) {
+async function launchOnce(browser, nestedSandboxFallback) {
   const profile = await mkdtemp(join2(tmpdir(), "motionflux-browser-"));
-  const child = spawn2(browser, [
+  const baseFlags = [
     "--headless=new",
-    "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-extensions",
     "--hide-scrollbars",
     "--mute-audio",
-    ...gpuLaunchFlags(),
-    "about:blank"
-  ], { stdio: ["ignore", "ignore", "pipe"] });
+    "--autoplay-policy=no-user-gesture-required",
+    "--font-render-hinting=none"
+  ];
+  const modeFlags = nestedSandboxFallback ? [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-gpu-sandbox",
+    "--use-mock-keychain",
+    "--disable-breakpad",
+    "--disable-crash-reporter",
+    "--disable-dev-shm-usage",
+    "--enable-webgl",
+    "--enable-unsafe-swiftshader",
+    "--ignore-gpu-blocklist"
+  ] : gpuLaunchFlags();
+  const usePipe = process.platform !== "win32";
+  const child = spawn2(
+    browser,
+    [
+      ...usePipe ? ["--remote-debugging-pipe"] : ["--remote-debugging-port=0"],
+      ...baseFlags,
+      ...modeFlags,
+      "about:blank"
+    ],
+    {
+      stdio: usePipe ? ["ignore", "ignore", "pipe", "pipe", "pipe"] : ["ignore", "ignore", "pipe"]
+    }
+  );
+  let stderrLog = "";
+  child.stderr?.on("data", (chunk) => {
+    if (stderrLog.length < 4096) stderrLog += chunk.toString("utf8");
+  });
   const cleanup = async () => {
-    child.kill();
-    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise((r) => child.once("exit", () => r()));
+      child.kill("SIGTERM");
+      await Promise.race([
+        exited,
+        new Promise(
+          (r) => setTimeout(() => {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+            }
+            r();
+          }, 1500)
+        )
+      ]);
+    }
+    await rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }).catch(() => void 0);
+  };
+  const pending = /* @__PURE__ */ new Map();
+  const eventHandlers = /* @__PURE__ */ new Map();
+  let nextId = 0;
+  const rejectAllPending = (reason) => {
+    for (const waiting of pending.values()) waiting.reject(new Error(reason));
+    pending.clear();
+  };
+  const handleRawMessage = (raw) => {
+    const message = JSON.parse(raw);
+    if (message.id !== void 0) {
+      const waiting = pending.get(message.id);
+      if (!waiting) return;
+      pending.delete(message.id);
+      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`));
+      else waiting.resolve(message.result ?? {});
+      return;
+    }
+    if (message.method) {
+      const handler = eventHandlers.get(message.method);
+      if (handler) handler(message.params ?? {}, message.sessionId);
+    }
   };
   try {
+    if (usePipe) {
+      const pipeOut = child.stdio[3];
+      const pipeIn = child.stdio[4];
+      let buf = Buffer.alloc(0);
+      pipeIn.on("data", (chunk) => {
+        buf = Buffer.concat([buf, chunk]);
+        let nulIdx;
+        while ((nulIdx = buf.indexOf(0)) !== -1) {
+          const slice2 = buf.subarray(0, nulIdx).toString("utf8");
+          buf = buf.subarray(nulIdx + 1);
+          if (slice2) handleRawMessage(slice2);
+        }
+      });
+      pipeOut.on("error", () => {
+      });
+      child.once("exit", (code, signal) => {
+        const tail = stderrLog.trim().split("\n").slice(-2).join(" ");
+        rejectAllPending(
+          `BROWSER_START: ${browser} exited (${signal ? `signal ${signal}` : `code ${code}`}) before ready.${tail ? ` ${tail}` : ""}`
+        );
+      });
+      const send = (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          const tail = stderrLog.trim().split("\n").slice(-2).join(" ");
+          reject(new Error(`BROWSER_START: ${browser} exited before ready.${tail ? ` ${tail}` : ""}`));
+          return;
+        }
+        const id4 = ++nextId;
+        pending.set(id4, { resolve: resolveCall, reject });
+        pipeOut.write(`${JSON.stringify({ id: id4, method, params, ...sessionId ? { sessionId } : {} })}\0`);
+      });
+      await Promise.race([
+        send("Browser.getVersion"),
+        new Promise(
+          (_, reject) => setTimeout(() => reject(new Error(`BROWSER_START: ${browser} did not respond on CDP pipe within 20 s.`)), 2e4)
+        )
+      ]);
+      if (nestedSandboxFallback) {
+        const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+        const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const check2 = await send(
+            "Runtime.evaluate",
+            { returnByValue: true, expression: `Boolean(document.createElement('canvas').getContext('webgl2'))` },
+            sessionId
+          );
+          if (check2.result?.value) break;
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        await send("Target.closeTarget", { targetId }).catch(() => void 0);
+      }
+      return {
+        profile,
+        sandboxedFallback: nestedSandboxFallback,
+        send,
+        onEvent: (method, handler) => {
+          eventHandlers.set(method, handler);
+        },
+        close: async () => {
+          eventHandlers.clear();
+          await cleanup();
+        }
+      };
+    }
     const endpoint = await new Promise((resolveEndpoint, reject) => {
       let log = "";
       const timer = setTimeout(() => reject(new Error(`BROWSER_START: ${browser} did not open a DevTools endpoint within 20 s.`)), 2e4);
-      child.stderr.on("data", (chunk) => {
+      child.stderr?.on("data", (chunk) => {
         log += chunk;
         const match = log.match(/DevTools listening on (ws:\/\/\S+)/u);
         if (match) {
@@ -2878,9 +3026,9 @@ async function launch(browser) {
         clearTimeout(timer);
         reject(new Error(`BROWSER_START: ${error.message}`));
       });
-      child.once("exit", (code) => {
+      child.once("exit", (code, signal) => {
         clearTimeout(timer);
-        reject(new Error(`BROWSER_START: ${browser} exited with code ${code} before it was ready.`));
+        reject(new Error(`BROWSER_START: ${browser} exited (${signal ? `signal ${signal}` : `code ${code}`}) before it was ready.`));
       });
     });
     const socket = new WebSocket(endpoint);
@@ -2888,29 +3036,22 @@ async function launch(browser) {
       socket.onopen = () => opened();
       socket.onerror = () => reject(new Error("BROWSER_START: Could not connect to the DevTools endpoint."));
     });
-    const pending = /* @__PURE__ */ new Map();
-    let nextId = 0;
-    socket.onmessage = (event2) => {
-      const message = JSON.parse(String(event2.data));
-      const waiting = message.id === void 0 ? void 0 : pending.get(message.id);
-      if (!waiting) return;
-      pending.delete(message.id);
-      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`));
-      else waiting.resolve(message.result ?? {});
-    };
-    socket.onclose = () => {
-      for (const waiting of pending.values()) waiting.reject(new Error("BROWSER_PROTOCOL: The browser closed the connection."));
-      pending.clear();
-    };
+    socket.onmessage = (event2) => handleRawMessage(String(event2.data));
+    socket.onclose = () => rejectAllPending("BROWSER_PROTOCOL: The browser closed the connection.");
     return {
       profile,
+      sandboxedFallback: nestedSandboxFallback,
       send: (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
         const id4 = ++nextId;
         pending.set(id4, { resolve: resolveCall, reject });
         socket.send(JSON.stringify({ id: id4, method, params, ...sessionId ? { sessionId } : {} }));
       }),
+      onEvent: (method, handler) => {
+        eventHandlers.set(method, handler);
+      },
       close: async () => {
         socket.onclose = null;
+        eventHandlers.clear();
         socket.close();
         await cleanup();
       }
@@ -2920,6 +3061,18 @@ async function launch(browser) {
     throw error;
   }
 }
+async function launchCdpBrowser(browser) {
+  try {
+    return await launchOnce(browser, false);
+  } catch (firstErr) {
+    try {
+      return await launchOnce(browser, true);
+    } catch {
+      throw firstErr;
+    }
+  }
+}
+var launch = launchCdpBrowser;
 async function probeWebGL2(browser) {
   const session = await launch(browser);
   try {
@@ -3489,7 +3642,7 @@ ${scdetRun.stderr ?? ""}`);
 }
 
 // packages/cli/src/mcp.ts
-import { mkdir as mkdir6, mkdtemp as mkdtemp3, readFile as readFile2, rm as rm4, stat as stat5, writeFile as writeFile7 } from "node:fs/promises";
+import { mkdir as mkdir6, mkdtemp as mkdtemp3, readFile as readFile3, rm as rm4, stat as stat5, writeFile as writeFile7 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
 import { dirname as dirname5, join as join9, resolve as resolve8 } from "node:path";
 
@@ -3738,7 +3891,7 @@ async function buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, f
   let nextInput = 1;
   if (sfxWavPath) {
     inputArgs.push("-i", sfxWavPath);
-    filters.push(`[${nextInput}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${durationSec.toFixed(4)}[a_sfx]`);
+    filters.push(`[${nextInput}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${durationSec.toFixed(6)}[a_sfx]`);
     labels.push("[a_sfx]");
     nextInput++;
   }
@@ -3779,9 +3932,9 @@ async function buildAudioMuxPlan(cues, entryHtmlPath, sfxWavPath, durationSec, f
   }
   if (labels.length === 0) return void 0;
   if (labels.length === 1) {
-    filters.push(`${labels[0]}apad=whole_dur=${durationSec.toFixed(4)},atrim=0:${durationSec.toFixed(4)},alimiter=limit=0.95[a_out]`);
+    filters.push(`${labels[0]}apad=whole_dur=${durationSec.toFixed(6)},atrim=0:${durationSec.toFixed(6)},alimiter=limit=0.95[a_out]`);
   } else {
-    filters.push(`${labels.join("")}amix=inputs=${labels.length}:duration=longest:normalize=0,apad=whole_dur=${durationSec.toFixed(4)},atrim=0:${durationSec.toFixed(4)},alimiter=limit=0.95[a_out]`);
+    filters.push(`${labels.join("")}amix=inputs=${labels.length}:duration=longest:normalize=0,apad=whole_dur=${durationSec.toFixed(6)},atrim=0:${durationSec.toFixed(6)},alimiter=limit=0.95[a_out]`);
   }
   return {
     inputArgs,
@@ -3832,39 +3985,51 @@ function safeJoin(root, relPath) {
   if (full !== absRoot && !full.startsWith(`${absRoot}${sep}`)) return void 0;
   return full;
 }
+async function resolveStageResource(rawUrlOrPath, projectDir, motionfluxRoot2) {
+  const absProject = resolve4(projectDir);
+  const absMfRoot = motionfluxRoot2 ? resolve4(motionfluxRoot2) : void 0;
+  let pathname = "/";
+  try {
+    pathname = rawUrlOrPath.startsWith("http://") || rawUrlOrPath.startsWith("https://") ? decodeURIComponent(new URL(rawUrlOrPath).pathname) : decodeURIComponent(rawUrlOrPath.split("?")[0] ?? "/");
+  } catch {
+    return { status: 400, contentType: "text/plain; charset=utf-8", bodyText: "Bad request" };
+  }
+  let filePath;
+  if (absMfRoot && pathname.startsWith("/__motionflux/")) {
+    const sub = pathname.slice("/__motionflux/".length);
+    if (sub.startsWith("stage/") || sub.startsWith("atoms/")) {
+      filePath = safeJoin(absMfRoot, sub);
+    }
+  } else {
+    const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/u, "");
+    filePath = safeJoin(absProject, rel);
+  }
+  if (!filePath) {
+    return { status: 403, contentType: "text/plain; charset=utf-8", bodyText: "Forbidden" };
+  }
+  let info = await stat2(filePath).catch(() => void 0);
+  if (info?.isDirectory()) {
+    filePath = join5(filePath, "index.html");
+    info = await stat2(filePath).catch(() => void 0);
+  }
+  if (!info || !info.isFile()) {
+    return { status: 404, contentType: "text/plain; charset=utf-8", bodyText: `Not found: ${pathname}` };
+  }
+  const contentType = MIME[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  return { status: 200, contentType, filePath, size: info.size };
+}
 async function startStageServer(projectDir, options = {}) {
   const absProject = resolve4(projectDir);
   const absMfRoot = options.motionfluxRoot ? resolve4(options.motionfluxRoot) : void 0;
   const handler = async (req, res) => {
     try {
-      const rawUrl = req.url ?? "/";
-      const pathname = decodeURIComponent(rawUrl.split("?")[0] ?? "/");
-      let filePath;
-      if (absMfRoot && pathname.startsWith("/__motionflux/")) {
-        const sub = pathname.slice("/__motionflux/".length);
-        if (sub.startsWith("stage/") || sub.startsWith("atoms/")) {
-          filePath = safeJoin(absMfRoot, sub);
-        }
-      } else {
-        const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/u, "");
-        filePath = safeJoin(absProject, rel);
-      }
-      if (!filePath) {
-        res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
-        res.end("Forbidden");
+      const resolved = await resolveStageResource(req.url ?? "/", absProject, absMfRoot);
+      if (resolved.status !== 200 || !resolved.filePath || resolved.size === void 0) {
+        res.writeHead(resolved.status, { "content-type": resolved.contentType });
+        res.end(resolved.bodyText ?? "");
         return;
       }
-      let info = await stat2(filePath).catch(() => void 0);
-      if (info?.isDirectory()) {
-        filePath = join5(filePath, "index.html");
-        info = await stat2(filePath).catch(() => void 0);
-      }
-      if (!info || !info.isFile()) {
-        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-        res.end(`Not found: ${pathname}`);
-        return;
-      }
-      const contentType = MIME[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+      const { filePath, contentType, size: size2 } = resolved;
       const rangeHeader = req.headers.range;
       res.setHeader("access-control-allow-origin", "*");
       res.setHeader("cache-control", "no-store");
@@ -3872,23 +4037,23 @@ async function startStageServer(projectDir, options = {}) {
       if (rangeHeader && /^bytes=\d*-\d*$/u.test(rangeHeader)) {
         const [startStr, endStr] = rangeHeader.replace(/^bytes=/u, "").split("-");
         const start = startStr ? Number(startStr) : 0;
-        const end = endStr ? Math.min(Number(endStr), info.size - 1) : info.size - 1;
-        if (start > end || start >= info.size) {
-          res.writeHead(416, { "content-range": `bytes */${info.size}` });
+        const end = endStr ? Math.min(Number(endStr), size2 - 1) : size2 - 1;
+        if (start > end || start >= size2) {
+          res.writeHead(416, { "content-range": `bytes */${size2}` });
           res.end();
           return;
         }
         res.writeHead(206, {
           "content-type": contentType,
           "content-length": String(end - start + 1),
-          "content-range": `bytes ${start}-${end}/${info.size}`
+          "content-range": `bytes ${start}-${end}/${size2}`
         });
         createReadStream(filePath, { start, end }).pipe(res);
         return;
       }
       res.writeHead(200, {
         "content-type": contentType,
-        "content-length": String(info.size)
+        "content-length": String(size2)
       });
       createReadStream(filePath).pipe(res);
     } catch (error) {
@@ -3917,95 +4082,10 @@ async function startStageServer(projectDir, options = {}) {
 
 // packages/stage/src/capture.ts
 import { spawn as spawn3, spawnSync as spawnSync4 } from "node:child_process";
-import { mkdir as mkdir3, mkdtemp as mkdtemp2, rm as rm3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
+import { mkdir as mkdir3, mkdtemp as mkdtemp2, readFile, rm as rm3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir2 } from "node:os";
 import { basename as basename2, dirname as dirname3, extname as extname2, join as join6, resolve as resolve5 } from "node:path";
-async function launchChrome(browser) {
-  const profile = await mkdtemp2(join6(tmpdir2(), "motionflux-stage-browser-"));
-  const child = spawn3(
-    browser,
-    [
-      "--headless=new",
-      "--remote-debugging-port=0",
-      `--user-data-dir=${profile}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-extensions",
-      "--hide-scrollbars",
-      "--mute-audio",
-      "--autoplay-policy=no-user-gesture-required",
-      "--font-render-hinting=none",
-      ...gpuLaunchFlags(),
-      "about:blank"
-    ],
-    { stdio: ["ignore", "ignore", "pipe"] }
-  );
-  const cleanup = async () => {
-    child.kill();
-    await rm3(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  };
-  try {
-    const endpoint = await new Promise((resolveEndpoint, reject) => {
-      let log = "";
-      const timer = setTimeout(
-        () => reject(new Error(`BROWSER_START: ${browser} did not open a DevTools endpoint within 20 s.`)),
-        2e4
-      );
-      child.stderr.on("data", (chunk) => {
-        log += chunk;
-        const match = log.match(/DevTools listening on (ws:\/\/\S+)/u);
-        if (match) {
-          clearTimeout(timer);
-          resolveEndpoint(match[1]);
-        }
-      });
-      child.once("error", (error) => {
-        clearTimeout(timer);
-        reject(new Error(`BROWSER_START: ${error.message}`));
-      });
-      child.once("exit", (code) => {
-        clearTimeout(timer);
-        reject(new Error(`BROWSER_START: ${browser} exited with code ${code} before it was ready.`));
-      });
-    });
-    const socket = new WebSocket(endpoint);
-    await new Promise((opened, reject) => {
-      socket.onopen = () => opened();
-      socket.onerror = () => reject(new Error("BROWSER_START: Could not connect to the DevTools endpoint."));
-    });
-    const pending = /* @__PURE__ */ new Map();
-    let nextId = 0;
-    socket.onmessage = (event2) => {
-      const message = JSON.parse(String(event2.data));
-      const waiting = message.id === void 0 ? void 0 : pending.get(message.id);
-      if (!waiting) return;
-      pending.delete(message.id);
-      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`));
-      else waiting.resolve(message.result ?? {});
-    };
-    socket.onclose = () => {
-      for (const waiting of pending.values()) {
-        waiting.reject(new Error("BROWSER_PROTOCOL: The browser closed the connection."));
-      }
-      pending.clear();
-    };
-    return {
-      send: (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
-        const id4 = ++nextId;
-        pending.set(id4, { resolve: resolveCall, reject });
-        socket.send(JSON.stringify({ id: id4, method, params, ...sessionId ? { sessionId } : {} }));
-      }),
-      close: async () => {
-        socket.onclose = null;
-        socket.close();
-        await cleanup();
-      }
-    };
-  } catch (error) {
-    await cleanup();
-    throw error;
-  }
-}
+import { pathToFileURL as pathToFileURL2 } from "node:url";
 function selectDefaultAuditFrames(meta) {
   const maxFrame = Math.max(0, meta.durationFrames - 1);
   const picked = /* @__PURE__ */ new Set();
@@ -4030,15 +4110,75 @@ async function openStagePage(entryHtmlPath, options) {
   const absEntry = resolve5(entryHtmlPath);
   const projectDir = dirname3(absEntry);
   const entryName = basename2(absEntry);
-  const server = await startStageServer(projectDir, {
-    ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}
-  });
-  const cdp = await launchChrome(options.browser);
+  const cdp = await launchCdpBrowser(options.browser);
   const scale = options.scale ?? 1;
+  let server;
+  if (!cdp.sandboxedFallback) {
+    try {
+      server = await startStageServer(projectDir, {
+        ...options.motionfluxRoot ? { motionfluxRoot: options.motionfluxRoot } : {}
+      });
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? String(err.code) : "";
+      if (code !== "EPERM" && code !== "EACCES") {
+        await cdp.close().catch(() => void 0);
+        throw err;
+      }
+    }
+  }
   try {
-    const targetUrl = `${server.url}/${encodeURIComponent(entryName)}?capture=1`;
-    const { targetId } = await cdp.send("Target.createTarget", { url: targetUrl });
+    const baseUrl = server ? server.url : "http://motionflux.stage";
+    const targetUrl = `${baseUrl}/${encodeURIComponent(entryName)}?capture=1`;
+    const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+    let pageInitError;
+    cdp.onEvent("Runtime.exceptionThrown", (params) => {
+      const details = params.exceptionDetails;
+      if (!pageInitError && details) {
+        pageInitError = details.exception?.description ?? details.text ?? "Uncaught page error";
+      }
+    });
+    await cdp.send("Runtime.enable", {}, sessionId);
+    if (!server) {
+      cdp.onEvent("Fetch.requestPaused", (params, sid) => {
+        const reqId = String(params.requestId ?? "");
+        const reqObj = params.request ?? {};
+        const reqUrl = String(reqObj.url ?? "");
+        void (async () => {
+          const resolved = await resolveStageResource(reqUrl, projectDir, options.motionfluxRoot);
+          if (resolved.status !== 200 || !resolved.filePath) {
+            await cdp.send(
+              "Fetch.fulfillRequest",
+              {
+                requestId: reqId,
+                responseCode: resolved.status,
+                responseHeaders: [{ name: "content-type", value: resolved.contentType }],
+                body: Buffer.from(resolved.bodyText ?? "", "utf8").toString("base64")
+              },
+              sid
+            );
+            return;
+          }
+          const bytes = await readFile(resolved.filePath);
+          await cdp.send(
+            "Fetch.fulfillRequest",
+            {
+              requestId: reqId,
+              responseCode: 200,
+              responseHeaders: [
+                { name: "content-type", value: resolved.contentType },
+                { name: "access-control-allow-origin", value: "*" },
+                { name: "cache-control", value: "no-store" }
+              ],
+              body: bytes.toString("base64")
+            },
+            sid
+          );
+        })().catch(() => void 0);
+      });
+      await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "http://motionflux.stage/*" }] }, sessionId);
+    }
+    await cdp.send("Page.navigate", { url: targetUrl }, sessionId);
     const evaluate = async (expression) => {
       const reply = await cdp.send(
         "Runtime.evaluate",
@@ -4054,6 +4194,9 @@ async function openStagePage(entryHtmlPath, options) {
     for (; ; ) {
       const present = await evaluate(`Boolean(window.__motionflux && window.__motionflux.version === 'stage-1')`);
       if (present) break;
+      if (pageInitError) {
+        throw new Error(`STAGE_INIT_ERROR: ${pageInitError}`);
+      }
       if (Date.now() > deadline) {
         throw new Error("STAGE_NOT_READY: Page did not expose window.__motionflux (stage-1) within 60 s.");
       }
@@ -4105,12 +4248,12 @@ async function openStagePage(entryHtmlPath, options) {
       auditFrame,
       close: async () => {
         await cdp.close();
-        await server.close();
+        if (server) await server.close();
       }
     };
   } catch (error) {
     await cdp.close().catch(() => void 0);
-    await server.close().catch(() => void 0);
+    if (server) await server.close().catch(() => void 0);
     throw error;
   }
 }
@@ -4145,33 +4288,34 @@ async function renderContactSheetPng(browser, tiles, meta) {
     .badge{color:#fff;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:600}
     img{display:block;object-fit:contain;background:#000}
   </style><div class="grid">${cardsHtml}</div>`;
-  const cdp = await launchChrome(browser);
+  const cdp = await launchCdpBrowser(browser);
   const work = await mkdtemp2(join6(tmpdir2(), "motionflux-contact-"));
   try {
     const file = join6(work, "sheet.html");
     await writeFile4(file, html);
-    const server = await startStageServer(work);
-    try {
-      const { targetId } = await cdp.send("Target.createTarget", { url: `${server.url}/sheet.html` });
-      const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
-      await cdp.send(
-        "Emulation.setDeviceMetricsOverride",
-        { width: sheetW, height: sheetH, deviceScaleFactor: 1, mobile: false },
-        sessionId
-      );
-      await cdp.send(
+    const { targetId } = await cdp.send("Target.createTarget", { url: pathToFileURL2(file).href });
+    const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+    await cdp.send(
+      "Emulation.setDeviceMetricsOverride",
+      { width: sheetW, height: sheetH, deviceScaleFactor: 1, mobile: false },
+      sessionId
+    );
+    const deadline = Date.now() + 15e3;
+    for (; ; ) {
+      const loaded = await cdp.send(
         "Runtime.evaluate",
         {
-          expression: `Promise.all(Array.from(document.images).map(i => i.complete ? Promise.resolve() : new Promise(r => { i.onload = r; i.onerror = r; })))`,
-          awaitPromise: true
+          returnByValue: true,
+          expression: `Boolean(document.body && document.querySelectorAll('img').length === ${tiles.length} && Array.from(document.images).every(i => i.complete && i.naturalWidth > 0))`
         },
         sessionId
       );
-      const res = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true }, sessionId);
-      return Buffer.from(res.data, "base64");
-    } finally {
-      await server.close();
+      if (loaded.result?.value) break;
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 40));
     }
+    const res = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true }, sessionId);
+    return Buffer.from(res.data, "base64");
   } finally {
     await cdp.close();
     await rm3(work, { recursive: true, force: true });
@@ -4275,7 +4419,7 @@ async function captureStageFrames(entryHtmlPath, options) {
   }
 }
 function probeStageVideo(path2) {
-  const probe = (process.env.MOTIONFLUX_FFMPEG_PATH ?? "ffmpeg").replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
+  const probe = ffmpegPath().replace(/ffmpeg(\.exe)?$/u, "ffprobe$1");
   const result = spawnSync4(
     probe,
     [
@@ -4381,7 +4525,8 @@ async function renderStageVideo(entryHtmlPath, options) {
       ...audioPlan ? ["-filter_complex", audioPlan.filterComplex, "-map", "0:v:0", "-map", audioPlan.audioMap] : [],
       ...encoderArgs,
       ...audioCodecArgs,
-      "-shortest",
+      "-frames:v",
+      String(page.meta.durationFrames),
       out
     ];
     const child = spawn3(ffmpegPath(), ffmpegArgs, { stdio: ["pipe", "ignore", "pipe"] });
@@ -4454,7 +4599,7 @@ async function renderStageVideo(entryHtmlPath, options) {
 }
 
 // packages/stage/src/motion-md.ts
-import { cp, mkdir as mkdir4, readFile, writeFile as writeFile5 } from "node:fs/promises";
+import { cp, mkdir as mkdir4, readFile as readFile2, writeFile as writeFile5 } from "node:fs/promises";
 import { dirname as dirname4, join as join7, resolve as resolve6 } from "node:path";
 
 // packages/stage/src/runtime.ts
@@ -5025,6 +5170,7 @@ function compileMotionMdToHtml(doc, options = {}) {
   const studioImport = options.studioImportPath ?? "/__motionflux/atoms/studio.mjs";
   const isVerticalLayout = doc.height >= doc.width;
   const isTallPortrait = doc.height > doc.width * 1.15;
+  const uiScale = Number(Math.min(1, Math.min(doc.width, doc.height) / 700).toFixed(4));
   const rigX = isVerticalLayout ? 0 : 0.56;
   const rigY = isVerticalLayout ? 0.34 : -0.02;
   const opticsY = isVerticalLayout ? 0.36 : 0.04;
@@ -5329,7 +5475,7 @@ function compileMotionMdToHtml(doc, options = {}) {
       pointer-events: auto;
     }
     .mf-eyebrow {
-      font-size: 18px;
+      font-size: ${Math.max(13, Math.round(18 * uiScale))}px;
       font-weight: 650;
       letter-spacing: 0.16em;
       text-transform: uppercase;
@@ -5338,9 +5484,9 @@ function compileMotionMdToHtml(doc, options = {}) {
     .mf-badge {
       display: inline-flex;
       align-self: flex-start;
-      padding: 6px 14px;
+      padding: ${Math.round(6 * uiScale)}px ${Math.round(14 * uiScale)}px;
       border-radius: 999px;
-      font-size: 15px;
+      font-size: ${Math.max(13, Math.round(15 * uiScale))}px;
       font-weight: 600;
       background: var(--mf-card-bg);
       border: 1px solid var(--mf-card-border);
@@ -5348,7 +5494,7 @@ function compileMotionMdToHtml(doc, options = {}) {
     }
     .mf-h1 {
       margin: 0;
-      font-size: clamp(54px, 4.8vw, 88px);
+      font-size: clamp(${Math.round(54 * uiScale)}px, 4.8vw, ${Math.round(88 * uiScale)}px);
       line-height: 1.08;
       letter-spacing: -0.03em;
       font-weight: 750;
@@ -5357,14 +5503,14 @@ function compileMotionMdToHtml(doc, options = {}) {
     }
     .mf-h1-left {
       margin: 0;
-      font-size: clamp(46px, 3.8vw, 70px);
+      font-size: clamp(${Math.round(46 * uiScale)}px, 3.8vw, ${Math.round(70 * uiScale)}px);
       line-height: 1.1;
       letter-spacing: -0.025em;
       font-weight: 750;
     }
     .mf-h2 {
       margin: 0;
-      font-size: clamp(42px, 3.6vw, 64px);
+      font-size: clamp(${Math.round(42 * uiScale)}px, 3.6vw, ${Math.round(64 * uiScale)}px);
       line-height: 1.12;
       letter-spacing: -0.025em;
       font-weight: 720;
@@ -5372,14 +5518,14 @@ function compileMotionMdToHtml(doc, options = {}) {
     }
     .mf-h2-left {
       margin: 0;
-      font-size: clamp(38px, 3.2vw, 56px);
+      font-size: clamp(${Math.round(38 * uiScale)}px, 3.2vw, ${Math.round(56 * uiScale)}px);
       line-height: 1.14;
       letter-spacing: -0.02em;
       font-weight: 720;
     }
     .mf-sub {
       margin: 0;
-      font-size: 25px;
+      font-size: ${Math.max(14, Math.round(25 * uiScale))}px;
       line-height: 1.48;
       color: var(--mf-muted);
       max-width: 760px;
@@ -5392,7 +5538,7 @@ function compileMotionMdToHtml(doc, options = {}) {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 22px;
+      gap: ${Math.round(22 * uiScale)}px;
       text-align: center;
     }
     .mf-hero-stack .mf-badge { align-self: center; }
@@ -5403,34 +5549,34 @@ function compileMotionMdToHtml(doc, options = {}) {
     }
     .mf-studio-hud {
       width: ${isVerticalLayout ? "100%" : "46%"};
-      padding: ${isVerticalLayout ? "28px 32px" : "36px 40px"};
-      border-radius: 24px;
+      padding: ${isVerticalLayout ? `${Math.round(28 * uiScale)}px ${Math.round(32 * uiScale)}px` : `${Math.round(36 * uiScale)}px ${Math.round(40 * uiScale)}px`};
+      border-radius: ${Math.round(24 * uiScale)}px;
       background: var(--mf-card-bg);
       border: 1px solid var(--mf-card-border);
       backdrop-filter: blur(18px);
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: ${Math.round(18 * uiScale)}px;
     }
     .mf-studio-metrics {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 14px;
-      margin-top: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(${Math.round(110 * uiScale)}px, 1fr));
+      gap: ${Math.round(14 * uiScale)}px;
+      margin-top: ${Math.round(8 * uiScale)}px;
     }
     .mf-mini-stat {
-      padding: 14px 16px;
-      border-radius: 14px;
+      padding: ${Math.round(14 * uiScale)}px ${Math.round(16 * uiScale)}px;
+      border-radius: ${Math.round(14 * uiScale)}px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--mf-card-border);
     }
     .mf-mini-val {
-      font-size: 24px;
+      font-size: ${Math.max(15, Math.round(24 * uiScale))}px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
     }
     .mf-mini-lbl {
-      font-size: 15px;
+      font-size: ${Math.max(13, Math.round(15 * uiScale))}px;
       color: var(--mf-muted);
       margin-top: 4px;
     }
@@ -5632,7 +5778,7 @@ function compileMotionMdToHtml(doc, options = {}) {
 }
 async function compileMotionMdProject(mdPath, options) {
   const absMd = resolve6(mdPath);
-  const raw = await readFile(absMd, "utf8");
+  const raw = await readFile2(absMd, "utf8");
   const doc = parseMotionMd(raw, {
     ...options.aspect !== void 0 ? { aspect: options.aspect } : {},
     ...options.width !== void 0 ? { width: options.width } : {},
@@ -5664,7 +5810,7 @@ async function compileMotionMdProject(mdPath, options) {
   };
 }
 async function saveMotionMdPlan(mdPath, outPath) {
-  const raw = await readFile(resolve6(mdPath), "utf8");
+  const raw = await readFile2(resolve6(mdPath), "utf8");
   const doc = parseMotionMd(raw);
   if (outPath) {
     const absOut = resolve6(outPath);
@@ -5718,9 +5864,9 @@ function listStageTemplates() {
 }
 function buildMotionMdForTemplate(template, title, width, height, fps, durationFrames) {
   if (template === "hardware-3d") {
-    const f1 = Math.max(20, Math.round(durationFrames * 0.55));
-    const f2 = Math.max(20, durationFrames - f1);
-    const trans = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.3)));
+    const f1 = Math.max(2, Math.min(Math.max(2, durationFrames - 2), Math.round(durationFrames * 0.55)));
+    const f2 = Math.max(2, durationFrames - f1);
+    const trans = Math.max(1, Math.min(Math.max(1, f2 - 1), Math.round(fps * 0.3)));
     return `---
 title: ${title}
 width: ${width}
@@ -5758,11 +5904,11 @@ quality: cinema
 `;
   }
   if (template === "saas-launch") {
-    const f1 = Math.max(15, Math.round(durationFrames * 0.34));
-    const f2 = Math.max(15, Math.round(durationFrames * 0.36));
-    const f3 = Math.max(15, durationFrames - f1 - f2);
-    const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
-    const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+    const f1 = Math.max(2, Math.round(durationFrames * 0.34));
+    const f2 = Math.max(2, Math.round(durationFrames * 0.36));
+    const f3 = Math.max(2, durationFrames - f1 - f2);
+    const t2 = Math.max(1, Math.min(Math.max(1, f2 - 1), Math.round(fps * 0.28)));
+    const t3 = Math.max(1, Math.min(Math.max(1, f3 - 1), Math.round(fps * 0.28)));
     return `---
 title: ${title}
 width: ${width}
@@ -5804,11 +5950,11 @@ quality: cinema
 `;
   }
   if (template === "data-story") {
-    const f1 = Math.max(15, Math.round(durationFrames * 0.32));
-    const f2 = Math.max(15, Math.round(durationFrames * 0.38));
-    const f3 = Math.max(15, durationFrames - f1 - f2);
-    const t2 = Math.max(4, Math.min(Math.floor(f2 * 0.3), Math.round(fps * 0.28)));
-    const t3 = Math.max(4, Math.min(Math.floor(f3 * 0.3), Math.round(fps * 0.28)));
+    const f1 = Math.max(2, Math.round(durationFrames * 0.32));
+    const f2 = Math.max(2, Math.round(durationFrames * 0.38));
+    const f3 = Math.max(2, durationFrames - f1 - f2);
+    const t2 = Math.max(1, Math.min(Math.max(1, f2 - 1), Math.round(fps * 0.28)));
+    const t3 = Math.max(1, Math.min(Math.max(1, f3 - 1), Math.round(fps * 0.28)));
     return `---
 title: ${title}
 width: ${width}
@@ -6392,7 +6538,7 @@ var MCP_TOOLS = [
 async function withTempStageFromPath(inputPath, aspect, fn) {
   const abs = resolve8(inputPath);
   if (!/\.md$/iu.test(abs)) return fn(abs);
-  const doc = parseMotionMd(await readFile2(abs, "utf8"), aspect ? { aspect } : {});
+  const doc = parseMotionMd(await readFile3(abs, "utf8"), aspect ? { aspect } : {});
   const html = compileMotionMdToHtml(doc);
   const tempHtml = join9(dirname5(abs), `.mf-mcp-${process.pid}-${Date.now()}.html`);
   await writeFile7(tempHtml, html);
@@ -6436,7 +6582,7 @@ async function dispatchMcpRequest(req, motionfluxRoot2) {
       const uri = String(req.params?.uri ?? "");
       const found = MCP_RESOURCES.find((r) => r.uri === uri);
       if (!found) return err(-32602, `Unknown resource URI: ${uri}`);
-      const text4 = await readFile2(join9(motionfluxRoot2, found.relPath), "utf8");
+      const text4 = await readFile3(join9(motionfluxRoot2, found.relPath), "utf8");
       return ok({
         contents: [{ uri: found.uri, mimeType: found.mimeType, text: text4 }]
       });
@@ -6537,7 +6683,7 @@ async function dispatchMcpRequest(req, motionfluxRoot2) {
       }
       if (name === "motionflux_plan") {
         return wrapToolResult(async () => {
-          const raw = typeof toolArgs.path === "string" ? await readFile2(resolve8(toolArgs.path), "utf8") : String(toolArgs.markdown ?? "");
+          const raw = typeof toolArgs.path === "string" ? await readFile3(resolve8(toolArgs.path), "utf8") : String(toolArgs.markdown ?? "");
           return parseMotionMd(raw, typeof toolArgs.aspect === "string" ? { aspect: toolArgs.aspect } : {});
         });
       }
@@ -6582,7 +6728,7 @@ async function dispatchMcpRequest(req, motionfluxRoot2) {
           );
           const content = [{ type: "text", text: JSON.stringify(report, null, 2) }];
           if (report.contactSheet) {
-            const pngBytes = await readFile2(report.contactSheet);
+            const pngBytes = await readFile3(report.contactSheet);
             content.push({ type: "image", data: pngBytes.toString("base64"), mimeType: "image/png" });
           }
           return ok({ content });
@@ -6743,7 +6889,7 @@ var isMarkdownInput = (path2) => Boolean(path2 && /\.md$/iu.test(path2));
 async function withStageEntry(inputPath, aspect, fn) {
   if (!isMarkdownInput(inputPath)) return fn(inputPath);
   const absMd = resolve9(inputPath);
-  const doc = parseMotionMd(await readFile3(absMd, "utf8"), aspect ? { aspect } : {});
+  const doc = parseMotionMd(await readFile4(absMd, "utf8"), aspect ? { aspect } : {});
   const html = compileMotionMdToHtml(doc);
   const tempHtml = join10(dirname6(absMd), `.mf-stage-${process.pid}-${Date.now()}.html`);
   await writeFile8(tempHtml, html);
@@ -6755,14 +6901,14 @@ async function withStageEntry(inputPath, aspect, fn) {
 }
 async function readScene(path2) {
   if (!path2) throw new Error("USAGE: Supply a scene JSON path.");
-  const scene = JSON.parse(await readFile3(resolve9(path2), "utf8"));
+  const scene = JSON.parse(await readFile4(resolve9(path2), "utf8"));
   assertScene(scene);
   return scene;
 }
 async function assetBytes(scene, scenePath) {
   const encoded = {};
   for (const asset of Object.values(scene.assets)) {
-    const data = await readFile3(resolve9(dirname6(scenePath), asset.src));
+    const data = await readFile4(resolve9(dirname6(scenePath), asset.src));
     if (createHash2("sha256").update(data).digest("hex") !== asset.sha256) throw new Error(`ASSET_HASH: ${asset.src} differs from the scene lock.`);
     encoded[asset.src] = data.toString("base64");
   }
@@ -6969,7 +7115,7 @@ async function renderBreakdown(scene, html, plan, args) {
   };
 }
 async function renderVideoBreakdown(file, args) {
-  const breakdown = readVideoBreakdown(JSON.parse(await readFile3(file, "utf8")));
+  const breakdown = readVideoBreakdown(JSON.parse(await readFile4(file, "utf8")));
   if (args.title) breakdown.title = args.title;
   const format = extname3(args.out ?? "").slice(1).toLowerCase();
   if (!args.out || !["gif", "mp4", "webm"].includes(format)) throw new Error("USAGE: breakdown writes --out <file>.gif, .mp4 or .webm.");
@@ -7002,7 +7148,7 @@ async function renderVideoBreakdown(file, args) {
   const work = await mkdtemp4(join10(tmpdir4(), "motionflux-breakdown-"));
   const out = resolve9(args.out);
   try {
-    const script = await readFile3(join10(resourceRoot, "breakdown-panel.js"), "utf8");
+    const script = await readFile4(join10(resourceRoot, "breakdown-panel.js"), "utf8");
     const page = join10(work, "panel.html");
     await writeFile8(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#0f1114"><canvas></canvas><script id="plan-data" type="application/json">${JSON.stringify(plan).replace(/</gu, "\\u003c")}</script><script>${script.replace(/<\/script/giu, "<\\/script")}</script>`);
     await mkdir7(join10(work, "panel"));
@@ -7107,7 +7253,7 @@ async function main() {
     case "plan": {
       if (!path2) throw new Error("USAGE: plan <Motion.md> [--aspect 16:9|9:16|1:1|4:5] [--out stage.plan.json]");
       if (args.aspect) {
-        const doc = parseMotionMd(await readFile3(resolve9(path2), "utf8"), { aspect: args.aspect });
+        const doc = parseMotionMd(await readFile4(resolve9(path2), "utf8"), { aspect: args.aspect });
         if (args.out) {
           await save(args.out, `${JSON.stringify(doc, null, 2)}
 `);
@@ -7154,7 +7300,7 @@ async function main() {
     }
     case "sfx": {
       if (!path2 || !args.out) throw new Error("USAGE: sfx <audio.json> --out <track.wav> [--duration 5] [--fps 30]");
-      const raw = JSON.parse(await readFile3(resolve9(path2), "utf8"));
+      const raw = JSON.parse(await readFile4(resolve9(path2), "utf8"));
       const cues = Array.isArray(raw) ? raw : raw.cues ?? raw.audio ?? [];
       const fps = args.fps ?? (Array.isArray(raw) ? 30 : raw.fps ?? 30);
       const durationSec = args.duration ?? (Array.isArray(raw) ? 5 : raw.durationSec ?? 5);
@@ -7187,30 +7333,30 @@ async function main() {
       return { capabilities: searchCapabilities(args.positional.join(" ")) };
     case "patterns": {
       const indexPath = join10(dirname6(resourceRoot), "../assets/patterns/index.json");
-      const index = JSON.parse(await readFile3(indexPath, "utf8"));
+      const index = JSON.parse(await readFile4(indexPath, "utf8"));
       const terms = args.positional.join(" ").normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
       return { match: "all-keywords; suitability is decided by the agent", patterns: index.patterns.filter((pattern) => terms.every((term) => JSON.stringify(pattern).normalize("NFKC").toLowerCase().includes(term))) };
     }
     case "controls": {
       if (!path2 || !args.scene) throw new Error("USAGE: controls <authoring.json> --scene <scene.json>");
-      const report = inspectControls(JSON.parse(await readFile3(resolve9(path2), "utf8")), await readScene(args.scene));
+      const report = inspectControls(JSON.parse(await readFile4(resolve9(path2), "utf8")), await readScene(args.scene));
       return { ...report, savedValuesOnly: true };
     }
     case "compose": {
       if (!path2 || !args.out) throw new Error("USAGE: compose <brief.json> --out <new-directory>");
-      const brief = readBrief(JSON.parse(await readFile3(resolve9(path2), "utf8")));
-      const bytes = await readFile3(resolve9(dirname6(resolve9(path2)), brief.product.src));
+      const brief = readBrief(JSON.parse(await readFile4(resolve9(path2), "utf8")));
+      const bytes = await readFile4(resolve9(dirname6(resolve9(path2)), brief.product.src));
       if (createHash2("sha256").update(bytes).digest("hex") !== brief.product.sha256) throw new Error("ASSET_HASH: Product image differs from the brief lock.");
       const src = `assets/product${extname3(brief.product.src).toLowerCase()}`;
       const { scene, authoring } = composePattern(brief, { type: "image", src, sha256: brief.product.sha256 });
       const assets = { [src]: bytes.toString("base64") };
-      const runtime = await readFile3(join10(resourceRoot, "standalone.js"), "utf8");
+      const runtime = await readFile4(join10(resourceRoot, "standalone.js"), "utf8");
       const html = createStandaloneHtml(scene, runtime, assets, "");
       return writeDelivery({ scene, assets, html, out: args.out, authoring });
     }
     case "study": {
       if (!path2) throw new Error("USAGE: Supply a study JSON path.");
-      const input = JSON.parse(await readFile3(resolve9(path2), "utf8"));
+      const input = JSON.parse(await readFile4(resolve9(path2), "utf8"));
       const scene = args.scene ? await readScene(args.scene) : void 0;
       assertStudy(input, scene);
       const report = studyReport(input, scene);
@@ -7385,7 +7531,7 @@ async function main() {
         );
       }
       if (args.command === "breakdown" && path2) {
-        const raw = JSON.parse(await readFile3(resolve9(path2), "utf8"));
+        const raw = JSON.parse(await readFile4(resolve9(path2), "utf8"));
         if (raw && typeof raw === "object" && "source" in raw) return renderVideoBreakdown(resolve9(path2), args);
       }
       const scene = await readScene(path2);
@@ -7393,13 +7539,13 @@ async function main() {
       const assets = await assetBytes(scene, resolve9(path2));
       if (args.command === "validate") return { valid: true, assetsVerified: Object.keys(assets).length, lock: versionLock(scene) };
       if (!args.out) throw new Error("USAGE: Supply --out <output path>.");
-      const [runtime, license] = await Promise.all([readFile3(join10(resourceRoot, "standalone.js"), "utf8"), readFile3(join10(resourceRoot, "OFL.txt"), "utf8")]);
+      const [runtime, license] = await Promise.all([readFile4(join10(resourceRoot, "standalone.js"), "utf8"), readFile4(join10(resourceRoot, "OFL.txt"), "utf8")]);
       const plan = args.command === "breakdown" ? breakdownPlan(scene, { width: Math.round(args.width ?? Math.min(960, scene.canvas.width)), ...args.title ? { title: args.title } : {} }) : void 0;
       if (plan && (plan.width < 160 || plan.width > 3840)) throw new Error("USAGE: --width must be 160\u20133840 px.");
       const html = createStandaloneHtml(scene, runtime, assets, args.command === "deliver" ? "" : license, plan ? { breakdown: plan } : {});
       if (args.command === "deliver") {
         const previous = args.previous ? await readScene(args.previous) : void 0;
-        const authoring = args.authoring ? JSON.parse(await readFile3(resolve9(args.authoring), "utf8")) : void 0;
+        const authoring = args.authoring ? JSON.parse(await readFile4(resolve9(args.authoring), "utf8")) : void 0;
         return writeDelivery({ scene, ...previous ? { previous } : {}, ...authoring !== void 0 ? { authoring } : {}, assets, html, out: args.out });
       }
       if (args.command === "breakdown") return renderBreakdown(scene, html, plan, args);

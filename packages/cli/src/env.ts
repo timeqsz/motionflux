@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { access, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -101,6 +102,26 @@ export async function discoverBrowser(explicit?: string): Promise<string | undef
     if (await exists(pw)) return pw;
   }
   return undefined;
+}
+
+/** Locate an installed ffmpeg executable across env vars, PATH, Homebrew, Linux, and Windows package dirs. */
+export function discoverFfmpegSync(explicit?: string): string {
+  const custom = explicit ?? process.env['MOTIONFLUX_FFMPEG_PATH'];
+  if (custom) return custom;
+  const onPath = resolveOnPath('ffmpeg');
+  if (onPath && existsSync(onPath)) return onPath;
+  const candidates = [
+    '/opt/homebrew/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+    '/usr/bin/ffmpeg',
+    '/snap/bin/ffmpeg',
+    'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe',
+    join(home(), 'scoop\\shims\\ffmpeg.exe'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return 'ffmpeg';
 }
 
 export type PackageManager = 'brew' | 'apt' | 'dnf' | 'pacman' | 'apk' | 'winget' | 'scoop' | 'choco' | 'playwright';

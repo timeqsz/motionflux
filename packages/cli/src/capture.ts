@@ -2,18 +2,18 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
-import { discoverBrowser } from './env.js';
+import { discoverBrowser, discoverFfmpegSync } from './env.js';
 
 /**
- * Frame capture drives a Chromium-family browser the user already has, over the DevTools protocol, with nothing
- * but Node's own WebSocket. The page is the same standalone HTML the website and `preview` produce, so a captured
- * frame is exactly what that file draws for the same frame number.
+ * Frame capture drives a Chromium-family browser the user already has, over the DevTools protocol, using
+ * anonymous stdio pipes on POSIX (zero TCP ports needed) or WebSocket on Windows.
  */
 export async function findBrowser(explicit?: string): Promise<string | undefined> {
   return discoverBrowser(explicit);
 }
-export const ffmpegPath = (): string => process.env.MOTIONFLUX_FFMPEG_PATH ?? 'ffmpeg';
+export const ffmpegPath = (): string => discoverFfmpegSync();
 /** First line of `<tool> -version`, or undefined when the tool cannot be run. */
 export function toolVersion(command: string, flag = '-version'): string | undefined {
   const result = spawnSync(command, [flag], { encoding: 'utf8' });
@@ -31,42 +31,243 @@ export function gpuLaunchFlags(): string[] {
   return ['--enable-webgl', '--enable-unsafe-webgpu', '--ignore-gpu-blocklist'];
 }
 
-interface Session { profile: string; send(method: string, params?: object, sessionId?: string): Promise<Record<string, unknown>>; close(): Promise<void> }
-async function launch(browser: string): Promise<Session> {
+export interface CdpSession {
+  profile: string;
+  sandboxedFallback: boolean;
+  send(method: string, params?: object, sessionId?: string): Promise<Record<string, unknown>>;
+  onEvent(method: string, handler: (params: Record<string, unknown>, sessionId?: string) => void): void;
+  close(): Promise<void>;
+}
+
+async function launchOnce(browser: string, nestedSandboxFallback: boolean): Promise<CdpSession> {
   const profile = await mkdtemp(join(tmpdir(), 'motionflux-browser-'));
-  const child = spawn(browser, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run',
-    '--no-default-browser-check', '--disable-extensions', '--hide-scrollbars', '--mute-audio', ...gpuLaunchFlags(), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
-  const cleanup = async () => { child.kill(); await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); };
+  const baseFlags = [
+    '--headless=new',
+    `--user-data-dir=${profile}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-extensions',
+    '--hide-scrollbars',
+    '--mute-audio',
+    '--autoplay-policy=no-user-gesture-required',
+    '--font-render-hinting=none',
+  ];
+  const modeFlags = nestedSandboxFallback
+    ? [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu-sandbox',
+        '--use-mock-keychain',
+        '--disable-breakpad',
+        '--disable-crash-reporter',
+        '--disable-dev-shm-usage',
+        '--enable-webgl',
+        '--enable-unsafe-swiftshader',
+        '--ignore-gpu-blocklist',
+      ]
+    : gpuLaunchFlags();
+
+  const usePipe = process.platform !== 'win32';
+  const child = spawn(
+    browser,
+    [
+      ...(usePipe ? ['--remote-debugging-pipe'] : ['--remote-debugging-port=0']),
+      ...baseFlags,
+      ...modeFlags,
+      'about:blank',
+    ],
+    {
+      stdio: usePipe ? ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'ignore', 'pipe'],
+    },
+  );
+
+  let stderrLog = '';
+  child.stderr?.on('data', (chunk: Buffer) => {
+    if (stderrLog.length < 4096) stderrLog += chunk.toString('utf8');
+  });
+
+  const cleanup = async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise<void>((r) => child.once('exit', () => r()));
+      child.kill('SIGTERM');
+      await Promise.race([
+        exited,
+        new Promise<void>((r) =>
+          setTimeout(() => {
+            try { child.kill('SIGKILL'); } catch { /* ignore */ }
+            r();
+          }, 1500),
+        ),
+      ]);
+    }
+    await rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }).catch(() => undefined);
+  };
+
+  const pending = new Map<number, { resolve(value: Record<string, unknown>): void; reject(error: Error): void }>();
+  const eventHandlers = new Map<string, (params: Record<string, unknown>, sessionId?: string) => void>();
+  let nextId = 0;
+
+  const rejectAllPending = (reason: string) => {
+    for (const waiting of pending.values()) waiting.reject(new Error(reason));
+    pending.clear();
+  };
+
+  const handleRawMessage = (raw: string) => {
+    const message = JSON.parse(raw) as {
+      id?: number;
+      method?: string;
+      params?: Record<string, unknown>;
+      sessionId?: string;
+      result?: Record<string, unknown>;
+      error?: { message: string };
+    };
+    if (message.id !== undefined) {
+      const waiting = pending.get(message.id);
+      if (!waiting) return;
+      pending.delete(message.id);
+      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`));
+      else waiting.resolve(message.result ?? {});
+      return;
+    }
+    if (message.method) {
+      const handler = eventHandlers.get(message.method);
+      if (handler) handler(message.params ?? {}, message.sessionId);
+    }
+  };
+
   try {
+    if (usePipe) {
+      const pipeOut = child.stdio[3] as Writable;
+      const pipeIn = child.stdio[4] as Readable;
+      let buf: Buffer = Buffer.alloc(0);
+
+      pipeIn.on('data', (chunk: Buffer) => {
+        buf = Buffer.concat([buf, chunk]);
+        let nulIdx: number;
+        while ((nulIdx = buf.indexOf(0)) !== -1) {
+          const slice = buf.subarray(0, nulIdx).toString('utf8');
+          buf = buf.subarray(nulIdx + 1);
+          if (slice) handleRawMessage(slice);
+        }
+      });
+      pipeOut.on('error', () => { /* child exit carries diagnostic */ });
+      child.once('exit', (code, signal) => {
+        const tail = stderrLog.trim().split('\n').slice(-2).join(' ');
+        rejectAllPending(
+          `BROWSER_START: ${browser} exited (${signal ? `signal ${signal}` : `code ${code}`}) before ready.${tail ? ` ${tail}` : ''}`,
+        );
+      });
+
+      const send = (method: string, params: object = {}, sessionId?: string) =>
+        new Promise<Record<string, unknown>>((resolveCall, reject) => {
+          if (child.exitCode !== null || child.signalCode !== null) {
+            const tail = stderrLog.trim().split('\n').slice(-2).join(' ');
+            reject(new Error(`BROWSER_START: ${browser} exited before ready.${tail ? ` ${tail}` : ''}`));
+            return;
+          }
+          const id = ++nextId;
+          pending.set(id, { resolve: resolveCall, reject });
+          pipeOut.write(`${JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) })}\0`);
+        });
+
+      await Promise.race([
+        send('Browser.getVersion'),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`BROWSER_START: ${browser} did not respond on CDP pipe within 20 s.`)), 20000),
+        ),
+      ]);
+
+      if (nestedSandboxFallback) {
+        // Give Chromium ~450ms to settle its software WebGL2 SwiftShader backend when hardware GPU is restricted
+        const { targetId } = (await send('Target.createTarget', { url: 'about:blank' })) as { targetId: string };
+        const { sessionId } = (await send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const check = (await send(
+            'Runtime.evaluate',
+            { returnByValue: true, expression: `Boolean(document.createElement('canvas').getContext('webgl2'))` },
+            sessionId,
+          )) as { result?: { value?: boolean } };
+          if (check.result?.value) break;
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        await send('Target.closeTarget', { targetId }).catch(() => undefined);
+      }
+
+      return {
+        profile,
+        sandboxedFallback: nestedSandboxFallback,
+        send,
+        onEvent: (method, handler) => { eventHandlers.set(method, handler); },
+        close: async () => {
+          eventHandlers.clear();
+          await cleanup();
+        },
+      };
+    }
+
+    // Windows fallback: WebSocket transport
     const endpoint = await new Promise<string>((resolveEndpoint, reject) => {
       let log = '';
       const timer = setTimeout(() => reject(new Error(`BROWSER_START: ${browser} did not open a DevTools endpoint within 20 s.`)), 20000);
-      child.stderr.on('data', (chunk: Buffer) => { log += chunk; const match = log.match(/DevTools listening on (ws:\/\/\S+)/u); if (match) { clearTimeout(timer); resolveEndpoint(match[1]!); } });
+      child.stderr?.on('data', (chunk: Buffer) => {
+        log += chunk;
+        const match = log.match(/DevTools listening on (ws:\/\/\S+)/u);
+        if (match) { clearTimeout(timer); resolveEndpoint(match[1]!); }
+      });
       child.once('error', (error) => { clearTimeout(timer); reject(new Error(`BROWSER_START: ${error.message}`)); });
-      child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`BROWSER_START: ${browser} exited with code ${code} before it was ready.`)); });
+      child.once('exit', (code, signal) => {
+        clearTimeout(timer);
+        reject(new Error(`BROWSER_START: ${browser} exited (${signal ? `signal ${signal}` : `code ${code}`}) before it was ready.`));
+      });
     });
     const socket = new WebSocket(endpoint);
-    await new Promise<void>((opened, reject) => { socket.onopen = () => opened(); socket.onerror = () => reject(new Error('BROWSER_START: Could not connect to the DevTools endpoint.')); });
-    const pending = new Map<number, { resolve(value: Record<string, unknown>): void; reject(error: Error): void }>();
-    let nextId = 0;
-    socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data)) as { id?: number; result?: Record<string, unknown>; error?: { message: string } };
-      const waiting = message.id === undefined ? undefined : pending.get(message.id);
-      if (!waiting) return;
-      pending.delete(message.id!);
-      if (message.error) waiting.reject(new Error(`BROWSER_PROTOCOL: ${message.error.message}`)); else waiting.resolve(message.result ?? {});
-    };
-    socket.onclose = () => { for (const waiting of pending.values()) waiting.reject(new Error('BROWSER_PROTOCOL: The browser closed the connection.')); pending.clear(); };
+    await new Promise<void>((opened, reject) => {
+      socket.onopen = () => opened();
+      socket.onerror = () => reject(new Error('BROWSER_START: Could not connect to the DevTools endpoint.'));
+    });
+    socket.onmessage = (event) => handleRawMessage(String(event.data));
+    socket.onclose = () => rejectAllPending('BROWSER_PROTOCOL: The browser closed the connection.');
+
     return {
       profile,
-      send: (method, params = {}, sessionId) => new Promise((resolveCall, reject) => {
-        const id = ++nextId; pending.set(id, { resolve: resolveCall, reject });
-        socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-      }),
-      close: async () => { socket.onclose = null; socket.close(); await cleanup(); },
+      sandboxedFallback: nestedSandboxFallback,
+      send: (method, params = {}, sessionId) =>
+        new Promise((resolveCall, reject) => {
+          const id = ++nextId;
+          pending.set(id, { resolve: resolveCall, reject });
+          socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+        }),
+      onEvent: (method, handler) => { eventHandlers.set(method, handler); },
+      close: async () => {
+        socket.onclose = null;
+        eventHandlers.clear();
+        socket.close();
+        await cleanup();
+      },
     };
-  } catch (error) { await cleanup(); throw error; }
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 }
+
+/**
+ * Launch headless Chromium over CDP, trying full hardware GPU isolation first and automatically
+ * falling back to `--no-sandbox` + SwiftShader when running inside an outer OS/container sandbox.
+ */
+export async function launchCdpBrowser(browser: string): Promise<CdpSession> {
+  try {
+    return await launchOnce(browser, false);
+  } catch (firstErr) {
+    try {
+      return await launchOnce(browser, true);
+    } catch {
+      throw firstErr;
+    }
+  }
+}
+
+const launch = launchCdpBrowser;
 /** Verify that headless Chromium can start and create a working WebGL2 context for Three.js / studio.mjs scenes. */
 export async function probeWebGL2(browser: string): Promise<{ available: boolean; glVersion?: string; renderer?: string; reason?: string }> {
   const session = await launch(browser);
